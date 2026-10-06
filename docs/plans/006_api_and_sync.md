@@ -1,6 +1,6 @@
 # 006 — API and sync
 
-**Status:** `ACCEPTED` — approved by the owner 2026-10-06; no code yet
+**Status:** `IN PROGRESS` — implemented in `server/`, contract in `api/openapi.yaml`; not yet on `main`
 **Started:** 2026-10-06
 
 ## Problem
@@ -57,9 +57,15 @@ under 0.5 MB gzipped) is small enough for each client to **keep a full copy**:
 ### User data: pull changes, push operations
 
 **Pull:** `GET /api/v1/sync?since=<cursor>` returns everything about this
-user that changed since `cursor`, as whole objects: queues with their items,
-playlists, favorites, and `now_playing`. Taken from the `changes` sequence
-([005](005_storage_and_library_model.md)).
+user that changed since `cursor`, as whole objects: queues with their songs,
+favorites, and `now_playing`. Each object carries the user's data version it
+last changed at ([005](005_storage_and_library_model.md)).
+
+**Playlists come through `/library`, not `/sync`.** They are files, indexed
+under the library version, and their visibility (shared, plus the caller's
+own) is decided there. Playlist operations still go through `POST /sync`.
+They rewrite the file and bump the library version, so the next library pull
+carries the result.
 
 **Push:** `POST /api/v1/sync` with an ordered list of **operations** recorded
 by the client (option B in [002](002_sync_and_handoff.md)):
@@ -117,6 +123,18 @@ anything above.
 
 These come with the admin panel after v1 ([004](004_curation_workflow.md)),
 under `/api/v1/admin/…`. Nothing in v1 depends on them.
+
+## Added during implementation (2026-10-06)
+
+- `GET /api/v1/plays` returns per-song play counts and last-played times,
+  so clients can sort by most or recently played without receiving the raw
+  play log.
+- Operations not in the table above: `queue.replace` (a sort or shuffle sends
+  the whole order; last writer wins), `queue.set_mode` (shuffle, repeat) and
+  `playlist.replace`.
+- An operation's `at` is stored in a fixed-width format. "The later change
+  wins" compares these as strings, and RFC 3339 with variable fractions sorts
+  `03.5Z` before `03Z`.
 
 ## Rejected
 

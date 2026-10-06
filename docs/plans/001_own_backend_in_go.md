@@ -1,6 +1,6 @@
 # 001 — Our own backend, in Go
 
-**Status:** `ACCEPTED` — no code yet
+**Status:** `IN PROGRESS` — server in `server/`; not yet on `main`
 **Started:** 2026-10-06
 
 ## Problem

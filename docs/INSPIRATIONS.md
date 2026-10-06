@@ -12,11 +12,11 @@ is the date of the latest review. The findings of each review go to
 
 ## Credited
 
-What we have actually taken, and from where. Empty until the first borrowed
-idea or code lands.
+What we have actually taken, and from where.
 
-| Project | What we took | Where in our code |
-| ------- | ------------ | ----------------- |
+| Project                                                                                                                                       | What we took                                                                   | Where in our code                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
+| [go.senan.xyz/taglib](https://github.com/sentriz/go-taglib) (by Gonic's author; TagLib compiled to WebAssembly; LGPL-2.1, GPL-3.0-compatible) | Tag and audio-property reading without cgo, so the server is one static binary | `server/internal/library/tags.go`, `media.go` |
 
 ## Watched
 

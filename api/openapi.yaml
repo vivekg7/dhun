@@ -1,0 +1,487 @@
+openapi: 3.1.0
+info:
+  title: Dhun API
+  version: "1"
+  description: |
+    The only boundary between the Dhun server and its clients (AGENTS.md).
+    Hand-written and reviewed like code; the server's
+    TestSpecCoversEveryRoute fails if a route is missing here.
+
+    Design and merge rules: docs/plans/006_api_and_sync.md.
+
+    - Plain HTTP over Tailscale; JSON bodies; responses are gzipped when the
+      client sends `Accept-Encoding: gzip`.
+    - Apps authenticate with `Authorization: Bearer <token>` from
+      `POST /api/v1/login`; the web client gets the same token as the
+      `dhun_token` HttpOnly cookie.
+    - Errors are `{"code": "...", "message": "..."}` with a matching status.
+servers:
+  - url: http://{host}:8585
+    variables:
+      host:
+        default: nas
+
+security:
+  - bearer: []
+  - cookie: []
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness and database check (no auth)
+      security: []
+      responses:
+        "200": { description: "`ok`" }
+        "503": { description: Database unavailable }
+
+  /api/v1/login:
+    post:
+      summary: Sign in a device
+      description: |
+        Creates a device token. One token per app install; it stays valid
+        until the device is removed (DELETE /devices/{id}, logout, or a
+        password change).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, device]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                device:
+                  type: string
+                  description: Shown in hand-off ("Continue from <device>")
+                  example: Pixel
+      responses:
+        "200":
+          description: Signed in; also sets the dhun_token cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  deviceId: { type: integer }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/v1/logout:
+    post:
+      summary: Sign out this device (deletes its token)
+      responses:
+        "204": { description: Signed out }
+
+  /api/v1/me:
+    get:
+      summary: The signed-in user and device
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  deviceId: { type: integer }
+
+  /api/v1/devices:
+    get:
+      summary: The caller's signed-in devices
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        lastSeenAt: { type: string, format: date-time }
+                        current: { type: boolean }
+
+  /api/v1/devices/{id}:
+    delete:
+      summary: Sign out one of the caller's devices (a lost phone)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Signed out }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/library:
+    get:
+      summary: Songs and visible playlists changed since a cursor
+      description: |
+        Clients keep the whole catalogue and browse and search it locally.
+        `since=0` (or omitted) returns everything; pass the returned
+        `version` next time to get only changes. Missing songs come back
+        with `missing: true`; removed playlists as `{id, deleted: true}`.
+        Playlists are the shared ones plus the caller's own.
+      parameters:
+        - name: since
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: integer }
+                  songs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Song" }
+                  playlists:
+                    type: array
+                    items: { $ref: "#/components/schemas/Playlist" }
+
+  /api/v1/stream/{id}:
+    get:
+      summary: The original audio file, with HTTP Range support
+      description: Never transcoded. Downloads use this endpoint too.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Whole file }
+        "206": { description: Requested range }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/art/{id}:
+    get:
+      summary: A song's cover art
+      description: Embedded art first, else the folder's cover file. Supports ETag.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - name: size
+          in: query
+          description: Longest side in pixels (JPEG); 0 or absent for the original
+          schema: { type: integer, minimum: 0, maximum: 2048 }
+      responses:
+        "200": { description: Image bytes }
+        "304": { description: Not modified }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/lyrics/{id}:
+    get:
+      summary: A song's lyrics, as stored
+      description: |
+        The sibling .lrc file if there is one, else embedded lyrics.
+        Clients parse LRC timestamps themselves.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string, enum: [lrc, embedded] }
+                  synced: { type: boolean }
+                  text: { type: string }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/sync:
+    get:
+      summary: The caller's queues, favorites and now-playing changed since a cursor
+      parameters:
+        - name: since
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncState" }
+    post:
+      summary: Push operations, then pull changes, in one round trip
+      description: |
+        Operations are applied in order, each atomically. Each has a
+        client-generated `id`; a resent id is reported as `duplicate` and
+        not applied again. A `rejected` operation can never succeed and
+        must be dropped from the client's outbox. Playlist operations
+        rewrite the .m3u8 file and are visible through /library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ops]
+              properties:
+                since: { type: integer, description: The client's sync cursor }
+                ops:
+                  type: array
+                  items: { $ref: "#/components/schemas/Op" }
+      responses:
+        "200":
+          description: Results, plus everything changed since `since`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/SyncState" }
+                  - type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            status:
+                              { type: string, enum: [applied, duplicate, rejected] }
+                            error: { type: string }
+
+  /api/v1/now-playing:
+    get:
+      summary: The caller's latest playback, for resume hand-off
+      description: |
+        An app coming to the foreground offers "Continue from <deviceName>"
+        when this is newer than its own playback and from another device.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nowPlaying:
+                    oneOf:
+                      - { $ref: "#/components/schemas/NowPlaying" }
+                      - { type: "null" }
+
+  /api/v1/plays:
+    get:
+      summary: The caller's play count and last play per song
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plays:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        song: { type: integer }
+                        count: { type: integer }
+                        lastPlayedAt: { type: string, format: date-time }
+
+  /api/v1/admin/rescan:
+    post:
+      summary: Start a library scan now (admin)
+      responses:
+        "202": { description: Scan queued }
+        "403": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+    cookie: { type: apiKey, in: cookie, name: dhun_token }
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code: { type: string, example: not_found }
+              message: { type: string }
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        admin: { type: boolean }
+
+    Song:
+      type: object
+      description: Optional text fields are omitted when empty.
+      required:
+        [id, path, title, artists, genres, durationMs, size, hasArt, hasLyrics, addedAt]
+      properties:
+        id:
+          {
+            type: integer,
+            description: Stable; never reused,
+            survives moves and upgrades,
+          }
+        path:
+          {
+            type: string,
+            description: Relative to the Music folder; for folder browsing,
+          }
+        title: { type: string }
+        artist: { type: string, description: Raw tag }
+        artists:
+          { type: array, items: { type: string }, description: Split on, ; & feat. }
+        album: { type: string }
+        albumArtist: { type: string }
+        composer: { type: string }
+        genre: { type: string }
+        genres: { type: array, items: { type: string } }
+        year: { type: integer }
+        track: { type: integer }
+        disc: { type: integer }
+        durationMs: { type: integer }
+        format: { type: string, example: mpeg }
+        codec: { type: string, example: aac }
+        bitrate: { type: integer, description: kbit/s }
+        sampleRate: { type: integer }
+        bitDepth: { type: integer }
+        size: { type: integer, description: Bytes; for download quotas }
+        hasArt: { type: boolean }
+        hasLyrics: { type: boolean }
+        addedAt: { type: string, format: date-time }
+        missing:
+          { type: boolean, description: File gone; keep the song's data, hide it }
+
+    Playlist:
+      type: object
+      properties:
+        id: { type: integer }
+        deleted: { type: boolean }
+        path: { type: string }
+        name: { type: string }
+        shared:
+          {
+            type: boolean,
+            description: Top-level Playlists/ file; only the admin edits it,
+          }
+        songs:
+          type: array
+          items: { type: integer }
+          description: In order; 0 is an entry that matches no song (kept, shown as unavailable)
+
+    Queue:
+      type: object
+      properties:
+        id: { type: string, description: Client-generated }
+        deleted: { type: boolean }
+        name: { type: string }
+        songs:
+          {
+            type: array,
+            items: { type: integer },
+            description: Play order; no duplicates,
+          }
+        currentSong: { type: integer }
+        positionMs: { type: integer }
+        shuffle: { type: boolean }
+        repeat: { type: string, enum: ["off", queue, song] }
+        usedAt: { type: string, format: date-time }
+
+    NowPlaying:
+      type: object
+      properties:
+        deviceId: { type: integer }
+        deviceName: { type: string }
+        queue: { type: string }
+        song: { type: integer }
+        positionMs: { type: integer }
+        playing: { type: boolean }
+        at: { type: string, format: date-time }
+
+    SyncState:
+      type: object
+      properties:
+        version: { type: integer, description: Next cursor }
+        queues: { type: array, items: { $ref: "#/components/schemas/Queue" } }
+        favorites:
+          type: array
+          items:
+            type: object
+            properties:
+              song: { type: integer }
+              deleted: { type: boolean }
+        nowPlaying:
+          oneOf:
+            - { $ref: "#/components/schemas/NowPlaying" }
+            - { type: "null" }
+
+    Op:
+      type: object
+      description: |
+        One change recorded by a client. `after` positions relative to a
+        neighbouring song: absent = end, 0 = start, unknown song = end.
+
+        | type | fields | merge rule |
+        | --- | --- | --- |
+        | queue.create | queue, name, songs, song?, positionMs? | name made unique; past 20 queues the least recently used is removed |
+        | queue.rename | queue, name | name made unique |
+        | queue.delete | queue | delete wins over later edits |
+        | queue.insert | queue, songs, after? | songs already queued are moved, never duplicated |
+        | queue.remove | queue, songs | |
+        | queue.move | queue, song, after? | |
+        | queue.replace | queue, songs | whole order (sort, shuffle); last writer wins |
+        | queue.set_current | queue, song, positionMs | later `at` wins |
+        | queue.set_mode | queue, shuffle?, repeat? | |
+        | favorite.set / favorite.unset | song | later `at` wins |
+        | play | song, ms | append only |
+        | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
+        | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8 |
+        | playlist.rename | playlist, name | renames the file |
+        | playlist.delete | playlist | file moved to _trash/ |
+        | playlist.insert | playlist, songs, after?, afterOccurrence? | duplicates allowed |
+        | playlist.remove | playlist, song, occurrence? | |
+        | playlist.move | playlist, song, occurrence?, after?, afterOccurrence? | |
+        | playlist.replace | playlist, songs | |
+
+        Playlists: your own, or shared ones if you are the admin.
+      required: [id, type]
+      properties:
+        id: { type: string, description: Client-generated, unique per user }
+        at:
+          {
+            type: string,
+            format: date-time,
+            description: When the change was made; defaults to receipt time,
+          }
+        type: { type: string }
+        queue: { type: string }
+        playlist:
+          {
+            type: string,
+            description: 'Server id ("123") or "ref:<ref>" for one created offline',
+          }
+        ref: { type: string }
+        name: { type: string }
+        songs: { type: array, items: { type: integer } }
+        song: { type: integer }
+        after: { type: integer }
+        occurrence: { type: integer, description: Which copy of song (0-based) }
+        afterOccurrence: { type: integer }
+        positionMs: { type: integer }
+        playing: { type: boolean }
+        shuffle: { type: boolean }
+        repeat: { type: string, enum: ["off", queue, song] }
+        ms: { type: integer }

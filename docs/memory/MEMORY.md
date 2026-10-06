@@ -1,1 +1,1 @@
-- (none yet)
+- [TagLib reads by extension](taglib-reads-by-extension.md) — wrong extension reads as untagged; MP3 lyrics are USLT

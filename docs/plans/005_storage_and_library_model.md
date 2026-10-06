@@ -1,6 +1,6 @@
 # 005 — Storage and library model
 
-**Status:** `ACCEPTED` — approved by the owner 2026-10-06; no code yet
+**Status:** `IN PROGRESS` — implemented in `server/` (migrations 0001–0002); not yet on `main`
 **Started:** 2026-10-06
 
 ## Problem
@@ -76,17 +76,16 @@ fallback is `dhowden/tag` for tags plus our own duration parsing.
 
 ### Per-user data
 
-| Table         | Holds                                                                                                                                                                                  |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | Name (also the `Playlists/<name>/` folder), password hash (argon2id), `is_admin`.                                                                                                      |
-| `devices`     | One row per signed-in app install: a name ("Pixel", "MacBook"), a token hash, `last_seen`. Shown in hand-off ("Continue from Phone").                                                  |
-| `queues`      | Per user, at most 20: name (unique per user), current song, position in ms, shuffle and repeat state, `updated_at`. A 21st queue removes the least recently used one, as in Musicolet. |
-| `queue_items` | `(queue_id, song_id, ord)`, with `song_id` unique per queue (Musicolet: no duplicates in a queue). `ord` is a sparse key, so inserting between two songs does not renumber the rest.   |
-| `favorites`   | `(user_id, song_id, at)`.                                                                                                                                                              |
-| `plays`       | Append-only `(user_id, song_id, device_id, at, ms_played)`. Play counts, last played and most played are queries over it; nothing is stored twice.                                     |
-| `now_playing` | One row per user: device, queue, song, position, playing or paused, `updated_at`. This is what hand-off reads ([002](002_sync_and_handoff.md)).                                        |
-| `changes`     | A per-user sequence of what changed, so a client can ask "what changed since N?" ([006](006_api_and_sync.md)).                                                                         |
-| `applied_ops` | IDs of client operations already applied, so a retried sync is harmless.                                                                                                               |
+| Table                | Holds                                                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`              | Name (also the `Playlists/<name>/` folder), password hash (argon2id), `is_admin`.                                                                                                                                                                                                                                                           |
+| `devices`            | One row per signed-in app install: a name ("Pixel", "MacBook"), a token hash, `last_seen`. Shown in hand-off ("Continue from Phone").                                                                                                                                                                                                       |
+| `queues`             | Per user, at most 20, with a **client-generated ID** (so a queue made offline can be referred to before the server sees it): name (unique per user), the songs as a JSON array of IDs (no duplicates, Musicolet), current song, position, shuffle and repeat, `used_at`. A 21st queue removes the least recently used one, as in Musicolet. |
+| `favorites`          | `(user_id, song_id, at)`.                                                                                                                                                                                                                                                                                                                   |
+| `plays`              | Append-only `(user_id, song_id, device_id, at, ms_played)`. Play counts, last played and most played are queries over it; nothing is stored twice.                                                                                                                                                                                          |
+| `now_playing`        | One row per user: device, queue, song, position, playing or paused, `updated_at`. This is what hand-off reads ([002](002_sync_and_handoff.md)).                                                                                                                                                                                             |
+| `users.data_version` | A per-user counter; every queue, favorite and now-playing row records the version it last changed at, so a client can ask "what changed since N?" ([006](006_api_and_sync.md)).                                                                                                                                                             |
+| `applied_ops`        | IDs of client operations already applied, so a retried sync is harmless.                                                                                                                                                                                                                                                                    |
 
 ### Playlists: `.m3u8` is the truth, the database is an index
 
@@ -105,6 +104,19 @@ fallback is `dhowden/tag` for tags plus our own duration parsing.
 - Two edits to the same playlist are serialised by a per-file lock in the
   server; with 3–4 users, contention is not a concern.
 
+## Changed during implementation (2026-10-06)
+
+- **Queue songs are one JSON array per queue**, not a `queue_items` table
+  with sparse sort keys. Queues hold at most a few thousand songs, so
+  rewriting the array on each edit costs nothing, and every edit becomes a
+  single-row update with no ordering arithmetic.
+- **A per-user `data_version` counter replaces the `changes` table.** Each
+  object records the version it last changed at, which answers "what changed
+  since N?" without a second table that has to stay consistent with the
+  first.
+- **The duration accuracy of the taglib WebAssembly library is confirmed**:
+  within 50 ms of ffprobe for MP3, M4A, Opus and FLAC.
+
 ## Rejected
 
 - **Postgres:** a second container to run and back up, for no gain at this
@@ -119,5 +131,4 @@ fallback is `dhowden/tag` for tags plus our own duration parsing.
 
 ## Open questions
 
-None for the owner. To confirm during implementation: the taglib WASM
-library's Opus and M4A duration accuracy.
+None.

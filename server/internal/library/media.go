@@ -1,0 +1,129 @@
+package library
+
+import (
+	"bytes"
+	"errors"
+	"image"
+	"image/jpeg"
+	_ "image/png" // decode folder covers saved as PNG
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"go.senan.xyz/taglib"
+	"golang.org/x/image/draw"
+)
+
+// ErrNone means the song has no art or lyrics.
+var ErrNone = errors.New("none")
+
+// SongFile is what the media helpers need to know about a song.
+type SongFile struct {
+	Path           string // relative to the media root
+	EmbeddedArt    bool
+	EmbeddedLyrics bool
+	FolderArt      string // sibling cover file name, if any
+	Lrc            bool
+}
+
+func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
+
+// Art returns the song's cover: embedded art first, then the folder's cover
+// file, the same order Musicolet uses. size > 0 scales the longest side down
+// to size pixels and re-encodes as JPEG; the original is never upscaled.
+func Art(root string, f SongFile, size int) (data []byte, mimeType string, err error) {
+	switch {
+	case f.EmbeddedArt:
+		data, err = taglib.ReadImage(abs(root, f.Path))
+		if err == nil && len(data) == 0 {
+			err = ErrNone
+		}
+	case f.FolderArt != "":
+		data, err = os.ReadFile(abs(root, path.Join(path.Dir(f.Path), f.FolderArt)))
+	default:
+		return nil, "", ErrNone
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if size <= 0 {
+		return data, sniffImage(data), nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data, sniffImage(data), nil // undecodable (e.g. WebP): serve as-is
+	}
+	b := img.Bounds()
+	if b.Dx() <= size && b.Dy() <= size {
+		return data, sniffImage(data), nil
+	}
+	w, h := size, b.Dy()*size/b.Dx()
+	if b.Dy() > b.Dx() {
+		w, h = b.Dx()*size/b.Dy(), size
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, max(w, 1), max(h, 1)))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, b, draw.Src, nil)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), "image/jpeg", nil
+}
+
+func sniffImage(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte("\x89PNG")):
+		return "image/png"
+	case bytes.HasPrefix(b, []byte("RIFF")) && len(b) > 12 && string(b[8:12]) == "WEBP":
+		return "image/webp"
+	default:
+		return "image/jpeg"
+	}
+}
+
+// Lyrics is a song's lyrics text, as stored; clients parse LRC themselves.
+type Lyrics struct {
+	Source string `json:"source"` // "lrc" or "embedded"
+	Synced bool   `json:"synced"` // has [mm:ss.xx] timestamps
+	Text   string `json:"text"`
+}
+
+var lrcTimestamp = regexp.MustCompile(`(?m)^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]`)
+
+// ReadLyrics prefers the sibling .lrc file: the curation workflow fetches
+// those and they are usually synced, while embedded lyrics often are not.
+func ReadLyrics(root string, f SongFile) (Lyrics, error) {
+	if f.Lrc {
+		base := strings.TrimSuffix(f.Path, path.Ext(f.Path))
+		dir, err := os.ReadDir(abs(root, path.Dir(f.Path)))
+		if err == nil {
+			want := strings.ToLower(path.Base(base) + ".lrc")
+			for _, e := range dir {
+				if strings.ToLower(e.Name()) == want {
+					if data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), e.Name()))); err == nil {
+						return makeLyrics("lrc", string(data)), nil
+					}
+				}
+			}
+		}
+	}
+	if f.EmbeddedLyrics {
+		m, err := taglib.ReadTags(abs(root, f.Path))
+		if err != nil {
+			return Lyrics{}, err
+		}
+		for _, k := range []string{taglib.Lyrics, "USLT", "UNSYNCEDLYRICS"} {
+			if v := m[k]; len(v) > 0 && strings.TrimSpace(v[0]) != "" {
+				return makeLyrics("embedded", v[0]), nil
+			}
+		}
+	}
+	return Lyrics{}, ErrNone
+}
+
+func makeLyrics(source, text string) Lyrics {
+	text = strings.TrimPrefix(text, "\uFEFF")
+	return Lyrics{Source: source, Synced: lrcTimestamp.MatchString(text), Text: text}
+}
