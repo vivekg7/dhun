@@ -109,12 +109,12 @@ and anything undecided is under [Open questions](#open-questions).
 
 ### Platforms
 
-| Platform                          | Scope                                                |
-| --------------------------------- | ---------------------------------------------------- |
-| Android (Samsung A35, Android 16) | **Full feature set, no compromise.** Primary target. |
-| macOS                             | Minimal features are fine.                           |
-| Web                               | Minimal features are fine.                           |
-| Linux                             | Optional.                                            |
+| Platform                          | Scope                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| Android (Samsung A35, Android 16) | **Full feature set, no compromise.** Primary target.                      |
+| macOS                             | Minimal features are fine. **Online-only** (no offline mode).             |
+| Web                               | Minimal features are fine. **Online-only**; served by the backend itself. |
+| Linux                             | Optional.                                                                 |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native

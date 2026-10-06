@@ -1,0 +1,118 @@
+# 007 — Client architecture and repo layout
+
+**Status:** `ACCEPTED` — approved by the owner 2026-10-06; no code yet
+**Started:** 2026-10-06
+
+## Problem
+
+There are three clients with very different scopes. The Android app is
+complete and offline-capable. The macOS and web clients are minimal
+([REQUIREMENTS](../REQUIREMENTS.md#platforms)). We must decide what, if
+anything, they share, and how the Android app is built so that multiple
+queues, Downloads and offline sync fit on top of Media3.
+
+## Shared code or not
+
+**A. Kotlin Multiplatform core** (API client, models, sync engine, database)
+used by Android and, through a Swift framework, by macOS. One sync engine,
+written once. Costs: a Kotlin/Native toolchain inside the macOS build, rough
+Swift interop (no `async`/`await`, generic types are lost), and the
+lightweight macOS app would carry a Kotlin runtime.
+
+**B. Separate native clients, with the API as the only shared contract.**
+Chosen. The hard client logic — the offline outbox, Downloads, the 20-queue
+player — is needed **only on Android**. The minimal clients are
+**online-only**: they send each operation straight to the server and render
+its reply, so they have no outbox and nothing to merge. A shared core would be
+shared with nobody. Revisit if an iOS app or a full offline macOS app is ever
+wanted.
+
+**Online-only macOS and web** was confirmed by the owner (2026-10-06). Both
+are used at home or the office over Tailscale, where the server is reachable.
+
+## Android
+
+| Concern      | Choice                                                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language, UI | Kotlin, Jetpack Compose, Material 3.                                                                                                                                                                                                                          |
+| Playback     | Media3 ExoPlayer in a `MediaLibraryService`. The same service gives the notification, lock screen, Bluetooth and headset controls now, and **Android Auto later with no rework**. Gapless playback, and speed and pitch (`PlaybackParameters`), are built in. |
+| Local data   | Room. It holds the catalogue copy, the user-data working copy, the outbox, and the download index ([006](006_api_and_sync.md)).                                                                                                                               |
+| Network      | OkHttp plus kotlinx.serialization. Media3's OkHttp data source shares the same client, so auth is one interceptor.                                                                                                                                            |
+| Background   | WorkManager for sync (on reconnect, and periodically) and for downloads.                                                                                                                                                                                      |
+| DI           | Manual: one `AppGraph` object. Hilt is not worth it for a single-module app.                                                                                                                                                                                  |
+| Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                |
+| `minSdk`     | 29 (Android 10), which covers any phone in the family, and `targetSdk` the latest. The owner's A35 runs Android 16.                                                                                                                                           |
+
+**Multiple queues on one player.** Media3's player holds one playlist. The
+app's `QueueManager` owns all 20 queues (in Room, mirrored from the server),
+and loads **only the active queue** into the player. Switching queues saves
+the current song and position into the outgoing queue, then loads the
+incoming one at its saved song and position. Gapless playback works within a
+queue, which is where it matters. "End of queue → jump to the next queue"
+(Musicolet, after v1) is the same switch, triggered on completion.
+
+**Where audio comes from.** Each song resolves, in order, to a **Download**,
+then the **Cache** (after v1), then the **stream**. This happens in a
+`ResolvingDataSource`, so the player only ever sees a song ID.
+
+**Downloads and Cache are plain files, not Media3's `SimpleCache`.**
+`SimpleCache` stores byte ranges in opaque span files, and two caches cannot
+share files. That makes "a cached song becomes a download without fetching it
+again" impossible. Instead, both are folders of original files under the
+app's external storage. The owner's phone has an SD card, and the app's own
+folder on it needs no permission. Room tracks their sizes and quotas.
+Promoting a cached song to Downloads is a **file rename**, as in Ultrasonic
+([INSPIRATIONS](../INSPIRATIONS.md)). Downloads are fetched in full by
+WorkManager, never by the player.
+
+**Phone-local songs** come from MediaStore. They are a separate source with
+their own IDs, which are never sent to the server ([REQUIREMENTS](../REQUIREMENTS.md#phone-local-songs)).
+
+**Lyrics:** `.lrc` and embedded lyrics are parsed on the device by a small
+parser of our own. Synced lines are highlighted from the player's position.
+
+## macOS
+
+SwiftUI, with AVFoundation (`AVQueuePlayer`) for playback and `URLSession` for
+the API. A media-key and Now Playing integration through
+`MPRemoteCommandCenter`. Online-only, no database: it fetches the catalogue
+into memory at launch (about 2 MB). No third-party dependencies.
+
+## Web
+
+Plain HTML, CSS and JavaScript ES modules: no framework and no build step.
+The files are **embedded in the Go binary** (`embed`) and served by the
+backend from the same origin, so the cookie auth works and there is nothing
+extra to deploy. The admin panel ([004](004_curation_workflow.md)) will live
+here after v1, where a large screen suits reviewing an inbox.
+
+## Repo layout
+
+```
+server/          Go module: the backend
+server/web/      the web client (inside the Go module, so `embed` can reach it)
+android/         Gradle project
+macos/           Xcode project
+api/openapi.yaml the contract
+deploy/          docker-compose.yml, Dockerfile
+docs/
+```
+
+Each toolchain gets `fmt`, `lint` and `test` targets in the root `Makefile`
+as its code lands. The pre-commit hook runs the formatter only for staged
+files of that language.
+
+## Rejected
+
+- **KMP or Compose Multiplatform** (option A above). Compose Desktop would
+  also bundle a JVM, about 100 MB, against the lightweight goal.
+- **A React, Svelte or Vue web client:** a build toolchain for a minimal
+  page.
+- **Media3 `SimpleCache` for offline storage:** cannot promote a cached song
+  to a download without fetching it again.
+- **Hilt and multi-module Android from day one:** structure with no second
+  consumer yet.
+
+## Open questions
+
+None.

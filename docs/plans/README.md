@@ -84,6 +84,9 @@ wrong.
 
 | Plan                                                                       | Status                                                              |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [007 — Client architecture and repo layout](007_client_architecture.md)    | `ACCEPTED` — no code yet                                            |
+| [006 — API and sync](006_api_and_sync.md)                                  | `ACCEPTED` — no code yet                                            |
+| [005 — Storage and library model](005_storage_and_library_model.md)        | `ACCEPTED` — no code yet                                            |
 | [004 — Dhun owns every change to the collection](004_curation_workflow.md) | `ACCEPTED` — option C; no code yet                                  |
 | [003 — Deployment on the NAS with Docker Compose](003_deployment.md)       | `ACCEPTED` — no code yet                                            |
 | [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                | `PROPOSED` — working copy and hand-off decided; sync mechanism open |

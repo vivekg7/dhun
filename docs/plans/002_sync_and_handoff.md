@@ -1,7 +1,7 @@
 # 002 — Sync, offline and hand-off
 
-**Status:** `PROPOSED` — working copy and hand-off level decided; the sync
-mechanism (leaning B, operation log) is open
+**Status:** `ACCEPTED` — working copy, hand-off level and operation-log sync
+decided; mechanics in [006](006_api_and_sync.md)
 **Started:** 2026-10-06
 
 ## Problem
@@ -66,8 +66,8 @@ v1**, built on the same live connection. H3 only if it turns out to be wanted.
   (live transfer) after v1. H3 (remote control) is not planned. H1's
   now-playing record is designed so that H2 can later push it over a live
   connection instead of the device polling for it.
-- **Sync mechanism:** not yet decided. Leaning B. To be settled in the API
-  design plan.
+- **Sync mechanism:** B (operation log), as detailed in
+  [006](006_api_and_sync.md).
 
 ## Open questions
 
