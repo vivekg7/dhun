@@ -32,9 +32,16 @@ Open source under GPL-3.0.
   edit made offline is never lost. It is recorded and pushed on reconnect
   ([002](docs/plans/002_sync_and_handoff.md)). A feature that works only
   online needs a reason written down.
-- **Original files only.** We never transcode, and the main collection is
-  read-only to the app. The only write path into it is the admin promoting a
-  reviewed upload.
+- **Original files only, and nothing is ever lost.** We never transcode.
+  Audio files change only through an admin-panel action: move, upgrade or
+  remove. Each action moves the old file to `_trash/` rather than deleting
+  it, and is logged in `_meta/`. Everything else the app writes is `.m3u8`
+  playlists in `Music/Playlists/` and its own `Music/_dhun/` folder.
+- **User data points at a song ID, never a path.** Moves and upgrades must
+  leave play counts, favorites, queues and playlists attached to the song
+  ([004](docs/plans/004_curation_workflow.md)).
+- **Sized for one family.** 3–4 users, about 7,000 songs, one NAS. Choose the
+  simple design that fits that, not a generic multi-tenant one.
 - **Downloads and Cache are separate stores with separate quotas.** Cache
   never holds a song that is already in Downloads. Promoting a cached song to
   Downloads moves the file; it never fetches it again.
@@ -70,9 +77,11 @@ Open source under GPL-3.0.
   plan in [`docs/plans/`](docs/plans/README.md): the problem, the options,
   the decision and why, and the alternatives rejected. Read the index first,
   so a rejected idea is not proposed again.
-- **Ask, don't assume.** When a requirement is ambiguous, ask the owner and
-  write the answer into `docs/REQUIREMENTS.md`. A guessed requirement that
-  ships is harder to undo than a question.
+- **Ask about behaviour; decide the details.** When what the product should
+  _do_ is ambiguous, ask the owner and write the answer into
+  `docs/REQUIREMENTS.md`. Configuration, paths, ports and other technical
+  details are not questions: pick the simplest sensible default, write it
+  down, and let the owner override it.
 - **Docs are part of the change, not a follow-up.** If behaviour, an endpoint,
   a schema or a setup step changes, the doc that describes it changes in the
   same commit.

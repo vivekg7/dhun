@@ -82,7 +82,9 @@ wrong.
 
 ## Index
 
-| Plan                                                        | Status                                                              |
-| ----------------------------------------------------------- | ------------------------------------------------------------------- |
-| [002 — Sync, offline and hand-off](002_sync_and_handoff.md) | `PROPOSED` — working copy and hand-off decided; sync mechanism open |
-| [001 — Our own backend, in Go](001_own_backend_in_go.md)    | `ACCEPTED` — no code yet                                            |
+| Plan                                                                       | Status                                                              |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [004 — Dhun owns every change to the collection](004_curation_workflow.md) | `ACCEPTED` — option C; no code yet                                  |
+| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)       | `ACCEPTED` — no code yet                                            |
+| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                | `PROPOSED` — working copy and hand-off decided; sync mechanism open |
+| [001 — Our own backend, in Go](001_own_backend_in_go.md)                   | `ACCEPTED` — no code yet                                            |

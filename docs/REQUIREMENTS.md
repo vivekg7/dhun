@@ -18,6 +18,20 @@ and anything undecided is under [Open questions](#open-questions).
 - **NAS:** Synology DS1525+ — AMD Ryzen V1500B (x86-64, 4 cores / 8 threads,
   2.2 GHz, no integrated GPU), 8 GB DDR4 ECC (max 32 GB), 2 × 2.5 GbE. It
   already runs **Jellyfin** (movies and TV) and **Immich**.
+- **Music on the NAS:** the SMB share `home` on the NAS (`Gargantua`),
+  folder `Media/Music` (`/Volumes/home/Media/Music` when mounted on the Mac).
+  Surveyed 2026-10-06:
+  - `Library/<Artist>/<Album (Year)>/D-TT - Title.ext`, with a `Singles/`
+    folder per artist. Each album has a `cover.jpg` and a `.lrc` lyrics file
+    next to each song.
+  - `Playlists/` holds 19 `.m3u8` playlists, using paths relative to the
+    playlist file. Of their 851 entries, 729 point into `Library/`; the rest
+    point into `Apple Music/` (108), `Spotify/` (11) and `Collection/` (3).
+  - Other top-level folders: `Album`, `Apple Music`, `Collection`, `Genre`,
+    `Language`, `New`, `Source`, `Spotify`.
+  - `_inbox/`, `_meta/` and `_trash/` belong to an existing curation workflow.
+    It imports from downloaders into `_inbox`, deduplicates and upgrades
+    files, fetches lyrics, and logs each action to `_meta/*.jsonl`.
 - Remote access is over **Tailscale**, which already works reliably for Immich.
 - **Users:** the owner and close family (spouse, children). All fully trusted.
 - Named **Dhun** (धुन, "tune"). Open source under **GPL-3.0**, hosted at
@@ -36,22 +50,49 @@ and anything undecided is under [Open questions](#open-questions).
 - **A Subsonic-compatible API comes after v1**, so existing apps (Symfonium,
   Feishin, …) can also connect. Our own API is the primary one.
 - **Reached over Tailscale.** Nothing needs to be exposed publicly.
-- **Server is the source of truth, per user.** Playlists, favorites, queues
-  and play counts live on the server, separately for each user. Each client
+- **Deployed with Docker Compose** on the NAS: one container, one read-write
+  mount of the `Music` folder (`MEDIA_PATH`), used for everything —
+  [plans/003](plans/003_deployment.md).
+- **Server is the source of truth, per user.** Playlists (as `.m3u8` files),
+  favorites, queues and play counts live on the server, separately for each
+  user. Each client
   keeps a **working copy** so it works offline, records changes made offline,
   and pushes them on reconnect — [plans/002](plans/002_sync_and_handoff.md).
 
 ### Users and the library
 
 - **Roles:** one admin (the owner) and family members.
+- **Everyone sees the whole main collection** — every folder under `Music/`
+  except the curation workflow's own `_`-prefixed folders (`_inbox`, `_meta`,
+  `_trash`), which hold unreviewed and deleted files.
+- **Playlists are `.m3u8` files in `Music/Playlists/`**, stored and edited
+  there by the app; no playlist lives only in the database.
+  - `Playlists/*.m3u8` (top level) are **shared**: everyone sees them; the
+    admin edits them.
+  - `Playlists/<username>/*.m3u8` are **that user's own** playlists.
+  - Entries keep the existing format: `#EXTINF` lines and paths relative to
+    the playlist file, so the files stay usable in any other player.
+  - There will only ever be 3–4 users, so this stays simple: no sharing
+    permissions, no generic multi-tenant layout.
+- Queues, favorites, play counts and hand-off state are per user and private,
+  stored in Dhun's own data folder (`Music/_dhun/`).
 - **Uploads:** each user can upload their own local collection to the NAS.
   Uploads go to a **per-user staging area**, separate from the main
   collection, until the admin reviews them (quality check, deduplication) and
   decides whether to move each one into the main collection. While waiting
   for review, an upload can be played **only by the person who uploaded it**.
 - **Uploads come after v1.**
-- **The main collection is read-only to the app**, except when the admin
-  promotes an upload. Songs are streamed and downloaded as **original files**.
+- **All curation happens in Dhun's admin panel.** That covers moving files,
+  upgrading a song to a better-quality copy, removing files, and reviewing
+  what arrives in `_inbox/`. It replaces the current curation tool, so Dhun
+  always knows what changed and keeps everyone's play counts, favorites,
+  queues and playlists attached to the song —
+  [plans/004](plans/004_curation_workflow.md).
+- **Nothing is deleted outright.** Most changes are moves or upgrades. A
+  replaced or removed file goes to `_trash/`, every action is logged in
+  `_meta/`, and emptying the trash is a separate, explicit admin action.
+- Outside the admin panel, the app writes only `.m3u8` playlists and its own
+  `_dhun/` folder. Songs are streamed and downloaded as **original files**.
   No transcoding is needed, so the NAS having no GPU doesn't matter.
 
 ### Cross-device playback
@@ -168,7 +209,8 @@ Proposed. Awaiting the owner's confirmation.
 - Sign in, browse, search, play, switch between queues, and play playlists.
 - Hand-off (resume), so a session started on the phone continues here.
 
-**Later (not v1)** — Uploads with admin review, live hand-off ("Play
+**Later (not v1)** — The admin panel (moves, upgrades, `_inbox` review;
+the current curation tool runs until then), uploads into that review, live hand-off ("Play
 here"), Smart cache, the Subsonic-compatible API, Android Auto,
 Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,
 bookmarks, widgets, most-played stats, lyrics editor, tag editor, audio cutter,
@@ -176,7 +218,4 @@ and the rest of the inventory.
 
 ## Open questions
 
-1. **Who sees what:** does every family member see the whole main collection?
-   Are playlists ever shared between users (e.g. a family playlist)?
-2. **NAS paths:** which shared folder holds the music, and where should the
-   upload staging area live?
+None at the moment.
