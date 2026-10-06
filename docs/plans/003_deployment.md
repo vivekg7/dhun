@@ -1,6 +1,6 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `IN PROGRESS` — `deploy/Dockerfile` and `deploy/docker-compose.yml`; image not yet published
+**Status:** `IN PROGRESS` — `server-v0.1.0` published to `ghcr.io/vivekg7/dhun` (amd64, arm64); not yet running on the NAS
 **Started:** 2026-10-06
 
 ## Problem
