@@ -1,6 +1,6 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `ACCEPTED` — no code yet
+**Status:** `IN PROGRESS` — `deploy/Dockerfile` and `deploy/docker-compose.yml`; image not yet published
 **Started:** 2026-10-06
 
 ## Problem

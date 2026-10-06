@@ -1,0 +1,19 @@
+# Dhun on a Synology NAS (Container Manager) or any Docker host.
+# Edit the one line marked MEDIA_PATH, then: docker compose up -d
+# Why it looks like this: docs/plans/003_deployment.md
+
+services:
+  dhun:
+    container_name: dhun
+    image: ghcr.io/vivekg7/dhun:latest
+    # A user that can read and write your Music folder. On Synology the first
+    # user is usually 1026 and the "users" group is 100; check with `id <you>`.
+    user: "1026:100"
+    ports:
+      - "8585:8585"
+    volumes:
+      - /volume1/homes/you/Media/Music:/media # MEDIA_PATH: your Music folder
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=Asia/Kolkata
+    restart: unless-stopped
