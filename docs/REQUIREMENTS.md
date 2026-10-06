@@ -62,6 +62,8 @@ and anything undecided is under [Open questions](#open-questions).
 ### Users and the library
 
 - **Roles:** one admin (the owner) and family members.
+  - The admin account is created from `docker-compose.yml` on first start.
+    Family members are added from the admin panel; there is no sign-up.
 - **Everyone sees the whole main collection** — every folder under `Music/`
   except the curation workflow's own `_`-prefixed folders (`_inbox`, `_meta`,
   `_trash`), which hold unreviewed and deleted files.
@@ -170,7 +172,8 @@ Proposed. Awaiting the owner's confirmation.
 
 - Scan the music share: tags, embedded art or `cover.jpg`, embedded lyrics
   and `.lrc` files. Rescan on demand and periodically.
-- Users, login, and the admin and member roles.
+- Users, login, and the admin and member roles. The admin comes from
+  `docker-compose.yml`; the admin adds the others.
 - Stream original files with HTTP range requests, so seeking works.
 - Store each user's queues (up to 20, each with its current song and
   position), playlists, favorites and play counts / last played.
@@ -208,8 +211,10 @@ Proposed. Awaiting the owner's confirmation.
 
 - Sign in, browse, search, play, switch between queues, and play playlists.
 - Hand-off (resume), so a session started on the phone continues here.
+- Web only: the admin panel's first screen, **Users** — add a family member
+  and reset a forgotten password.
 
-**Later (not v1)** — The admin panel (moves, upgrades, `_inbox` review;
+**Later (not v1)** — The rest of the admin panel (moves, upgrades, `_inbox` review;
 the current curation tool runs until then), uploads into that review, live hand-off ("Play
 here"), Smart cache, the Subsonic-compatible API, Android Auto,
 Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,

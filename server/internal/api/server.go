@@ -53,6 +53,9 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/now-playing", s.authed(s.getNowPlaying)},
 		{"GET /api/v1/plays", s.authed(s.playCounts)},
 
+		{"GET /api/v1/admin/users", s.admin(s.listUsers)},
+		{"POST /api/v1/admin/users", s.admin(s.createUser)},
+		{"PUT /api/v1/admin/users/{id}/password", s.admin(s.setUserPassword)},
 		{"POST /api/v1/admin/rescan", s.admin(func(w http.ResponseWriter, r *http.Request, _ session) {
 			s.Rescan()
 			w.WriteHeader(http.StatusAccepted)

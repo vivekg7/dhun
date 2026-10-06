@@ -1,5 +1,6 @@
 # Dhun on a Synology NAS (Container Manager) or any Docker host.
-# Edit the one line marked MEDIA_PATH, then: docker compose up -d
+# Edit the line marked MEDIA_PATH and the admin's name and password, then:
+# docker compose up -d
 # Why it looks like this: docs/plans/003_deployment.md
 
 services:
@@ -16,4 +17,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Kolkata
+      # The admin, created on first start. Read only while there are no users,
+      # so you can delete the password once Dhun is running. Everyone else is
+      # added from the admin panel.
+      - DHUN_ADMIN_USER=vivek
+      - DHUN_ADMIN_PASSWORD=change-me-now
     restart: unless-stopped

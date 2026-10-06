@@ -121,10 +121,20 @@ anything above.
 
 ### Admin and uploads
 
-These come with the admin panel after v1 ([004](004_curation_workflow.md)),
-under `/api/v1/admin/…`. Nothing in v1 depends on them.
+Everything the admin panel calls is under `/api/v1/admin/…` and needs the
+admin. v1 has user management (list, add a member, reset a password) and
+rescan; curation and uploads come after v1 ([004](004_curation_workflow.md)).
 
 ## Added during implementation (2026-10-06)
+
+- **Users are managed over the API, not a command.** The admin is created
+  from `DHUN_ADMIN_USER` and `DHUN_ADMIN_PASSWORD` on first start, and only
+  while there are no users, so editing the variables later never resets an
+  account. Members are added with `POST /api/v1/admin/users`; there is one
+  admin, so the endpoint cannot create another. Deleting a user is left out
+  until there is a need: their playlists, queues and plays would need a
+  decision. `dhun user passwd` remains as the way back in for an admin who
+  forgets their own password, since nobody else can reset it.
 
 - `GET /api/v1/plays` returns per-song play counts and last-played times,
   so clients can sort by most or recently played without receiving the raw

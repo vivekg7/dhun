@@ -2,16 +2,16 @@
 //
 //	dhun                        serve (the default)
 //	dhun healthcheck            exit 0 if the local server answers /healthz
-//	dhun user add <name> [--admin]
-//	dhun user passwd <name>
-//	dhun user list
+//	dhun user passwd <name>     reset a password, e.g. the admin's own
 //
 // Configuration is environment variables with defaults that fit the Docker
 // image (docs/plans/003_deployment.md):
 //
-//	DHUN_MEDIA     media root, the mounted Music folder   (/media)
-//	DHUN_ADDR      listen address                        (:8585)
-//	DHUN_RESCAN    interval between automatic rescans    (1h)
+//	DHUN_MEDIA           media root, the mounted Music folder   (/media)
+//	DHUN_ADDR            listen address                        (:8585)
+//	DHUN_RESCAN          interval between automatic rescans    (1h)
+//	DHUN_ADMIN_USER      the admin, created on first start while there are
+//	DHUN_ADMIN_PASSWORD  no users; ignored after that
 package main
 
 import (
@@ -91,6 +91,14 @@ func run(log *slog.Logger, args []string) error {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 
+	created, err := api.EnsureAdmin(context.Background(), db, os.Getenv("DHUN_ADMIN_USER"), os.Getenv("DHUN_ADMIN_PASSWORD"))
+	if err != nil {
+		return err
+	}
+	if created {
+		log.Info("admin created; add family members from the admin panel", "admin", os.Getenv("DHUN_ADMIN_USER"))
+	}
+
 	interval, err := time.ParseDuration(env("DHUN_RESCAN", "1h"))
 	if err != nil {
 		return fmt.Errorf("DHUN_RESCAN: %w", err)
@@ -150,62 +158,26 @@ func run(log *slog.Logger, args []string) error {
 	return nil
 }
 
-// userCmd manages users from the command line, for example
-// `docker exec -it dhun dhun user add vivek --admin`. A family has three or
-// four users, so there is no sign-up flow.
+// userCmd is the way back in when the admin forgets their password:
+// `docker exec -it dhun /dhun user passwd <name>`. Adding users is the admin
+// panel's job, and the admin itself comes from docker-compose.yml.
 func userCmd(db *sql.DB, args []string) error {
-	ctx := context.Background()
-	usage := errors.New("usage: dhun user add <name> [--admin] | passwd <name> | list")
-	if len(args) == 0 {
-		return usage
+	if len(args) != 2 || args[0] != "passwd" {
+		return errors.New("usage: dhun user passwd <name>")
 	}
-	switch args[0] {
-	case "list":
-		rows, err := db.QueryContext(ctx, `SELECT name, is_admin, created_at FROM users ORDER BY name`)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var name, created string
-			var admin bool
-			if err := rows.Scan(&name, &admin, &created); err != nil {
-				return err
-			}
-			role := "member"
-			if admin {
-				role = "admin"
-			}
-			fmt.Printf("%-16s %-7s %s\n", name, role, created)
-		}
-		return rows.Err()
-	case "add", "passwd":
-		if len(args) < 2 {
-			return usage
-		}
-		password, err := readPassword()
-		if err != nil {
-			return err
-		}
-		if args[0] == "passwd" {
-			if err := api.SetPassword(ctx, db, args[1], password); err != nil {
-				return err
-			}
-			fmt.Println("password changed; all of the user's devices are signed out")
-			return nil
-		}
-		admin := len(args) > 2 && args[2] == "--admin"
-		if err := api.CreateUser(ctx, db, args[1], password, admin); err != nil {
-			return err
-		}
-		fmt.Printf("user %s created; their playlists go in Playlists/%s/\n", args[1], args[1])
-		return nil
+	password, err := readPassword()
+	if err != nil {
+		return err
 	}
-	return usage
+	if err := api.SetPassword(context.Background(), db, args[1], password); err != nil {
+		return err
+	}
+	fmt.Println("password changed; all of the user's devices are signed out")
+	return nil
 }
 
 // readPassword prompts twice on a terminal, or reads one line from stdin
-// (for scripting: `echo "$PW" | dhun user add ...`).
+// (for scripting: `echo "$PW" | dhun user passwd ...`).
 func readPassword() (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {

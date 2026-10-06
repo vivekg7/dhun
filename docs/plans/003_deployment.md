@@ -22,7 +22,8 @@ Dhun uses it for everything:
 | `_dhun/`                           | Dhun's own state: SQLite database, art cache, logs.                                                    |
 | `_inbox/`, `_meta/`, `_trash/`     | Review inbox, action log, trash; not scanned as the collection.                                        |
 
-`docker-compose.yml`. The only line to edit is the one marked `MEDIA_PATH`:
+`docker-compose.yml`. The lines to edit are `MEDIA_PATH` and the admin's
+name and password:
 
 ```yaml
 services:
@@ -37,6 +38,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Kolkata
+      # The admin, created on first start; ignored once any user exists.
+      - DHUN_ADMIN_USER=vivek
+      - DHUN_ADMIN_PASSWORD=change-me-now
     restart: unless-stopped
 ```
 
@@ -55,6 +59,12 @@ Why each choice:
   remain editable from the Mac. Change it if your user's `id` differs.
 - **`restart: unless-stopped`** (Jellyfin) and **`/etc/localtime` plus `TZ`**
   (Immich): play history is time-of-day data.
+- **The admin from the environment** (as Immich and Navidrome seed their
+  first account). The server refuses to start with no users and no admin
+  configured, so a fresh install is never left open. The variables are read
+  only while there are no users; after the first start they can be deleted
+  from the file, and changing them never resets an account. Family members
+  are added from the admin panel.
 - **Port `8585`** avoids Jellyfin (8096), Immich (2283) and Subsonic servers
   (4040, 4533). Reached over Tailscale, like Immich.
 

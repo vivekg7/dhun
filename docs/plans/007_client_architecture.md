@@ -83,8 +83,10 @@ into memory at launch (about 2 MB). No third-party dependencies.
 Plain HTML, CSS and JavaScript ES modules: no framework and no build step.
 The files are **embedded in the Go binary** (`embed`) and served by the
 backend from the same origin, so the cookie auth works and there is nothing
-extra to deploy. The admin panel ([004](004_curation_workflow.md)) will live
-here after v1, where a large screen suits reviewing an inbox.
+extra to deploy. The admin panel lives here, where a large screen suits
+reviewing an inbox. Its first screen, **Users**, ships in v1, because family
+members are added there; the curation screens
+([004](004_curation_workflow.md)) follow after v1.
 
 ## Repo layout
 

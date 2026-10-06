@@ -254,3 +254,55 @@ func TestRescanIsAdminOnly(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// The admin comes from docker-compose.yml on first start, and only then:
+// editing the variables later must never touch an existing account.
+func TestEnsureAdminOnlyOnFirstStart(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if _, err := EnsureAdmin(ctx, e.s.DB, "", ""); err == nil {
+		t.Error("started with no users and no admin configured")
+	}
+	if created, err := EnsureAdmin(ctx, e.s.DB, "vivek", "correct horse"); err != nil || !created {
+		t.Fatalf("first start: created=%v err=%v", created, err)
+	}
+	if created, err := EnsureAdmin(ctx, e.s.DB, "vivek", "a new password"); err != nil || created {
+		t.Errorf("second start: created=%v err=%v", created, err)
+	}
+	var me struct{ User userJSON }
+	e.do("GET", "/api/v1/me", e.login("vivek"), nil, 200, &me)
+	if !me.User.Admin {
+		t.Error("the configured user is not the admin")
+	}
+}
+
+func TestAdminManagesFamilyMembers(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", true)
+	admin := e.login("vivek")
+
+	var created struct{ User userJSON }
+	e.do("POST", "/api/v1/admin/users", admin, map[string]string{"name": "priya", "password": "correct horse"}, 200, &created)
+	if created.User.Name != "priya" || created.User.Admin {
+		t.Errorf("created %+v, want member priya", created.User)
+	}
+	e.do("POST", "/api/v1/admin/users", admin, map[string]string{"name": "Priya", "password": "correct horse"}, 409, nil)
+	e.do("POST", "/api/v1/admin/users", admin, map[string]string{"name": "a/b", "password": "correct horse"}, 400, nil)
+	e.do("POST", "/api/v1/admin/users", admin, map[string]string{"name": "kid", "password": "short"}, 400, nil)
+
+	priya := e.login("priya")
+	e.do("GET", "/api/v1/admin/users", priya, nil, 403, nil)
+	e.do("POST", "/api/v1/admin/users", priya, map[string]string{"name": "kid", "password": "correct horse"}, 403, nil)
+
+	var list struct{ Users []adminUserJSON }
+	e.do("GET", "/api/v1/admin/users", admin, nil, 200, &list)
+	if len(list.Users) != 2 || list.Users[0].Name != "vivek" || list.Users[1].Devices != 1 {
+		t.Errorf("users = %+v", list.Users)
+	}
+
+	// A forgotten password: reset it, and her old sessions end.
+	e.do("PUT", "/api/v1/admin/users/"+itoa(created.User.ID)+"/password", admin, map[string]string{"password": "battery staple"}, 204, nil)
+	e.do("GET", "/api/v1/me", priya, nil, 401, nil)
+	e.do("POST", "/api/v1/login", "", map[string]string{"username": "priya", "password": "battery staple", "device": "Phone"}, 200, nil)
+	e.do("PUT", "/api/v1/admin/users/999/password", admin, map[string]string{"password": "battery staple"}, 404, nil)
+}

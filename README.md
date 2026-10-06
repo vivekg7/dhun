@@ -13,14 +13,17 @@ lives on a NAS.
 
 On the NAS (Synology Container Manager or any Docker host):
 
-1. Copy [`deploy/docker-compose.yml`](deploy/docker-compose.yml) and edit the
-   one line marked `MEDIA_PATH` to point at your `Music` folder. Dhun keeps
-   its own data in `Music/_dhun/`.
-2. `docker compose up -d`
-3. Create users, one per family member:
-   `docker exec -it dhun /dhun user add <name> --admin` (omit `--admin` for
-   everyone but you). Their playlists go in `Music/Playlists/<name>/`.
+1. Copy [`deploy/docker-compose.yml`](deploy/docker-compose.yml). Edit the
+   line marked `MEDIA_PATH` to point at your `Music` folder, and set
+   `DHUN_ADMIN_USER` and `DHUN_ADMIN_PASSWORD`: that account, the admin, is
+   created on first start. Dhun keeps its own data in `Music/_dhun/`.
+2. `docker compose up -d`. Once it is running, you can remove the admin
+   password from the file; it is never read again.
+3. Add each family member from the admin panel. Their playlists go in
+   `Music/Playlists/<name>/`.
 4. Reach it at `http://<nas>:8585` over Tailscale.
+
+Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 
 ## Develop
 

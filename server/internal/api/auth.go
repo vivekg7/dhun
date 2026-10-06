@@ -58,16 +58,24 @@ func checkPassword(encoded, password string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// CreateUser adds a user; used by the `dhun user add` command. Users are
-// managed from the command line: a family has three or four of them.
+// CreateUser adds a user. The admin is created from the environment on first
+// start (EnsureAdmin); everyone else from the admin panel. A family has three
+// or four users, so there is no sign-up flow.
 func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bool) error {
 	name = strings.TrimSpace(name)
 	if name == "" || strings.ContainsAny(name, `/\:*?"<>|`) || strings.HasPrefix(name, ".") {
 		// The name is also the user's Playlists/<name>/ folder.
-		return errors.New("user name must be non-empty and usable as a folder name")
+		return errBadRequest("user name must be non-empty and usable as a folder name")
 	}
 	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
+		return errBadRequest("password must be at least 8 characters")
+	}
+	var exists bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE name = ?)`, name).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return &apiError{http.StatusConflict, "user_exists", fmt.Sprintf("a user named %q already exists", name)}
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -78,10 +86,31 @@ func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bo
 	return err
 }
 
+// EnsureAdmin creates the admin from DHUN_ADMIN_USER and DHUN_ADMIN_PASSWORD
+// when there are no users yet, so a fresh install is usable straight from
+// docker-compose.yml. Once any user exists it does nothing: changing the
+// variables later never changes or resets an account.
+func EnsureAdmin(ctx context.Context, db *sql.DB, name, password string) (created bool, err error) {
+	var users int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&users); err != nil {
+		return false, err
+	}
+	if users > 0 {
+		return false, nil
+	}
+	if name == "" || password == "" {
+		return false, errors.New("no users yet: set DHUN_ADMIN_USER and DHUN_ADMIN_PASSWORD to create the admin")
+	}
+	if err := CreateUser(ctx, db, name, password, true); err != nil {
+		return false, fmt.Errorf("creating the admin: %w", err)
+	}
+	return true, nil
+}
+
 // SetPassword changes a user's password and signs out all their devices.
 func SetPassword(ctx context.Context, db *sql.DB, name, password string) error {
 	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
+		return errBadRequest("password must be at least 8 characters")
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -92,7 +121,7 @@ func SetPassword(ctx context.Context, db *sql.DB, name, password string) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("no user named %q", name)
+		return errNotFound("user")
 	}
 	_, err = db.ExecContext(ctx, `DELETE FROM devices WHERE user_id = (SELECT id FROM users WHERE name = ?)`, name)
 	return err

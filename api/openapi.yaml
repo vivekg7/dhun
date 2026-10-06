@@ -285,6 +285,80 @@ paths:
                         count: { type: integer }
                         lastPlayedAt: { type: string, format: date-time }
 
+  /api/v1/admin/users:
+    get:
+      summary: Every user, with their device count (admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/User"
+                        - type: object
+                          properties:
+                            createdAt: { type: string, format: date-time }
+                            devices: { type: integer }
+                            lastSeenAt:
+                              type: string
+                              format: date-time
+                              description: Omitted when no device is signed in
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Add a family member (admin)
+      description: |
+        Creates a member. The only admin is the one created from
+        DHUN_ADMIN_USER and DHUN_ADMIN_PASSWORD on first start. The name is
+        also the user's `Playlists/<name>/` folder, so it must be usable as a
+        folder name; names are case-insensitive.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, password]
+              properties:
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/v1/admin/users/{id}/password:
+    put:
+      summary: Reset a user's password (admin); signs out all their devices
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Changed }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /api/v1/admin/rescan:
     post:
       summary: Start a library scan now (admin)
