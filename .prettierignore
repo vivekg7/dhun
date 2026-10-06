@@ -1,0 +1,4 @@
+# Proprietary scratch and the symlink to AGENTS.md (formatted via its target).
+tmp/
+CLAUDE.md
+LICENSE

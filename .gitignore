@@ -1,0 +1,23 @@
+# Local scratch: the pulled Musicolet APK, its decompiled (proprietary) sources,
+# raw dumps. Never commit -- this repo is open source and Musicolet is not.
+tmp/
+
+# Secrets and signing keys.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+*.p12
+
+# Per-machine Claude settings: holds absolute paths, so it cannot be shared.
+# `make init` writes it. The memory directory it points at IS tracked.
+.claude/settings.local.json
+.claude/worktrees/
+
+.DS_Store
+.idea/
+.vscode/
+node_modules/
