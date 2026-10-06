@@ -12,6 +12,12 @@ for link in CLAUDE.md .claude/skills; do
   [ -L "$link" ] || die "$link is no longer a symlink" "Run: make init"
 done
 
+go=$(staged '\.go$')
+if [ -n "$go" ]; then
+  unformatted=$(run_on "$go" gofmt -l)
+  [ -z "$unformatted" ] || die "staged Go is not gofmt-ed" $unformatted "Run: make fmt"
+fi
+
 docs=$(staged '\.(md|ya?ml|json)$' | while IFS= read -r f; do [ ! -L "$f" ] && echo "$f"; done || true)
 if [ -n "$docs" ]; then
   run_on "$docs" npx --yes --prefer-offline prettier@latest --check >/dev/null 2>&1 \
