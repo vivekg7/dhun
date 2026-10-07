@@ -28,7 +28,10 @@ Musicolet has one row of icon-only tabs at the bottom: Queues, Now playing,
 Folders, Albums, Artists, Genres, Playlists, then Search and the menu. You
 swipe between tabs, every list has its own search box, rows are flat and
 dense, and the accent colour marks only the current song and the active tab.
-Dhun keeps that structure tab for tab. Plain bottom navigation (four or five
+Dhun keeps that structure tab for tab. Each tab keeps its place: a page
+opened in it (an album, an artist), and the search and scroll of whatever
+that page covers, until you go back. Rotation or Android reclaiming the app
+loses none of it. Plain bottom navigation (four or five
 labelled tabs) was rejected because it would hide Folders and Genres, which
 the owner uses daily.
 

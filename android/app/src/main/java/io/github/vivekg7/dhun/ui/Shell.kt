@@ -37,6 +37,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,6 +95,33 @@ sealed interface Page {
     ) : Page
 }
 
+/** A page as one string, for saving: its kind, a colon, what it shows. */
+private fun Page.encode(): String =
+    when (this) {
+        is Page.AlbumPage -> "album:$key"
+        is Page.ArtistPage -> "artist:$name"
+        is Page.GenrePage -> "genre:$name"
+        is Page.FolderPage -> "folder:$path"
+        is Page.PlaylistPage -> "playlist:$id"
+        Page.DownloadsPage -> "downloads:"
+        is Page.ListPage -> "list:${kind.name}"
+    }
+
+private fun decodePage(s: String): Page? {
+    val kind = s.substringBefore(':')
+    val arg = s.substringAfter(':')
+    return when (kind) {
+        "album" -> Page.AlbumPage(arg)
+        "artist" -> Page.ArtistPage(arg)
+        "genre" -> Page.GenrePage(arg)
+        "folder" -> Page.FolderPage(arg)
+        "playlist" -> arg.toLongOrNull()?.let(Page::PlaylistPage)
+        "downloads" -> Page.DownloadsPage
+        "list" -> ListKind.entries.firstOrNull { it.name == arg }?.let(Page::ListPage)
+        else -> null
+    }
+}
+
 /**
  * Each tab keeps its own stack of pages, so going to an album and back leaves the other tabs as they were.
  *
@@ -113,9 +142,8 @@ class Nav(
 
     /**
      * The key of [t]'s top page, or of its own list, in [saved]. The page is
-     * in it because the stacks are not saved but [saved] is: after the
-     * activity is recreated, another album at the same depth must not take
-     * this one's scroll.
+     * in it so that one page's scroll can never reach another at the same
+     * depth, whatever happens to the stacks.
      */
     fun key(t: Tab) = "${t.name}/${stacks.getValue(t).size}/${top(t)}"
 
@@ -133,12 +161,31 @@ class Nav(
         stacks.getValue(t).add(page)
         tab = t
     }
+
+    companion object {
+        /**
+         * Android recreates the activity on a rotation, a dark-mode or font
+         * change, a resize, or after reclaiming the app in the background:
+         * the open pages and the tab come back with it.
+         */
+        fun saver(saved: SaveableStateHolder) =
+            listSaver<Nav, Any>(
+                save = { n -> listOf(n.tab.name, n.settings) + Tab.entries.map { t -> ArrayList(n.stacks.getValue(t).map { it.encode() }) } },
+                restore = { l ->
+                    Nav(saved).apply {
+                        tab = Tab.entries.firstOrNull { it.name == l[0] } ?: Tab.Now
+                        settings = l[1] as Boolean
+                        Tab.entries.forEachIndexed { i, t -> (l[2 + i] as List<*>).mapNotNullTo(stacks.getValue(t)) { decodePage(it as String) } }
+                    }
+                },
+            )
+    }
 }
 
 @Composable
 fun Shell() {
     val saved = rememberSaveableStateHolder()
-    val nav = remember { Nav(saved) }
+    val nav = rememberSaveable(saver = Nav.saver(saved)) { Nav(saved) }
     val pager = rememberPagerState(initialPage = Tab.Now.ordinal) { Tab.entries.size }
     val scope = rememberCoroutineScope()
     // The pager and nav.tab drive each other: a swipe sets the tab, "Go to album" moves the pager.
