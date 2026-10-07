@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -201,7 +202,8 @@ fun NowPlayingScreen(nav: Nav) {
                 Box(
                     Modifier
                         .size(76.dp)
-                        .background(c.primary, CircleShape)
+                        .clip(CircleShape)
+                        .background(c.primary)
                         .clickable { if (playing) pb.player.pause() else pb.player.play() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }

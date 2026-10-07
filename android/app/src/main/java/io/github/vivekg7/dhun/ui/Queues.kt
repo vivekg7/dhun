@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,7 +162,8 @@ private fun QueueChip(
     Row(
         Modifier
             .height(34.dp)
-            .background(if (selected) c.primaryContainer else c.surface, RoundedCornerShape(17.dp))
+            .clip(RoundedCornerShape(17.dp))
+            .background(if (selected) c.primaryContainer else c.surface)
             .border(BorderStroke(1.dp, if (selected) c.primary else c.outline), RoundedCornerShape(17.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),

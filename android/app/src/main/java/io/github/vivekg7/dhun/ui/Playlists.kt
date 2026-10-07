@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
@@ -187,7 +188,11 @@ private fun PinnedCard(
     val c = MaterialTheme.colorScheme
     val fg = if (filled) c.onPrimary else c.onSurface
     Column(
-        modifier.background(if (filled) c.primary else c.surfaceContainer, RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(16.dp),
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (filled) c.primary else c.surfaceContainer)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(kind.icon, null, Modifier.size(26.dp), tint = if (filled) fg else c.secondary)
@@ -208,7 +213,8 @@ private fun DownloadsCard(onClick: () -> Unit) {
         Modifier
             .padding(horizontal = 16.dp)
             .fillMaxWidth()
-            .background(c.surfaceContainer, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(c.surfaceContainer)
             .clickable(onClick = onClick)
             .padding(16.dp),
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
