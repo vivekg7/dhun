@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +56,14 @@ fun QueuesScreen(nav: Nav) {
     val activeId by app.playback.activeId.collectAsState()
     val current by app.playback.current.collectAsState()
     val catalog by app.catalog.collectAsState()
-    var shownId by remember { mutableStateOf<String?>(null) }
+    // A queue picked here stays shown, across tabs, until another queue starts playing.
+    var picked by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickedWhile by rememberSaveable { mutableStateOf<String?>(null) }
+    val pick = { id: String? ->
+        picked = id
+        pickedWhile = activeId
+    }
+    val shownId = picked.takeIf { pickedWhile == activeId }
     val shown = queues.firstOrNull { it.id == (shownId ?: activeId) } ?: queues.firstOrNull()
     if (shown == null) {
         Empty("No queues yet.\nPlaying anything from your library starts one.")
@@ -71,7 +79,7 @@ fun QueuesScreen(nav: Nav) {
 
     Column(Modifier.fillMaxSize()) {
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(queues, key = { it.id }) { q -> QueueChip(q, selected = q.id == shown.id, playing = q.id == activeId) { shownId = q.id } }
+            items(queues, key = { it.id }) { q -> QueueChip(q, selected = q.id == shown.id, playing = q.id == activeId) { pick(q.id) } }
         }
         Row(Modifier.padding(start = 20.dp, end = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -95,7 +103,7 @@ fun QueuesScreen(nav: Nav) {
                     MenuItem("Save as playlist", close) { saving = shown }
                     MenuItem("Remove queue", close) {
                         app.playback.delete(shown.id)
-                        shownId = null
+                        pick(null)
                     }
                 }
             }
@@ -103,7 +111,14 @@ fun QueuesScreen(nav: Nav) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         val list = rememberLazyListState()
-        LaunchedEffect(shown.id) { if (index > 2) list.scrollToItem(index - 2) }
+        // To the current song when another queue is shown; coming back to the tab keeps the scroll.
+        var scrolledFor by rememberSaveable { mutableStateOf<String?>(null) }
+        LaunchedEffect(shown.id) {
+            if (scrolledFor != shown.id) {
+                scrolledFor = shown.id
+                list.scrollToItem((index - 2).coerceAtLeast(0))
+            }
+        }
         val reorder = rememberReorder { from, to -> app.playback.move(from, to) }
         LazyColumn(Modifier.fillMaxSize(), state = list) {
             itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
