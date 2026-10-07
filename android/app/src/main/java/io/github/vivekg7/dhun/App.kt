@@ -91,6 +91,9 @@ class Prefs(
     var server by stored("server", "")
     var token by stored("token", "")
     var userName by stored("user", "")
+
+    /** The server's release, from its Dhun-Version header; empty until the first answer. */
+    var serverVersion by stored("serverVersion", "")
     var libraryVersion by storedLong("libraryVersion")
     var syncVersion by storedLong("syncVersion")
     var activeQueue by stored("activeQueue", "")
@@ -150,6 +153,7 @@ class Prefs(
     fun signOut() {
         token = ""
         userName = ""
+        serverVersion = ""
         activeQueue = ""
         libraryVersion = 0
         syncVersion = 0

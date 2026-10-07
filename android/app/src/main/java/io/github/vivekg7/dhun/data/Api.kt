@@ -49,7 +49,10 @@ class Api(
                 if (token.isEmpty() || !req.url.toString().startsWith(prefs.server)) {
                     chain.proceed(req)
                 } else {
-                    chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build())
+                    chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build()).also { res ->
+                        // The server's release, for Settings; sent only to a signed-in device.
+                        res.header("Dhun-Version")?.let { if (it != prefs.serverVersion) prefs.serverVersion = it }
+                    }
                 }
             }.build()
 

@@ -147,7 +147,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
 
         SectionLabel("Account")
-        Hint("${prefs.userName} on ${prefs.server}")
+        Hint("${prefs.userName} on ${prefs.server}" + if (prefs.serverVersion.isEmpty()) "" else " · server ${prefs.serverVersion}")
         OutlinedButton({ app.signOut() }, Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
             Icon(Icons.Logout, null, Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
