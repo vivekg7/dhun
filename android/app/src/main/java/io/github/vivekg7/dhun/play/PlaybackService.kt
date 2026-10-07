@@ -3,6 +3,10 @@ package io.github.vivekg7.dhun.play
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.annotation.OptIn
+import androidx.media3.common.FlagSet
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -12,6 +16,13 @@ import androidx.media3.session.MediaSessionService
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * The media session around [Playback]'s player: the notification, the lock
@@ -37,7 +48,7 @@ class PlaybackService : MediaSessionService() {
             )
         session =
             MediaSession
-                .Builder(this, app.playback.player)
+                .Builder(this, SleepAware(app.playback.player, app.playback.sleep))
                 .setSessionActivity(open)
                 // Cover art needs the device token, so it goes through our client.
                 .setBitmapLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build())
@@ -54,8 +65,63 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        (session?.player as? SleepAware)?.close()
         session?.release()
         session = null
         super.onDestroy()
     }
+}
+
+/**
+ * The player as the session sees it: with a sleep timer set, the artist line
+ * says so ("Coldplay · Sleep in 23 min"), so the notification and the lock
+ * screen show it (docs/plans/014_sleep_timer.md). Refreshed every half
+ * minute while a timer runs.
+ */
+@OptIn(UnstableApi::class)
+private class SleepAware(
+    player: Player,
+    private val sleep: SleepTimer,
+) : ForwardingPlayer(player) {
+    private val listeners = mutableListOf<Player.Listener>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    init {
+        scope.launch {
+            sleep.mode.collectLatest { mode ->
+                do {
+                    refresh()
+                    delay(30_000)
+                } while (mode != null)
+            }
+        }
+    }
+
+    override fun getMediaMetadata(): MediaMetadata {
+        val m = super.getMediaMetadata()
+        val label = sleep.label() ?: return m
+        val artist = m.artist?.let { "$it · " } ?: ""
+        return m.buildUpon().setArtist("${artist}Sleep $label").build()
+    }
+
+    override fun addListener(listener: Player.Listener) {
+        listeners += listener
+        super.addListener(listener)
+    }
+
+    override fun removeListener(listener: Player.Listener) {
+        listeners -= listener
+        super.removeListener(listener)
+    }
+
+    private fun refresh() {
+        val events = Player.Events(FlagSet.Builder().add(Player.EVENT_MEDIA_METADATA_CHANGED).build())
+        for (l in listeners.toList()) {
+            l.onMediaMetadataChanged(mediaMetadata)
+            l.onEvents(this, events)
+        }
+    }
+
+    /** Stops the refresh; the player itself lives on with the process ([Playback]). */
+    fun close() = scope.cancel()
 }

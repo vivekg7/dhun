@@ -104,6 +104,9 @@ class Playback(
     val current = MutableStateFlow<Song?>(null)
     val playing = MutableStateFlow(false)
 
+    /** The sleep timer (docs/plans/014_sleep_timer.md). */
+    val sleep = SleepTimer(player, scope)
+
     /** A long file with a resume point, waiting for the user's answer ("ask", plan 009). */
     val offerResume = MutableStateFlow<Pair<Song, Long>?>(null)
 
@@ -136,6 +139,7 @@ class Playback(
 
     /** On sign-out: the open listen belongs to the account being left, and is dropped. */
     fun reset() {
+        sleep.cancel()
         open = null
         player.clearMediaItems()
         current.value = null
@@ -563,6 +567,7 @@ class Playback(
         ) {
             // Loading a queue is handled in load(); this is a change within it.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) return
+            sleep.onNextSong()
             val song = item?.mediaId?.toLongOrNull()?.let { app.catalog.value.byId[it] } ?: return
             current.value = song
             scope.launch {
@@ -593,6 +598,21 @@ class Playback(
             player.seekTo(i, 0)
             player.prepare()
             player.play()
+        }
+
+        // The queue changed, or its order: is the playing song still the last one?
+        override fun onTimelineChanged(
+            timeline: androidx.media3.common.Timeline,
+            reason: Int,
+        ) = sleep.update()
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = sleep.update()
+
+        override fun onPlayWhenReadyChanged(
+            playWhenReady: Boolean,
+            reason: Int,
+        ) {
+            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.onPausedAtEnd()
         }
 
         override fun onPlaybackStateChanged(state: Int) {

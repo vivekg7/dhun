@@ -136,6 +136,7 @@ fun NowPlayingScreen(nav: Nav) {
                 )
             }
             Spacer(Modifier.weight(1f))
+            SleepButton()
             val repeat = queue?.repeat ?: "off"
             IconButton({ pb.cycleRepeat() }) {
                 Icon(if (repeat == "song") Icons.RepeatOne else Icons.Repeat, "Repeat: $repeat", tint = if (repeat == "off") c.onSurfaceVariant else c.primary)

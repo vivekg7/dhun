@@ -175,7 +175,7 @@ private fun Hint(text: String) =
     )
 
 @Composable
-private fun <T> Chips(
+fun <T> Chips(
     options: List<T>,
     selected: T,
     label: (T) -> String,

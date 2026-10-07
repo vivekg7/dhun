@@ -227,7 +227,11 @@ Proposed. Awaiting the owner's confirmation.
   added, Recently played, Most played, Not played lately —
   [plans/010](plans/010_special_playlists.md).
 - Now playing: play / pause / next / previous / seek, shuffle, repeat.
-- **Sleep timer:** after a set time, after N songs, or after a specific song.
+- **Sleep timer:** after a set time (presets or any number of minutes),
+  at the end of this song, after N songs, or at the end of the queue. By
+  the clock it fades out and pauses on time; by songs it pauses where a
+  song ends. Shown on Now playing and in the notification (owner,
+  2026-10-07; [plan 014](plans/014_sleep_timer.md)).
 - **Lyrics:** synced and plain, as provided by the server.
 - **Play speed and pitch.**
 - Gapless playback.
