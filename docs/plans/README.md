@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                       | Status                                                              |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [008 — Listening history](008_listening_history.md)                        | `IN PROGRESS` — server side implemented; not yet on `main`          |
 | [007 — Client architecture and repo layout](007_client_architecture.md)    | `ACCEPTED` — no code yet                                            |
 | [006 — API and sync](006_api_and_sync.md)                                  | `IN PROGRESS` — implemented; not yet on `main`                      |
 | [005 — Storage and library model](005_storage_and_library_model.md)        | `IN PROGRESS` — implemented; not yet on `main`                      |

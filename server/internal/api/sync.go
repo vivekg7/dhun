@@ -50,7 +50,15 @@ type op struct {
 	Playing    bool   `json:"playing,omitempty"`
 	Shuffle    *bool  `json:"shuffle,omitempty"`
 	Repeat     string `json:"repeat,omitempty"`
-	MS         int64  `json:"ms,omitempty"` // play: how long it was played
+	// play: one listen, however short (docs/plans/008_listening_history.md).
+	// The op's at is when it started; ms is time actually heard.
+	MS        int64  `json:"ms,omitempty"`
+	EndedAt   string `json:"endedAt,omitempty"`
+	FromMS    int64  `json:"fromMs,omitempty"`
+	ToMS      int64  `json:"toMs,omitempty"`
+	End       string `json:"end,omitempty"`
+	Source    string `json:"source,omitempty"`
+	UTCOffset *int   `json:"utcOffset,omitempty"` // minutes
 }
 
 type opResult struct {
@@ -192,12 +200,7 @@ func (a *applier) apply(o op) error {
 	case "favorite.set", "favorite.unset":
 		return a.favorite(o)
 	case "play":
-		if err := a.songsExist([]int64{o.Song}); err != nil {
-			return err
-		}
-		_, err := a.tx.ExecContext(a.ctx, `INSERT INTO plays (user_id, song_id, device_id, at, ms_played) VALUES (?, ?, ?, ?, ?)`,
-			a.sess.UserID, o.Song, a.sess.DeviceID, a.at, max(o.MS, 0))
-		return err
+		return a.play(o)
 	case "playback.state":
 		return a.playbackState(o)
 	case "playlist.create":
@@ -206,6 +209,47 @@ func (a *applier) apply(o op) error {
 		return a.playlistEdit(o)
 	}
 	return rejected("unknown operation type %q", o.Type)
+}
+
+// play appends one listen to the log. Nothing is rejected for being odd: the
+// listen happened, and a recommender is better off with it.
+func (a *applier) play(o op) error {
+	if err := a.songsExist([]int64{o.Song}); err != nil {
+		return err
+	}
+	// A listen ends after it starts and, like at, not in the future.
+	ended := a.at
+	if t, err := time.Parse(time.RFC3339Nano, o.EndedAt); err == nil {
+		if now := time.Now(); t.After(now) {
+			t = now
+		}
+		ended = max(ended, t.UTC().Format(opTime))
+	}
+	offset := o.UTCOffset
+	if offset != nil && (*offset < -14*60 || *offset > 14*60) {
+		offset = nil
+	}
+	_, err := a.tx.ExecContext(a.ctx, `INSERT INTO plays (user_id, song_id, device_id, at, ms_played,
+		ended_at, utc_offset, from_ms, to_ms, end_reason, source, queue_id, shuffle)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.sess.UserID, o.Song, a.sess.DeviceID, a.at, max(o.MS, 0),
+		ended, offset, max(o.FromMS, 0), max(o.ToMS, 0), label(o.End, 32), label(o.Source, 200),
+		label(o.Queue, 200), o.Shuffle)
+	return err
+}
+
+// label keeps a client-supplied tag to one short line.
+func label(s string, n int) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 32 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+	if r := []rune(s); len(r) > n {
+		s = string(r[:n])
+	}
+	return s
 }
 
 const (
@@ -851,11 +895,17 @@ func (s *Server) getNowPlaying(w http.ResponseWriter, r *http.Request, sess sess
 	writeJSON(w, r, map[string]any{"nowPlaying": np})
 }
 
-// playCounts returns the caller's play count and last play per song, for
-// sorting by most / recently played on the client.
+// countedPercent is how much of a song must be heard for a listen to add to
+// its play count (the owner's rule). Shorter listens are still logged.
+const countedPercent = 50
+
+// playCounts returns the caller's play count and last counted play per song,
+// for sorting by most / recently played on the client.
 func (s *Server) playCounts(w http.ResponseWriter, r *http.Request, sess session) {
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT song_id, count(*), max(at) FROM plays WHERE user_id = ?
-		GROUP BY song_id`, sess.UserID)
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT p.song_id, count(*), max(p.at)
+		FROM plays p JOIN songs s ON s.id = p.song_id
+		WHERE p.user_id = ? AND p.ms_played > 0 AND p.ms_played * 100 >= s.duration_ms * ?
+		GROUP BY p.song_id`, sess.UserID, countedPercent)
 	if err != nil {
 		s.fail(w, r, err)
 		return

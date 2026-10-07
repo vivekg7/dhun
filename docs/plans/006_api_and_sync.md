@@ -80,8 +80,9 @@ by the client (option B in [002](002_sync_and_handoff.md)):
   "ops": [
     { "id": "3f2…", "at": "2026-10-06T08:12:03Z", "type": "queue.insert",
       "queue": "q_17", "after": 1234, "songs": [881, 902] },
-    { "id": "3f3…", "at": "2026-10-06T08:15:40Z", "type": "play",
-      "song": 881, "ms": 214000 }
+    { "id": "3f3…", "at": "2026-10-06T08:12:10Z", "type": "play",
+      "song": 881, "ms": 214000, "endedAt": "2026-10-06T08:15:44Z",
+      "end": "finished", "utcOffset": 330, "source": "playlist:12" }
   ]
 }
 ```
@@ -105,7 +106,7 @@ Operations and how each merges:
 | `playlist.create`, `playlist.rename`, `playlist.delete` | Same as queues. The server rewrites or renames the `.m3u8` file ([005](005_storage_and_library_model.md)).                                         |
 | `playlist.insert`, `playlist.remove`, `playlist.move`   | Same as queues. Playlists may contain duplicates, so they address an item by `(song, occurrence)`.                                                 |
 | `favorite.set`, `favorite.unset`                        | The latest `at` wins.                                                                                                                              |
-| `play`                                                  | Append only; never conflicts.                                                                                                                      |
+| `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                           |
 | `playback.state`                                        | Updates `now_playing` if newer. Sent while playing (at most every 15 s, and on pause, skip or queue switch), not stored in the outbox.             |
 
 Clients apply their own operations locally at once (optimistic), keep them in
@@ -143,7 +144,8 @@ rescan; curation and uploads come after v1 ([004](004_curation_workflow.md)).
 
 - `GET /api/v1/plays` returns per-song play counts and last-played times,
   so clients can sort by most or recently played without receiving the raw
-  play log.
+  play log. Only listens of at least half the song count
+  ([008](008_listening_history.md)).
 - Operations not in the table above: `queue.replace` (a sort or shuffle sends
   the whole order; last writer wins), `queue.set_mode` (shuffle, repeat) and
   `playlist.replace`.

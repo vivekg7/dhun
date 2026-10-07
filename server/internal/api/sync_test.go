@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type syncResp struct {
@@ -121,6 +122,49 @@ func TestRetriedBatchIsIdempotent(t *testing.T) {
 	e.do("GET", "/api/v1/plays", phone, nil, 200, &plays)
 	if len(plays.Plays) != 1 || plays.Plays[0].Count != 1 {
 		t.Errorf("plays = %+v, want one play", plays.Plays)
+	}
+}
+
+// Every listen is logged for a future recommender, skips and listens cut
+// short included, with the time it happened on the phone, but only one
+// heard at least halfway adds to the play count (plan 008).
+func TestEveryListenIsLoggedButOnlyHalfOrMoreCounts(t *testing.T) {
+	e, phone, _ := syncEnv(t, 2)
+	if _, err := e.s.DB.Exec(`UPDATE songs SET duration_ms = 240000`); err != nil {
+		t.Fatal(err)
+	}
+	ist := 330
+	e.push(phone, 0,
+		// Heard offline yesterday at 10:00 IST, uploaded now.
+		o("play", map[string]any{"song": 1, "at": "2026-10-06T04:30:00Z", "endedAt": "2026-10-06T04:34:00Z",
+			"ms": 240000, "toMs": 240000, "end": "finished", "utcOffset": ist, "source": "playlist:3", "shuffle": true}),
+		o("play", map[string]any{"song": 1, "ms": 120000, "end": "skipped"}),                          // exactly half
+		o("play", map[string]any{"song": 2, "ms": 5000, "fromMs": 0, "toMs": 5000, "end": "skipped"}), // a skip
+		o("play", map[string]any{"song": 2, "ms": 90000, "end": "interrupted", "endedAt": "2999-01-01T00:00:00Z"}))
+
+	var n int
+	e.s.DB.QueryRow(`SELECT count(*) FROM plays`).Scan(&n)
+	if n != 4 {
+		t.Errorf("logged %d listens, want all 4", n)
+	}
+	var at, ended, src string
+	var off int
+	var shuffle bool
+	e.s.DB.QueryRow(`SELECT at, ended_at, utc_offset, source, shuffle FROM plays WHERE end_reason = 'finished'`).
+		Scan(&at, &ended, &off, &src, &shuffle)
+	if at != "2026-10-06T04:30:00.000Z" || ended != "2026-10-06T04:34:00.000Z" || off != ist || src != "playlist:3" || !shuffle {
+		t.Errorf("offline listen = %s–%s %+d %q shuffle=%v", at, ended, off, src, shuffle)
+	}
+	var future int
+	e.s.DB.QueryRow(`SELECT count(*) FROM plays WHERE ended_at > ?`, time.Now().UTC().Format(opTime)).Scan(&future)
+	if future != 0 {
+		t.Error("a listen ended in the future")
+	}
+
+	var plays struct{ Plays []struct{ Song, Count int } }
+	e.do("GET", "/api/v1/plays", phone, nil, 200, &plays)
+	if fmt.Sprint(plays.Plays) != "[{1 2}]" {
+		t.Errorf("play counts = %v, want song 1 twice and song 2 not at all", plays.Plays)
 	}
 }
 

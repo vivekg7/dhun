@@ -286,6 +286,9 @@ paths:
   /api/v1/plays:
     get:
       summary: The caller's play count and last play per song
+      description: |
+        Counts only listens of at least half the song; every listen is
+        still logged (docs/plans/008_listening_history.md).
       responses:
         "200":
           description: OK
@@ -538,7 +541,7 @@ components:
         | queue.set_current | queue, song, positionMs | later `at` wins |
         | queue.set_mode | queue, shuffle?, repeat? | |
         | favorite.set / favorite.unset | song | later `at` wins |
-        | play | song, ms | append only |
+        | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
         | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8 |
         | playlist.rename | playlist, name | renames the file |
@@ -576,4 +579,18 @@ components:
         playing: { type: boolean }
         shuffle: { type: boolean }
         repeat: { type: string, enum: ["off", queue, song] }
-        ms: { type: integer }
+        ms: { type: integer, description: "play: time heard, pauses excluded" }
+        endedAt: { type: string, format: date-time }
+        fromMs: { type: integer, description: Where in the song the listen started }
+        toMs: { type: integer, description: Where it ended }
+        end:
+          {
+            type: string,
+            description: "finished, skipped, previous, switched, stopped or interrupted; other values are kept as given",
+          }
+        source:
+          {
+            type: string,
+            description: "What the queue was started from: album:<id>, artist:<name>, playlist:<id>, folder:<path>, favorites, search",
+          }
+        utcOffset: { type: integer, description: "The device's UTC offset, in minutes" }

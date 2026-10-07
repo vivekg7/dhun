@@ -79,8 +79,8 @@ and anything undecided is under [Open questions](#open-questions).
     the playlist file, so the files stay usable in any other player.
   - There will only ever be 3–4 users, so this stays simple: no sharing
     permissions, no generic multi-tenant layout.
-- Queues, favorites, play counts and hand-off state are per user and private,
-  stored in Dhun's own data folder (outside `Music`).
+- Queues, favorites, listening history and hand-off state are per user and
+  private, stored in Dhun's own data folder (outside `Music`).
 - **Uploads:** each user can upload their own local collection to the NAS.
   Uploads go to a **per-user staging area**, separate from the main
   collection, until the admin reviews them (quality check, deduplication) and
@@ -205,7 +205,10 @@ Proposed. Awaiting the owner's confirmation.
 - Gapless playback.
 - Media notification, lock-screen and Bluetooth / headset controls. Pause on
   disconnect, and audio focus (pause during calls).
-- Play counts recorded to the server.
+- **Every listen logged** to the server, skips included, with its local
+  time and how it ended, for a future recommender. A listen adds to the
+  play count only when at least half the song was heard —
+  [plans/008](plans/008_listening_history.md).
 - **Downloads** with a storage limit.
 - **Phone-local songs**, kept separate from NAS songs as described above.
 - An offline working copy of the synced data, pushed back on reconnect.
