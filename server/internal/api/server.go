@@ -25,6 +25,9 @@ type Server struct {
 	Log     *slog.Logger
 	// Rescan starts a scan in the background; set by main.
 	Rescan func()
+	// Version is the release ("0.1.2", or "dev"), sent to signed-in clients
+	// in the Dhun-Version header so the apps can show which server they use.
+	Version string
 
 	logins loginFailures
 }

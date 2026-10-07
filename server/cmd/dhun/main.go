@@ -38,6 +38,10 @@ import (
 	"github.com/vivekg7/dhun/server/internal/store"
 )
 
+// version is the release, stamped in by the image build from the git tag
+// (-ldflags "-X main.version=server-v0.1.2"); a local build is "dev".
+var version = "dev"
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(log, os.Args[1:]); err != nil {
@@ -179,6 +183,7 @@ func run(log *slog.Logger, args []string) error {
 		Addr: env("DHUN_ADDR", ":8585"),
 		Handler: (&api.Server{
 			DB: db, Root: media, DataDir: dataDir, Scanner: scanner, Log: log, Rescan: rescan,
+			Version: strings.TrimPrefix(version, "server-v"),
 		}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       time.Minute,     // request bodies are small (4 MiB at most)
@@ -191,7 +196,7 @@ func run(log *slog.Logger, args []string) error {
 		defer cancel()
 		srv.Shutdown(shutdown)
 	}()
-	log.Info("dhun listening", "addr", srv.Addr, "media", media)
+	log.Info("dhun listening", "version", version, "addr", srv.Addr, "media", media)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

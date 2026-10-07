@@ -43,6 +43,8 @@ jobs:
           context: .
           file: deploy/Dockerfile
           platforms: linux/amd64,linux/arm64
+          # The tag (server-vX.Y.Z) becomes the version the server reports.
+          build-args: VERSION=${{ github.ref_name }}
           push: true
           tags: |
             ghcr.io/vivekg7/dhun:${{ github.ref_name }}

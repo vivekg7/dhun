@@ -202,6 +202,8 @@ func (s *Server) auth(h func(http.ResponseWriter, *http.Request, session), cooki
 		if t, err := time.Parse(time.RFC3339, lastSeen); err != nil || time.Since(t) > 5*time.Minute {
 			s.DB.ExecContext(r.Context(), `UPDATE devices SET last_seen_at = ? WHERE id = ?`, store.Now(), sess.DeviceID)
 		}
+		// Signed in only: a stranger probing the port learns nothing.
+		w.Header().Set("Dhun-Version", s.Version)
 		h(w, r, sess)
 	})
 }

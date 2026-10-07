@@ -407,3 +407,17 @@ func TestHugeArtIsNotDecoded(t *testing.T) {
 		t.Error("the oversized cover was not served unchanged")
 	}
 }
+
+// The apps show which server they use; a stranger probing the port is not told.
+func TestVersionHeaderOnlyForSignedInClients(t *testing.T) {
+	e := newEnv(t)
+	e.s.Version = "0.1.2"
+	e.user("vivek", true)
+	phone := e.login("vivek")
+	if v := e.do("GET", "/api/v1/me", phone, nil, 200, nil).Header.Get("Dhun-Version"); v != "0.1.2" {
+		t.Errorf("signed in: Dhun-Version = %q, want 0.1.2", v)
+	}
+	if v := e.do("GET", "/api/v1/me", "", nil, 401, nil).Header.Get("Dhun-Version"); v != "" {
+		t.Errorf("signed out: Dhun-Version = %q, want none", v)
+	}
+}

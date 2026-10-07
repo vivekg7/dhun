@@ -18,6 +18,9 @@ info:
       sets is accepted only by GET /stream, /art and /lyrics, for `<audio>`
       and `<img>` in the web client.
     - Browsers' cross-origin state-changing requests are refused (403).
+    - Every signed-in response carries `Dhun-Version: 0.1.2`, the server's
+      release ("dev" for a local build), for the apps to show. Requests
+      without a valid token are not told.
     - Errors are `{"code": "...", "message": "..."}` with a matching status.
 servers:
   - url: http://{host}:8585

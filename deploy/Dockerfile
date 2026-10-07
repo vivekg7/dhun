@@ -9,7 +9,7 @@ COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w" -o /dhun ./cmd/dhun
+    go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o /dhun ./cmd/dhun
 
 FROM scratch
 COPY --from=build /dhun /dhun
