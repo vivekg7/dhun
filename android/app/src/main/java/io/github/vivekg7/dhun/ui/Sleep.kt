@@ -36,44 +36,48 @@ import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.play.SleepTimer
 import kotlinx.coroutines.delay
 
-/** The moon on Now playing: sets the sleep timer, and counts down while one runs (docs/plans/014_sleep_timer.md). */
+/**
+ * The moon on Now playing, only while a timer runs: it counts down, and a tap
+ * opens the timer. The timer is set from the menu (docs/plans/014_sleep_timer.md).
+ */
 @Composable
 fun SleepButton() {
-    val sleep = App.app.playback.sleep
-    val mode by sleep.mode.collectAsState()
+    val mode by App.app.playback.sleep.mode
+        .collectAsState()
     var open by remember { mutableStateOf(false) }
-    val c = MaterialTheme.colorScheme
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton({ open = true }) { Icon(Icons.Sleep, "Sleep timer", tint = if (mode == null) c.onSurfaceVariant else c.primary) }
-        when (val m = mode) {
-            is SleepTimer.Mode.At -> {
-                Countdown(m.endAt)
-            }
-
-            is SleepTimer.Mode.Songs -> {
-                Text("${m.left}", style = MaterialTheme.typography.labelMedium, color = c.primary)
-            }
-
-            else -> {}
-        }
-    }
     if (open) SleepDialog { open = false }
+    if (mode == null) return
+    val c = MaterialTheme.colorScheme
+    Row(Modifier.clickable { open = true }, verticalAlignment = Alignment.CenterVertically) {
+        IconButton({ open = true }) { Icon(Icons.Sleep, "Sleep timer", tint = c.primary) }
+        Text(sleepState() ?: "", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelMedium, color = c.primary)
+    }
 }
 
+/** What a running timer has left, kept current: "23:10", or "3 songs", or null with none set. */
 @Composable
-private fun Countdown(endAt: Long) {
+fun sleepState(): String? {
+    val mode by App.app.playback.sleep.mode
+        .collectAsState()
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(endAt) {
-        while (true) {
+    val m = mode
+    LaunchedEffect(m) {
+        while (m is SleepTimer.Mode.At) {
             now = SystemClock.elapsedRealtime()
             delay(1000)
         }
     }
-    Text(duration((endAt - now).coerceAtLeast(0)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+    return when (m) {
+        null -> null
+        is SleepTimer.Mode.At -> duration((m.endAt - now).coerceAtLeast(0))
+        SleepTimer.Mode.EndOfSong -> "this song"
+        is SleepTimer.Mode.Songs -> "${m.left} songs"
+        SleepTimer.Mode.EndOfQueue -> "end of queue"
+    }
 }
 
 @Composable
-private fun SleepDialog(onDismiss: () -> Unit) {
+fun SleepDialog(onDismiss: () -> Unit) {
     val sleep = App.app.playback.sleep
     val mode by sleep.mode.collectAsState()
     var pick by remember { mutableStateOf(Pick.Time) }

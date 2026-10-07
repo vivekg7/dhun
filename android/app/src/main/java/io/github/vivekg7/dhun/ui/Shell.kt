@@ -306,10 +306,13 @@ private fun TabBar(
                 }
             }
             var menu by remember { mutableStateOf(false) }
+            var sleep by remember { mutableStateOf(false) }
+            if (sleep) SleepDialog { sleep = false }
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 IconButton({ menu = true }) { Icon(Icons.More, "Menu", tint = c.onSurfaceVariant) }
                 DropdownMenu(menu, { menu = false }) {
                     val close = { menu = false }
+                    MenuItem(sleepState()?.let { "Sleep timer · $it" } ?: "Sleep timer", close) { sleep = true }
                     MenuItem("Sync now", close) { app.scope.launch { app.sync.now() } }
                     MenuItem("Settings", close, onSettings)
                 }

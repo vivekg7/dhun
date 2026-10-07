@@ -18,7 +18,7 @@ Where they show, what a tap does, offline and the screen are the owner's
 ### In place of the cover
 
 **A tap on the cover swaps it for the lyrics**, in the same space, as in
-Musicolet; a lyrics button on Now playing, next to the moon, does the same
+Musicolet; a lyrics button on Now playing, next to the speed button, does the same
 and brings the cover back. The button is dimmed for a song with no lyrics.
 The lyrics stay up from song to song until turned off. Rejected: a
 separate full-screen page, which would hide the controls.

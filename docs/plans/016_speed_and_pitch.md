@@ -58,7 +58,7 @@ only.
 
 ### Where it lives
 
-A **speed button on Now playing**, next to the moon. At normal speed and
+A **speed button on Now playing**, next to repeat. At normal speed and
 pitch it is an icon; otherwise it shows the speed in the accent colour
 ("1.5×"), or the pitch ("+2") when only the pitch is changed. One value,
 not both, so the row of buttons still fits a phone's width with the sleep

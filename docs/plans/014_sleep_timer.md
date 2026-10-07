@@ -54,9 +54,13 @@ asleep, not how much music you hear.
 
 ### Where it shows
 
-- **A moon on Now playing**, next to repeat and shuffle, accented while a
-  timer runs, with the time left (or the songs left) beside it. It opens
-  the timer, which also turns it off.
+- **Set from the menu** (the three dots at the end of the tab bar), first
+  in it: "Sleep timer", or "Sleep timer · 23:10" while one runs. It moved
+  there from a moon button on Now playing (2026-10-07, the owner's choice),
+  which crowded the row of buttons for a feature used once a night.
+- **A moon on Now playing only while a timer runs**, next to repeat and
+  shuffle, with the time left (or the songs left) beside it. It opens the
+  timer, which also turns it off. With no timer set it is not there.
 - **In the notification and on the lock screen**, after the artist:
   "Coldplay · Sleep in 23 min". The session sees the player through a thin
   wrapper that adds this to the metadata and refreshes it every 30 s.
