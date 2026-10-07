@@ -87,7 +87,10 @@ class Sync(
             try {
                 pullLibrary()
                 // More than 500 ops (a long offline stretch) take several rounds.
+                pushedPlaylists = false
                 while (pushAndPull() > 0 && dao.outboxSize() > 0) Unit
+                // The server rewrote those playlists: fetch them as written.
+                if (pushedPlaylists) pullLibrary()
                 pullPlays()
                 _error.value = null
                 reachable.value = true
@@ -111,26 +114,74 @@ class Sync(
             }
         }
 
+    private var pushedPlaylists = false
+
+    /**
+     * A playlist with an op still in the outbox is left as edited here, and
+     * the cursor stays put so the next pull brings it again once the op has
+     * gone (docs/plans/013_playlist_editing.md).
+     */
     private suspend fun pullLibrary() {
         val lib = app.api.library(app.prefs.libraryVersion)
         if (lib.songs.isNotEmpty()) dao.putSongs(lib.songs.map { it.toSong() })
+        val pending = dao.outbox(Int.MAX_VALUE).map { it.key }
+
+        fun edited(id: Long) = pending.any { it.endsWith(":" + Store.playlistTag(id)) }
+        var skipped = false
+        val local = dao.localPlaylists()
         for (p in lib.playlists) {
             if (p.deleted) {
-                dao.deletePlaylist(p.id)
-            } else {
-                dao.putPlaylist(Playlist(p.id, p.name, p.path, p.shared, p.songs.joinIds()))
+                if (edited(p.id)) skipped = true else dao.deletePlaylist(p.id)
+                continue
             }
+            // One made on this phone, back from the server with its real id. A
+            // server older than `ref` is matched by name, once its create has gone.
+            val mine =
+                local.firstOrNull { it.ref.isNotEmpty() && it.ref == p.ref }
+                    ?: local.firstOrNull { p.ref.isEmpty() && !p.shared && it.name == p.name && !edited(it.id) }
+            if (mine != null) {
+                if (edited(mine.id)) {
+                    skipped = true
+                    continue
+                }
+                dao.deletePlaylist(mine.id)
+                dao.movePin(Downloads.key(Downloads.PLAYLIST, mine.id.toString()), Downloads.key(Downloads.PLAYLIST, p.id.toString()), p.id.toString())
+                replaced[mine.id] = p.id
+            } else if (edited(p.id)) {
+                skipped = true
+                continue
+            }
+            dao.putPlaylist(Playlist(p.id, p.name, p.path, p.shared, p.songs.joinIds(), p.ref))
         }
-        app.prefs.libraryVersion = lib.version
+        if (!skipped) app.prefs.libraryVersion = lib.version
     }
+
+    /** A playlist made on this phone and the server id it became, for a page still showing the old one. */
+    val replaced = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
     /** One round trip; returns how many ops the server answered. */
     private suspend fun pushAndPull(): Int {
         val ops = dao.outbox(500)
+        if (ops.any { it.json.contains("\"type\":\"playlist.") }) pushedPlaylists = true
         val state = app.api.sync(app.prefs.syncVersion, ops.map { app.api.json.parseToJsonElement(it.json) })
         // applied, duplicate and rejected all leave the outbox: a rejected op
         // can never succeed (api/openapi.yaml).
         val done = state.results.map { it.id }
+        // A playlist the server refused to create (a name it reserves) would
+        // otherwise stay here forever as a local-only row.
+        val refused =
+            state.results
+                .filter { it.status == "rejected" }
+                .map { it.id }
+                .toSet()
+        for (op in ops) {
+            if (op.id in refused && op.json.contains("\"type\":\"playlist.create\"")) {
+                op.key
+                    .substringAfterLast(":pl", "")
+                    .toLongOrNull()
+                    ?.let { dao.deletePlaylist(it) }
+            }
+        }
         if (done.isNotEmpty()) dao.ackOps(done)
         apply(state)
         app.prefs.syncVersion = state.version

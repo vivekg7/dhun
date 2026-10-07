@@ -2,6 +2,7 @@ package io.github.vivekg7.dhun.data
 
 import android.content.Context
 import androidx.room3.AutoMigration
+import androidx.room3.ColumnInfo
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Entity
@@ -25,10 +26,10 @@ import kotlinx.coroutines.flow.Flow
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
         Pin::class, Download::class,
     ],
-    version = 2,
+    version = 3,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun dao(): DbDao
@@ -80,6 +81,11 @@ data class Song(
     val displayArtist get() = artist.ifEmpty { albumArtist }.ifEmpty { "Unknown artist" }
 }
 
+/**
+ * A playlist as the server indexed it. One made on this phone has a negative
+ * [id] until the server's comes back with the same [ref]
+ * (docs/plans/013_playlist_editing.md).
+ */
 @Entity(tableName = "playlist")
 data class Playlist(
     @PrimaryKey val id: Long,
@@ -87,7 +93,11 @@ data class Playlist(
     val path: String,
     val shared: Boolean,
     val songs: String,
-)
+    @ColumnInfo(defaultValue = "") val ref: String = "",
+) {
+    /** How ops name it: the server's id, or the ref while the server has not answered. */
+    val target get() = if (id > 0) id.toString() else "ref:$ref"
+}
 
 @Entity(tableName = "queue")
 data class QueueRow(
@@ -185,6 +195,19 @@ interface DbDao {
 
     @Query("DELETE FROM playlist WHERE id = :id")
     suspend fun deletePlaylist(id: Long)
+
+    @Query("SELECT * FROM playlist WHERE id = :id")
+    suspend fun playlist(id: Long): Playlist?
+
+    @Query("SELECT * FROM playlist WHERE id < 0")
+    suspend fun localPlaylists(): List<Playlist>
+
+    @Query("UPDATE pin SET `key` = :key, ref = :ref WHERE `key` = :old")
+    suspend fun movePin(
+        old: String,
+        key: String,
+        ref: String,
+    )
 
     @Query("SELECT * FROM queue ORDER BY usedAt DESC")
     fun queues(): Flow<List<QueueRow>>

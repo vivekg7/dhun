@@ -74,8 +74,12 @@ and anything undecided is under [Open questions](#open-questions).
   there by the app; no playlist lives only in the database. The two
   special lists below are kept in the database and copied to files nightly.
   - `Playlists/*.m3u8` (top level) are **shared**: everyone sees them; the
-    admin edits them.
+    admin edits them, on the NAS: the Android app keeps them read-only
+    (owner, 2026-10-07; [plan 013](plans/013_playlist_editing.md)).
   - `Playlists/<username>/*.m3u8` are **that user's own** playlists.
+  - In the app, adding songs **skips those already in the playlist** and
+    says how many; the format allows duplicates, but none are made by
+    accident.
   - Entries keep the existing format: `#EXTINF` lines and paths relative to
     the playlist file, so the files stay usable in any other player.
   - There will only ever be 3–4 users, so this stays simple: no sharing

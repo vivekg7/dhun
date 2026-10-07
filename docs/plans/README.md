@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                         | Status                                                   |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [013 — Editing playlists on Android](013_playlist_editing.md)                | `IN PROGRESS` — built and tested on the emulator         |
 | [012 — Downloads on Android](012_downloads.md)                               | `MERGED` — in 0.2.0 on the owner's phone                 |
 | [011 — The Android app: look, structure and first build](011_android_app.md) | `MERGED` — on the owner's phone; no GitHub release yet   |
 | [010 — Special playlists and automatic views](010_special_playlists.md)      | `IN PROGRESS` — server on the NAS; Android not released  |

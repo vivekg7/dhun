@@ -98,7 +98,10 @@ fun SearchField(
     }
 }
 
-/** A detail page's top: back, title, a line of facts, and Play / Shuffle. */
+/**
+ * A detail page's top: back, title, a line of facts, Play / Shuffle /
+ * Download, and a menu: "Add to playlist" for [songs], then [actions].
+ */
 @Composable
 fun PageHeader(
     title: String,
@@ -106,12 +109,27 @@ fun PageHeader(
     onBack: () -> Unit,
     onPlay: (() -> Unit)?,
     download: DownloadTarget? = null,
+    songs: List<Song> = emptyList(),
+    actions: List<Pair<String, () -> Unit>> = emptyList(),
     onShuffle: (() -> Unit)?,
 ) {
+    var adding by remember { mutableStateOf(false) }
+    if (adding) AddToPlaylistDialog(songs) { adding = false }
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(Modifier.padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onBack) { Icon(Icons.Back, "Back") }
-            Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (songs.isNotEmpty() || actions.isNotEmpty()) {
+                Box {
+                    var open by remember { mutableStateOf(false) }
+                    IconButton({ open = true }) { Icon(Icons.More, "More options") }
+                    DropdownMenu(open, { open = false }) {
+                        val close = { open = false }
+                        if (songs.isNotEmpty()) MenuItem("Add to playlist…", close) { adding = true }
+                        for ((label, action) in actions) MenuItem(label, close, action)
+                    }
+                }
+            }
         }
         Text(subtitle, Modifier.padding(start = 56.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (onPlay != null) {
@@ -232,6 +250,8 @@ fun SongMenuButton(
     val app = App.app
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    if (adding) AddToPlaylistDialog(listOf(song)) { adding = false }
     val pin = rememberPinner()
     Box {
         IconButton({ open = true }) { Icon(Icons.More, "Song options", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -246,6 +266,7 @@ fun SongMenuButton(
             MenuItem("Add to queue", close) { app.playback.addToQueue(listOf(song)) }
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
+            MenuItem("Add to playlist…", close) { adding = true }
             val pins by app.downloads.pins.collectAsState()
             val files by app.downloads.files.collectAsState()
             val key = Downloads.key(Downloads.SONG, song.id.toString())

@@ -149,9 +149,9 @@ the automatic views, settings, and listens logged with their end reason.
 Since 2026-10-07 the signed release build (`make apk`) runs on the owner's
 phone against the NAS and the real collection.
 
-Downloads ([012](012_downloads.md)), then the sleep timer, lyrics, speed
-and pitch, hand-off, and adding to playlists come next, each in its own
-step.
+Downloads ([012](012_downloads.md)) and playlist editing
+([013](013_playlist_editing.md)), then the sleep timer, lyrics, speed and
+pitch, and hand-off come next, each in its own step.
 
 **Testing without the NAS:** a local `dhun` server on the Mac
 (`DHUN_MEDIA` pointing at a few generated, tagged silent tracks, and a

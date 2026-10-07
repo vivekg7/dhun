@@ -4,14 +4,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,36 +22,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.songIds
-import kotlin.math.roundToInt
 
 /**
  * The queues, the signature feature (AGENTS.md): all of them as chips, the
@@ -77,6 +66,8 @@ fun QueuesScreen(nav: Nav) {
     val index = songs.indexOfFirst { it.id == (if (isActive) current?.id else shown.currentSong) }.coerceAtLeast(0)
     val left = songs.drop(index).sumOf { it.durationMs }
     var editing by remember { mutableStateOf<QueueRow?>(null) }
+    var saving by remember { mutableStateOf<QueueRow?>(null) }
+    val context = LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -101,6 +92,7 @@ fun QueuesScreen(nav: Nav) {
                 DropdownMenu(menu, { menu = false }) {
                     val close = { menu = false }
                     MenuItem("Rename", close) { editing = shown }
+                    MenuItem("Save as playlist", close) { saving = shown }
                     MenuItem("Remove queue", close) {
                         app.playback.delete(shown.id)
                         shownId = null
@@ -112,87 +104,33 @@ fun QueuesScreen(nav: Nav) {
 
         val list = rememberLazyListState()
         LaunchedEffect(shown.id) { if (index > 2) list.scrollToItem(index - 2) }
-        var dragging by remember { mutableIntStateOf(-1) }
-        var offset by remember { mutableFloatStateOf(0f) }
-        val rowPx = with(LocalDensity.current) { 64.dp.toPx() }
+        val reorder = rememberReorder { from, to -> app.playback.move(from, to) }
         LazyColumn(Modifier.fillMaxSize(), state = list) {
             itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-                val handle = @Composable {
-                    Box(
-                        Modifier.width(44.dp).fillMaxHeight().pointerInput(isActive, songs.size) {
-                            if (!isActive) return@pointerInput
-                            detectDragGestures(
-                                onDragStart = {
-                                    dragging = i
-                                    offset = 0f
-                                },
-                                onDragEnd = {
-                                    val to = (dragging + (offset / rowPx).roundToInt()).coerceIn(songs.indices)
-                                    if (dragging >= 0 && to != dragging) app.playback.move(dragging, to)
-                                    dragging = -1
-                                    offset = 0f
-                                },
-                                onDragCancel = {
-                                    dragging = -1
-                                    offset = 0f
-                                },
-                            ) { change, drag ->
-                                change.consume()
-                                offset += drag.y
-                            }
-                        },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Drag, "Drag to reorder", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
-                }
-                Box(
-                    Modifier
-                        .zIndex(
-                            if (i ==
-                                dragging
-                            ) {
-                                1f
-                            } else {
-                                0f
-                            },
-                        ).graphicsLayer {
-                            if (i == dragging) translationY = offset
-                            if (i == dragging) shadowElevation = 8f
-                        },
-                ) {
+                val remove = listOf("Remove from queue" to { app.playback.removeAt(i).let { } })
+                Box(reorder.row(i)) {
                     SongRow(
                         s,
                         onClick = { if (isActive) app.playback.playAt(i) else app.playback.switchTo(shown.id).invokeOnCompletion { app.playback.playAt(i) } },
                         current = i == index,
-                        leading = if (isActive) handle else null,
-                        menu =
-                            SongMenu(
-                                extra =
-                                    if (isActive) {
-                                        listOf(
-                                            "Remove from queue" to {
-                                                app.playback.removeAt(i)
-                                                Unit
-                                            },
-                                        )
-                                    } else {
-                                        emptyList()
-                                    },
-                                nav = nav,
-                            ),
+                        leading = if (isActive) ({ reorder.Handle(i, songs.size) }) else null,
+                        menu = SongMenu(extra = if (isActive) remove else emptyList(), nav = nav),
                     )
                 }
             }
         }
     }
     editing?.let { q ->
-        RenameDialog(q.name, onDone = { name ->
-            if (name != null &&
-                name.isNotBlank()
-            ) {
-                app.playback.rename(q.id, name.trim())
-            }
-            ; editing = null
-        })
+        NameDialog("Rename queue", q.name, "Rename") { name ->
+            if (name != null) app.playback.rename(q.id, name)
+            editing = null
+        }
+    }
+    saving?.let { q ->
+        NameDialog("Save as playlist", q.name, "Save") { name ->
+            if (name != null) savePlaylist(context, name, catalog.songsOf(songIds(q.songs)))
+            saving = null
+        }
     }
 }
 
@@ -219,19 +157,4 @@ private fun QueueChip(
         }
         Text(q.name, style = MaterialTheme.typography.bodyMedium, color = if (selected) c.onPrimaryContainer else c.onSurfaceVariant, maxLines = 1)
     }
-}
-
-@Composable
-fun RenameDialog(
-    name: String,
-    onDone: (String?) -> Unit,
-) {
-    var text by remember { mutableStateOf(name) }
-    AlertDialog(
-        onDismissRequest = { onDone(null) },
-        title = { Text("Rename queue") },
-        text = { OutlinedTextField(text, { text = it }, singleLine = true) },
-        confirmButton = { TextButton({ onDone(text) }) { Text("Rename") } },
-        dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } },
-    )
 }

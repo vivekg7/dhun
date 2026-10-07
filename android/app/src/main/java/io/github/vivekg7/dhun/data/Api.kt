@@ -215,6 +215,7 @@ data class PlaylistDto(
     val path: String = "",
     val name: String = "",
     val shared: Boolean = false,
+    val ref: String = "",
     val songs: List<Long> = emptyList(),
 )
 

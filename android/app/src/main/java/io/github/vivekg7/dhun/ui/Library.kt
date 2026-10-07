@@ -114,6 +114,7 @@ fun FolderScreen(
                     onBack,
                     { playList(folder.name, "folder:$path", folder.allSongs(), 0) },
                     DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
+                    songs = folder.allSongs(),
                 ) {
                     shuffleList(folder.name, "folder:$path", folder.allSongs())
                 }
@@ -194,6 +195,7 @@ fun AlbumScreen(
                 onBack,
                 { playList(album.name, "album:${album.name}", album.songs, 0) },
                 DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs),
+                songs = album.songs,
             ) {
                 shuffleList(album.name, "album:${album.name}", album.songs)
             }
@@ -246,6 +248,7 @@ fun GroupScreen(
             onBack,
             { playList(group.name, source, songs, 0) },
             DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
+            songs = songs,
         ) { shuffleList(group.name, source, songs) }
     }
 }

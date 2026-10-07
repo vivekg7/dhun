@@ -3,6 +3,7 @@ package io.github.vivekg7.dhun.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,10 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +38,7 @@ import io.github.vivekg7.dhun.data.Resume
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.songIds
+import kotlinx.coroutines.launch
 
 /**
  * Favorites and Listen Later, then the views computed from what the app
@@ -129,6 +134,14 @@ fun PlaylistsScreen(nav: Nav) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = Catalog.fold(query)
     val lists = rememberLists()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var naming by remember { mutableStateOf(false) }
+    if (naming) {
+        NameDialog("New playlist", "", "Create") { name ->
+            if (name != null) savePlaylist(context, name, emptyList())
+            naming = false
+        }
+    }
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, "Search playlists…") }
         if (q.isEmpty()) {
@@ -151,6 +164,7 @@ fun PlaylistsScreen(nav: Nav) {
                 NameRow(k.icon, k.label, "${lists(k).size}") { nav.open(Tab.Playlists, Page.ListPage(k)) }
             }
             item { SectionLabel("Playlists") }
+            item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
         }
         val shown = playlists.filter { q.isEmpty() || Catalog.fold(it.name).contains(q) }
         items(shown, key = { it.id }) { p ->
@@ -159,7 +173,6 @@ fun PlaylistsScreen(nav: Nav) {
                 nav.open(Tab.Playlists, Page.PlaylistPage(p.id))
             }
         }
-        if (playlists.isEmpty()) item { Empty("No playlists yet") }
     }
 }
 
@@ -229,10 +242,16 @@ fun ListScreen(
             onBack,
             { playList(kind.label, kind.source, songs, 0) },
             markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) },
+            songs = songs,
         ) { shuffleList(kind.label, kind.source, songs) }
     }
 }
 
+/**
+ * A playlist. Your own can be edited here: drag to reorder, remove a song,
+ * rename, delete (docs/plans/013_playlist_editing.md); shared ones are
+ * read-only in the app.
+ */
 @Composable
 fun PlaylistScreen(
     id: Long,
@@ -242,19 +261,61 @@ fun PlaylistScreen(
     val app = App.app
     val playlists by app.store.playlists.collectAsState(emptyList())
     val catalog by app.catalog.collectAsState()
-    val p = playlists.firstOrNull { it.id == id } ?: return Empty("")
-    // 0 is an entry the server could not match to a song; it is kept in the file but not playable.
-    val songs = catalog.songsOf(songIds(p.songs).filter { it != 0L })
+    // One made on this phone is replaced by the server's copy after a sync.
+    val p = playlists.firstOrNull { it.id == id } ?: playlists.firstOrNull { it.id == app.sync.replaced[id] } ?: return Empty("")
+    // 0 is an entry the server could not match to a song; it is kept in the
+    // file but not shown. Rows remember their place in the file, for edits.
+    val rows = remember(p.songs, catalog) { songIds(p.songs).withIndex().mapNotNull { (i, sid) -> catalog.byId[sid]?.let { i to it } } }
+    val songs = rows.map { it.second }
     val source = "playlist:${p.id}"
-    SongList(p.name, source, songs, nav) {
-        PageHeader(
-            p.name,
-            summary(songs) + if (p.shared) " · shared" else "",
-            onBack,
-            { playList(p.name, source, songs, 0) },
-            DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
-        ) {
-            shuffleList(p.name, source, songs)
+    val editable = p.editable()
+    var renaming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    val reorder = rememberReorder { from, to -> app.scope.launch { app.store.moveInPlaylist(p, rows[from].first, rows[to].first) } }
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            PageHeader(
+                p.name,
+                summary(songs) + if (p.shared) " · shared" else "",
+                onBack,
+                { playList(p.name, source, songs, 0) },
+                DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
+                songs = songs,
+                actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
+            ) { shuffleList(p.name, source, songs) }
         }
+        itemsIndexed(rows, key = { _, (raw, s) -> "$raw/${s.id}" }) { i, (raw, s) ->
+            val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
+            Box(reorder.row(i)) {
+                SongRow(
+                    s,
+                    onClick = { playList(p.name, source, songs, i) },
+                    leading = if (editable) ({ reorder.Handle(i, rows.size) }) else null,
+                    menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
+                )
+            }
+        }
+        if (rows.isEmpty()) item { Empty(if (editable) "Empty. Add songs with “Add to playlist” in any song's menu." else "Nothing here yet") }
+    }
+    if (renaming) {
+        NameDialog("Rename playlist", p.name, "Rename") { name ->
+            if (name != null && name != p.name) app.scope.launch { app.store.renamePlaylist(p, name) }
+            renaming = false
+        }
+    }
+    if (deleting) {
+        AlertDialog(
+            { deleting = false },
+            confirmButton = {
+                TextButton({
+                    deleting = false
+                    app.scope.launch { app.store.deletePlaylist(p) }
+                    onBack()
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton({ deleting = false }) { Text("Keep") } },
+            title = { Text("Delete “${p.name}”?") },
+            text = { Text("The songs stay in the library. The server keeps a copy of the playlist file in its data folder.") },
+        )
     }
 }

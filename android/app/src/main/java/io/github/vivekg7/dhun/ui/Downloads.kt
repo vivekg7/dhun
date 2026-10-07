@@ -165,6 +165,7 @@ fun DownloadsScreen(
                 "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
                 onBack,
                 { playList("Downloads", "downloads", songs, 0) },
+                songs = songs,
             ) { shuffleList("Downloads", "downloads", songs) }
         }
         // Idle, the header already says it all.

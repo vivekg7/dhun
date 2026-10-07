@@ -168,6 +168,106 @@ class Store(
         }
     }
 
+    // --- Playlists (docs/plans/013_playlist_editing.md) ----------------------
+
+    /** A new playlist of the user's own; a negative id until the server answers with the same ref. */
+    suspend fun createPlaylist(
+        name: String,
+        songs: List<Long>,
+    ): Playlist {
+        val p = Playlist(-(1L + kotlin.random.Random.nextLong(Long.MAX_VALUE - 1)), name, "", false, songs.distinct().joinIds(), UUID.randomUUID().toString())
+        dao.putPlaylist(p)
+        record("playlist.create", playlist = p.id) {
+            put("ref", p.ref)
+            put("name", p.name)
+            put("songs", ids(p.songs))
+        }
+        return p
+    }
+
+    /** Adds [songs] at the end, skipping those already in it; returns how many were skipped. */
+    suspend fun addToPlaylist(
+        p: Playlist,
+        songs: List<Long>,
+    ): Int {
+        val have = songIds(p.songs).toSet()
+        val adding = songs.distinct().filter { it !in have }
+        if (adding.isNotEmpty()) {
+            dao.putPlaylist(p.copy(songs = (songIds(p.songs) + adding).joinIds()))
+            record("playlist.insert", playlist = p.id) {
+                put("playlist", p.target)
+                put("songs", JsonArray(adding.map(::JsonPrimitive)))
+            }
+        }
+        return songs.distinct().size - adding.size
+    }
+
+    /** Removes the entry at [index] of the playlist's own list (unmatched entries included). */
+    suspend fun removeFromPlaylist(
+        p: Playlist,
+        index: Int,
+    ) {
+        val list = songIds(p.songs).toMutableList()
+        if (index !in list.indices) return
+        val song = list[index]
+        val occurrence = list.subList(0, index).count { it == song }
+        list.removeAt(index)
+        dao.putPlaylist(p.copy(songs = list.joinIds()))
+        record("playlist.remove", playlist = p.id) {
+            put("playlist", p.target)
+            put("song", song)
+            put("occurrence", occurrence)
+        }
+    }
+
+    /** Moves the entry at [from] to [to], both indexes into the playlist's own list. */
+    suspend fun moveInPlaylist(
+        p: Playlist,
+        from: Int,
+        to: Int,
+    ) {
+        val list = songIds(p.songs).toMutableList()
+        if (from !in list.indices || to !in list.indices || from == to) return
+        val song = list[from]
+        val occurrence = list.subList(0, from).count { it == song }
+        list.add(to, list.removeAt(from))
+        dao.putPlaylist(p.copy(songs = list.joinIds()))
+        val after = if (to == 0) 0L else list[to - 1]
+        if (to > 0 && after == 0L) {
+            // An unmatched entry cannot be named as "after" (0 means the start): send the order.
+            record("playlist.replace", playlist = p.id) {
+                put("playlist", p.target)
+                put("songs", JsonArray(list.map(::JsonPrimitive)))
+            }
+            return
+        }
+        record("playlist.move", playlist = p.id) {
+            put("playlist", p.target)
+            put("song", song)
+            put("occurrence", occurrence)
+            put("after", after)
+            if (to > 0) put("afterOccurrence", list.subList(0, to - 1).count { it == after })
+        }
+    }
+
+    suspend fun renamePlaylist(
+        p: Playlist,
+        name: String,
+    ) {
+        dao.putPlaylist(p.copy(name = name))
+        record("playlist.rename", playlist = p.id) {
+            put("playlist", p.target)
+            put("name", name)
+        }
+    }
+
+    /** The server keeps a copy of the file; a download of it goes too. */
+    suspend fun deletePlaylist(p: Playlist) {
+        dao.deletePlaylist(p.id)
+        dao.deletePin(Downloads.key(Downloads.PLAYLIST, p.id.toString()))
+        record("playlist.delete", playlist = p.id) { put("playlist", p.target) }
+    }
+
     /** Feeds /now-playing, for "Continue from …" on another device. */
     suspend fun playbackState(
         queue: String,
@@ -197,14 +297,15 @@ class Store(
         }
 
     /**
-     * [key] replaces earlier ops with the same key. [queue] marks an op as
-     * touching that queue, so [Sync] does not overwrite it with an older
-     * server copy while the op is still unsent.
+     * [key] replaces earlier ops with the same key. [queue] and [playlist]
+     * mark an op as touching that queue or playlist, so [Sync] does not
+     * overwrite it with an older server copy while the op is still unsent.
      */
     private suspend fun record(
         type: String,
         key: String? = null,
         queue: String? = null,
+        playlist: Long? = null,
         at: Long = System.currentTimeMillis(),
         fields: JsonObjectBuilder.() -> Unit,
     ) {
@@ -217,7 +318,13 @@ class Store(
                 fields()
             }
         if (key != null) dao.dropOps(key)
-        dao.addOp(OutboxOp(id = id, key = key ?: if (queue != null) "$id:$queue" else id, json = op.toString()))
+        val tag =
+            when {
+                queue != null -> ":$queue"
+                playlist != null -> ":${playlistTag(playlist)}"
+                else -> ""
+            }
+        dao.addOp(OutboxOp(id = id, key = key ?: "$id$tag", json = op.toString()))
         app.sync.soon()
     }
 
@@ -226,6 +333,9 @@ class Store(
         const val LATER = "later"
 
         fun ids(text: String) = JsonArray(songIds(text).map(::JsonPrimitive))
+
+        /** Ends the outbox key of an op on that playlist. */
+        fun playlistTag(id: Long) = "pl$id"
     }
 }
 
