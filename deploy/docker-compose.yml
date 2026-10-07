@@ -3,7 +3,10 @@
 #
 # 1. Create the project folder and its data folder as your own user, e.g. in
 #    File Station: docker/dhun/data. (If Docker creates `data` it is owned
-#    by root and Dhun cannot write to it.)
+#    by root and Dhun cannot write to it.) On Synology, also give `data`
+#    plain permissions, or the share's ACL refuses the container:
+#    sudo /usr/syno/bin/synoacltool -del /volume1/docker/dhun/data
+#    sudo chmod 755 /volume1/docker/dhun/data
 # 2. Put this file in docker/dhun/ and edit the lines marked EDIT.
 # 3. Create the project in Container Manager from that folder.
 

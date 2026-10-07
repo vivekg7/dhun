@@ -13,21 +13,25 @@ lives on a NAS.
 
 On the NAS (Synology Container Manager or any Docker host):
 
-1. Create a project folder with a `data` folder in it, as your own user (on
-   Synology: `docker/dhun/data` in File Station).
+1. Create a project folder with a `data` folder in it, as your own user. On
+   Synology: `docker/dhun/data` in File Station, then remove the ACL it
+   inherits (step 2 of the detailed install below).
 2. Copy [`deploy/docker-compose.yml`](deploy/docker-compose.yml) into the
    project folder and edit the lines marked `EDIT`: your `Music` path (it is
    mounted read-only, apart from `Playlists/`), your user ID, and the admin's
    name and password. That account is created on first start.
 3. Start the project (Container Manager → Project → Create). The log should
-   say `scan done … failed=0`. Then delete the password line; it is never
-   read again.
-4. Open `http://<nas>:8585` at home, or the NAS's Tailscale address away.
-5. Add each family member from the admin panel. Their playlists go in
-   `Music/Playlists/<name>/`.
+   say `scan done … failed=0`, and `http://<nas>:8585/healthz` answer `ok`.
+   Then delete the password line; it is never read again.
+4. The apps connect to `http://<nas>:8585` at home, or the NAS's Tailscale
+   address away.
+5. Add each family member: today with `curl`, later from the web app's
+   Users screen. Their playlists go in `Music/Playlists/<name>/`.
 
-Why it is set up this way, and what protects the collection:
-[`docs/plans/003_deployment.md`](docs/plans/003_deployment.md).
+Every step in detail, for Synology:
+[`docs/plans/003_deployment.md#install`](docs/plans/003_deployment.md#install).
+
+Why it is set up this way, and what protects the collection: the same plan.
 
 Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 

@@ -87,14 +87,85 @@ project folder.**
 
 ## Install
 
-1. In File Station, create `docker/dhun/data` as your own user. (If Docker
-   creates `data`, it belongs to root and Dhun cannot write to it.)
-2. Copy `deploy/docker-compose.yml` to `docker/dhun/` and edit the lines
-   marked `EDIT`: the two Music paths, the `user:` IDs (`id <you>` over SSH),
-   and the admin's name and password.
-3. Container Manager → Project → Create, path `docker/dhun`.
-4. Check the log for `scan done … failed=0`.
-5. Delete the `DHUN_ADMIN_PASSWORD` line and rebuild the project.
+On Synology DSM 7 with Container Manager. It takes about 10 minutes; the
+first scan of 7,000 songs took 3.5 of them. Until the web app ships, two steps use `curl` from
+the Mac.
+
+1. **Find your user and group IDs.** Dhun runs as you, so the files it
+   writes stay yours. Enable SSH for a moment (Control Panel → Terminal &
+   SNMP), run `ssh <you>@<nas> id`, and note `uid` and `gid`, typically
+   `1026` and `100 (users)`. Turn SSH off again if you don't use it.
+2. **Create the folders as yourself, with plain permissions.** In File
+   Station, signed in as yourself, create `docker/dhun` and
+   `docker/dhun/data`. If Docker creates `data`, it belongs to root and Dhun
+   cannot write to it. Then remove the ACL `data` inherits from the `docker`
+   share:
+
+   ```sh
+   ssh -t <you>@<nas> 'sudo /usr/syno/bin/synoacltool -del /volume1/docker/dhun/data && sudo chmod 755 /volume1/docker/dhun/data'
+   ```
+
+   The share's ACL grants write access through the `administrators`
+   group. The container runs with your user and the `users` group only, so
+   it is refused (`data folder /data is not writable` in the log, and the
+   container restarts in a loop). Jellyfin's working folders on the owner's
+   NAS have plain permissions too. `ls -lnd` should show
+   `drwxr-xr-x … 1026 100`, with no `+`. (`sudo` on Synology needs full
+   paths: `/usr/local/bin/docker`, `/usr/syno/bin/synoacltool`.)
+
+3. **Copy and edit the compose file.** Put `deploy/docker-compose.yml` in
+   `docker/dhun/`, and edit the lines marked `EDIT`:
+   - `user:` the two IDs from step 1;
+   - both Music paths: `/volume1/homes/<you>/Media/Music`, and the same
+     path with `/Playlists` (it must exist);
+   - `DHUN_ADMIN_USER` (your name in Dhun, which is also your
+     `Playlists/<name>/` folder) and `DHUN_ADMIN_PASSWORD` (long; it is
+     removed again in step 6).
+4. **Create the project.** Container Manager → Project → Create:
+   - name `dhun`;
+   - path `docker/dhun`;
+   - source "Use the existing docker-compose.yml";
+   - no web portal.
+
+   It pulls the image and starts.
+
+5. **Check it.**
+   - **Log:** Container → `dhun` → Log should end with
+     `scan done … failed=0`. Over SSH:
+     `sudo /usr/local/bin/docker logs --tail 20 dhun`.
+   - **Health:** `http://<nas>:8585/healthz` answers `ok`.
+   - **Sign-in:** this returns a token.
+
+     ```sh
+     curl -s http://<nas>:8585/api/v1/login -H 'Content-Type: application/json' \
+       -d '{"username":"<you>","password":"<password>","device":"Mac"}'
+     ```
+
+   If the page does not load and the DSM firewall is on, allow TCP `8585`
+   from the local network (Control Panel → Security → Firewall).
+
+6. **Remove the password from the compose file.** Delete the
+   `DHUN_ADMIN_PASSWORD` line, then Project → `dhun` → Stop → Build. The
+   account stays; the line is only read while there are no users.
+7. **Add the family** (until the web app's Users screen ships), with the
+   token from step 5:
+
+   ```sh
+   curl -s http://<nas>:8585/api/v1/admin/users -H 'Authorization: Bearer <token>' \
+     -H 'Content-Type: application/json' -d '{"name":"<name>","password":"<password>"}'
+   ```
+
+   Their playlists go in `Music/Playlists/<name>/`. Sign the Mac out
+   afterwards (`POST /api/v1/logout` with the same header), so the token
+   stops working.
+
+**Upgrading:** change the image tag in the compose file, then Stop → Build.
+Database migrations run on start. The database is backed up nightly to
+`data/backups/`, keeping 14 days. **Backing up Dhun** means backing up
+`docker/dhun` (Hyper Backup); everything Dhun knows is in there, apart from
+the playlists in `Music/Playlists/`. **Removing it:** delete the project;
+`docker/dhun` stays, and re-creating the project picks up where it left
+off.
 
 ## Rejected
 
