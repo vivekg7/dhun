@@ -18,6 +18,7 @@ import io.github.vivekg7.dhun.data.Lyrics
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
 import io.github.vivekg7.dhun.play.Playback
+import io.github.vivekg7.dhun.play.Tempo
 import io.github.vivekg7.dhun.ui.theme.Palette
 import io.github.vivekg7.dhun.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -119,6 +120,15 @@ class Prefs(
         wifiOnly = on
         sp.edit { putBoolean("wifiOnly", on) }
     }
+
+    /**
+     * Play speed and pitch for every song without its own
+     * (docs/plans/016_speed_and_pitch.md). This device's only, by the owner's
+     * choice: a song's own speed follows the user, the everyday one does not.
+     */
+    var tempo: Tempo
+        get() = Tempo(sp.getFloat("speed", 1f), sp.getInt("semitones", 0))
+        set(t) = sp.edit { putFloat("speed", t.speed).putInt("semitones", t.semitones) }
 
     /** Asked once, with the first download: Android 13 hides the progress notification without it. */
     var askedNotifications: Boolean

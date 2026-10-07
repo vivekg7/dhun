@@ -42,7 +42,7 @@ offline is uploaded later with the phone's own times.
 | ----------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `at`        | `at`         | When it started, UTC.                                                                                                                                                   |
 | `endedAt`   | `ended_at`   | When it ended. With `ms`, shows long pauses.                                                                                                                            |
-| `ms`        | `ms_played`  | Time actually heard, without pauses.                                                                                                                                    |
+| `ms`        | `ms_played`  | Time actually heard, without pauses, as song time: a minute at 1.5× is 90 s ([016](016_speed_and_pitch.md)).                                                            |
 | `fromMs`    | `from_ms`    | Where in the song it started: a listen that seeks to the chorus differs from one that plays from the start.                                                             |
 | `toMs`      | `to_ms`      | Where it ended.                                                                                                                                                         |
 | `end`       | `end_reason` | `finished`, `skipped` (next), `previous`, `switched` (another song or queue chosen), `stopped`, `interrupted` (the app was killed; recorded on the next start).         |

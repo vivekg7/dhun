@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNull
 import java.util.TimeZone
 import java.util.UUID
 
@@ -112,10 +113,32 @@ class Playback(
 
     private val settings = app.store.settings.stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
+    /** Speed and pitch (docs/plans/016_speed_and_pitch.md): this device's everyday one. */
+    val everyday = MutableStateFlow(app.prefs.tempo)
+
+    /** The playing song's own speed and pitch, synced; null when it follows [everyday]. */
+    val songTempo: StateFlow<Tempo?> =
+        combine(current, settings) { s, m -> s?.let { Tempo.of(m[Tempo.songSetting(it.id)]) } }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** What the player uses now. */
+    val tempo: StateFlow<Tempo> = combine(everyday, songTempo) { e, s -> s ?: e }.stateIn(scope, SharingStarted.Eagerly, Tempo.NORMAL)
+
+    /** The speed the open listen's heard time is counted at, until the next change. */
+    private var heardSpeed = 1f
+
     private var open: Open? = null
 
     init {
         player.addListener(Events())
+        scope.launch {
+            tempo.collect {
+                // Time heard so far counts at the old speed.
+                open?.let(::count)
+                heardSpeed = it.speed
+                player.playbackParameters = it.params
+            }
+        }
         scope.launch {
             closeInterrupted()
             // Reload the queue that was playing when the app last stopped,
@@ -135,6 +158,29 @@ class Playback(
                 if (player.isPlaying) tick()
             }
         }
+    }
+
+    /**
+     * Sets speed and pitch: for the playing song only (synced, as its own
+     * setting), or as this device's everyday one.
+     */
+    fun setTempo(
+        t: Tempo,
+        onlyThisSong: Boolean,
+    ) {
+        val s = current.value
+        if (onlyThisSong && s != null) {
+            scope.launch { store.setting(Tempo.songSetting(s.id), t.json()) }
+        } else {
+            app.prefs.tempo = t
+            everyday.value = t
+        }
+    }
+
+    /** The playing song follows the everyday speed and pitch again. */
+    fun clearSongTempo() {
+        val s = current.value ?: return
+        scope.launch { store.setting(Tempo.songSetting(s.id), JsonNull) }
     }
 
     /** On sign-out: the open listen belongs to the account being left, and is dropped. */
@@ -439,7 +485,7 @@ class Playback(
         val o = open ?: return
         open = null
         app.prefs.openListen = ""
-        if (o.since > 0) o.heardMs += SystemClock.elapsedRealtime() - o.since
+        count(o)
         // A song that never actually played was not a listen.
         if (o.heardMs <= 0) return
         store.play(listen(o, end, toMs, System.currentTimeMillis()))
@@ -464,6 +510,18 @@ class Playback(
         TimeZone.getDefault().getOffset(o.startedAt) / 60_000,
     )
 
+    /**
+     * Adds the time played since the last count to the open listen, as song
+     * time: two minutes at 1.5× heard three minutes of the song, which is
+     * what the play count's "half the song heard" compares (plan 008).
+     */
+    private fun count(o: Open) {
+        if (o.since <= 0) return
+        val now = SystemClock.elapsedRealtime()
+        o.heardMs += ((now - o.since) * heardSpeed).toLong()
+        o.since = now
+    }
+
     /** A listen still open from a process that died is closed as interrupted. */
     private suspend fun closeInterrupted() {
         val text = app.prefs.openListen.ifEmpty { return }
@@ -477,11 +535,7 @@ class Playback(
 
     private suspend fun tick() {
         val o = open ?: return
-        val now = SystemClock.elapsedRealtime()
-        if (o.since > 0) {
-            o.heardMs += now - o.since
-            o.since = now
-        }
+        count(o)
         o.lastPos = player.currentPosition
         o.lastAt = System.currentTimeMillis()
         app.prefs.openListen = app.api.json.encodeToString(Open.serializer(), o)
@@ -501,7 +555,7 @@ class Playback(
                 if (isPlaying) {
                     started(o)
                 } else if (o.since > 0) {
-                    o.heardMs += SystemClock.elapsedRealtime() - o.since
+                    count(o)
                     o.since = 0
                 }
             }

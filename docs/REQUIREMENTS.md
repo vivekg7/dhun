@@ -238,7 +238,10 @@ Proposed. Awaiting the owner's confirmation.
   they show and the song plays. Kept on the phone with downloads and once
   viewed, so they show offline (owner, 2026-10-07;
   [plan 015](plans/015_lyrics.md)).
-- **Play speed and pitch.**
+- **Play speed and pitch**, independent of each other: speed 0.5×–2×,
+  pitch ±6 semitones. An everyday setting on each device, and a song's own
+  (an audiobook at 1.5×) that follows the user to every device. Set from
+  Now playing (owner, 2026-10-07; [plan 016](plans/016_speed_and_pitch.md)).
 - Gapless playback.
 - Media notification, lock-screen and Bluetooth / headset controls. Pause on
   disconnect, and audio focus (pause during calls).

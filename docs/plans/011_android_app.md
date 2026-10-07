@@ -151,8 +151,9 @@ phone against the NAS and the real collection.
 
 Downloads ([012](012_downloads.md)), playlist editing
 ([013](013_playlist_editing.md)), the sleep timer
-([014](014_sleep_timer.md)) and lyrics ([015](015_lyrics.md)), then speed
-and pitch, and hand-off come next, each in its own step.
+([014](014_sleep_timer.md)), lyrics ([015](015_lyrics.md)) and speed and
+pitch ([016](016_speed_and_pitch.md)), then hand-off come next, each in its
+own step.
 
 **Testing without the NAS:** a local `dhun` server on the Mac
 (`DHUN_MEDIA` pointing at a few generated, tagged silent tracks, and a

@@ -162,6 +162,7 @@ fun NowPlayingScreen(nav: Nav) {
                     tint = if (lyrics) c.primary else c.onSurfaceVariant.copy(alpha = if (s.hasLyrics) 1f else 0.38f),
                 )
             }
+            SpeedButton()
             SleepButton()
             val repeat = queue?.repeat ?: "off"
             IconButton({ pb.cycleRepeat() }) {
