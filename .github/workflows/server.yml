@@ -1,4 +1,4 @@
-# Runs `make check` on every push and pull request. A `server-vX.Y.Z` tag also
+# Runs the server half of `make check` on every push and pull request. A `server-vX.Y.Z` tag also
 # publishes the server image to ghcr.io/vivekg7/dhun (amd64 for the NAS, arm64
 # for everything else).
 name: server
@@ -21,7 +21,7 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
-      - run: make check
+      - run: make lint-server test-server
 
   image:
     if: startsWith(github.ref, 'refs/tags/server-v')
