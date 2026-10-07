@@ -1,6 +1,6 @@
 # 018 — The settings screen on Android
 
-**Status:** `MERGED` — on the owner's phone, in a build still numbered 0.3.0
+**Status:** `MERGED` — in 0.4.0 on the owner's phone
 **Started:** 2026-10-07
 
 ## Problem
