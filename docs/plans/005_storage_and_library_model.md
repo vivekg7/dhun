@@ -25,7 +25,8 @@ container, the project folder on the NAS; [003](003_deployment.md)).
   rows need no database server.
 - **`modernc.org/sqlite`** (pure Go) rather than `mattn/go-sqlite3` (cgo).
   With no cgo the binary stays static and the Docker image can be `scratch`
-  or distroless. Its FTS5 support gives us search.
+  or distroless. (Search runs on the clients, over their copy of the
+  catalogue, [006](006_api_and_sync.md); the server needs no full-text index.)
 - **Migrations are numbered `.sql` files** embedded in the binary and applied
   at startup inside a transaction, tracked in a `schema_version` table. That
   is about 30 lines of our own code instead of a migration library.
