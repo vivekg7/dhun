@@ -49,9 +49,12 @@ and anything undecided is under [Open questions](#open-questions).
   directly; Jellyfin is not involved in music.
 - **A Subsonic-compatible API comes after v1**, so existing apps (Symfonium,
   Feishin, …) can also connect. Our own API is the primary one.
-- **Reached over Tailscale.** Nothing needs to be exposed publicly.
-- **Deployed with Docker Compose** on the NAS: one container, one read-write
-  mount of the `Music` folder (`MEDIA_PATH`), used for everything —
+- **Reached on the home network, and over Tailscale away from home**, like
+  the NAS's other apps. Nothing is exposed publicly.
+- **Deployed with Docker Compose** on the NAS, like the owner's other apps:
+  one project folder in the `docker` share holds the compose file and all of
+  Dhun's own data. **The collection must be safe from Dhun:** `Music` is
+  mounted read-only except `Playlists/`, and every playlist Dhun changes or deletes is kept as a copy —
   [plans/003](plans/003_deployment.md).
 - **Server is the source of truth, per user.** Playlists (as `.m3u8` files),
   favorites, queues and play counts live on the server, separately for each
@@ -77,7 +80,7 @@ and anything undecided is under [Open questions](#open-questions).
   - There will only ever be 3–4 users, so this stays simple: no sharing
     permissions, no generic multi-tenant layout.
 - Queues, favorites, play counts and hand-off state are per user and private,
-  stored in Dhun's own data folder (`Music/_dhun/`).
+  stored in Dhun's own data folder (outside `Music`).
 - **Uploads:** each user can upload their own local collection to the NAS.
   Uploads go to a **per-user staging area**, separate from the main
   collection, until the admin reviews them (quality check, deduplication) and
@@ -93,8 +96,8 @@ and anything undecided is under [Open questions](#open-questions).
 - **Nothing is deleted outright.** Most changes are moves or upgrades. A
   replaced or removed file goes to `_trash/`, every action is logged in
   `_meta/`, and emptying the trash is a separate, explicit admin action.
-- Outside the admin panel, the app writes only `.m3u8` playlists and its own
-  `_dhun/` folder. Songs are streamed and downloaded as **original files**.
+- Outside the admin panel, the app writes only `.m3u8` playlists (keeping a
+  copy of each before changing it) and its own data folder. Songs are streamed and downloaded as **original files**.
   No transcoding is needed, so the NAS having no GPU doesn't matter.
 
 ### Cross-device playback
@@ -181,7 +184,8 @@ Proposed. Awaiting the owner's confirmation.
 
 **Android**
 
-- Connect to the server over its Tailscale address and sign in.
+- Connect to the server (its home address, or its Tailscale address away)
+  and sign in.
 - Browse **Folders** (the real NAS folder tree), Albums, Artists, Genres and
   Playlists. Search by title, album or artist.
 - **Multiple queues.** Playing from any list starts a new queue instead of

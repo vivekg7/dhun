@@ -205,7 +205,7 @@ func (s *Server) art(w http.ResponseWriter, r *http.Request, _ session) {
 		return
 	}
 	size, _ := strconv.Atoi(r.URL.Query().Get("size"))
-	size = min(max(size, 0), 2048)
+	size = artSize(size)
 	id := r.PathValue("id")
 	etag := fmt.Sprintf(`"%s-%d-%d"`, id, version, size)
 	w.Header().Set("ETag", etag)
@@ -215,9 +215,10 @@ func (s *Server) art(w http.ResponseWriter, r *http.Request, _ session) {
 		return
 	}
 
-	cache := filepath.Join(s.DataDir, "cache", "art", fmt.Sprintf("%s-%d-%d", id, version, size))
+	cacheDir := filepath.Join(s.DataDir, "cache", "art")
+	cache := filepath.Join(cacheDir, fmt.Sprintf("%s-%d-%d", id, version, size))
 	if data, err := os.ReadFile(cache); err == nil {
-		w.Header().Set("Content-Type", sniff(data))
+		w.Header().Set("Content-Type", library.SniffImage(data))
 		w.Write(data)
 		return
 	}
@@ -230,14 +231,47 @@ func (s *Server) art(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, err)
 		return
 	}
-	if os.MkdirAll(filepath.Dir(cache), 0o755) == nil {
-		os.WriteFile(cache, data, 0o644) // best effort; a miss just recomputes
-	}
+	cacheArt(cacheDir, cache, id, version, data)
 	w.Header().Set("Content-Type", mime)
 	w.Write(data)
 }
 
-func sniff(b []byte) string { return http.DetectContentType(b[:min(len(b), 512)]) }
+// artSize rounds a requested size up to one of a few, so the cache holds at
+// most four scaled copies per cover. 0 means the original.
+func artSize(n int) int {
+	for _, s := range []int{128, 256, 512, 1024} {
+		if n > 0 && n <= s {
+			return s
+		}
+	}
+	return 0
+}
+
+// cacheArt stores data best effort (a miss just recomputes): atomically, so a
+// crash never leaves a truncated image to be served, and replacing the
+// copies of the song's older versions.
+func cacheArt(dir, file, id string, version int64, data []byte) {
+	if os.MkdirAll(dir, 0o755) != nil {
+		return
+	}
+	old, _ := filepath.Glob(filepath.Join(dir, id+"-*"))
+	for _, f := range old {
+		if !strings.HasPrefix(filepath.Base(f), fmt.Sprintf("%s-%d-", id, version)) {
+			os.Remove(f)
+		}
+	}
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return
+	}
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil && cerr == nil {
+		err = os.Rename(tmp.Name(), file)
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+	}
+}
 
 func (s *Server) lyrics(w http.ResponseWriter, r *http.Request, _ session) {
 	f, _, err := s.songFile(r)

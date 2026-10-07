@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,8 +78,12 @@ func (s *Server) pushSync(w http.ResponseWriter, r *http.Request, sess session) 
 		s.fail(w, r, err)
 		return
 	}
-	results := make([]opResult, 0, len(req.Ops))
-	for _, o := range req.Ops {
+	// A batch is applied up to maxOpsPerPush; the rest get no result, stay in
+	// the client's outbox and go with its next sync. That bounds one request's
+	// work without making a long offline trip unsendable.
+	ops := req.Ops[:min(len(req.Ops), maxOpsPerPush)]
+	results := make([]opResult, 0, len(ops))
+	for _, o := range ops {
 		res, err := s.applyOne(r.Context(), sess, o)
 		if err != nil {
 			s.fail(w, r, err) // a database failure: the client retries the batch
@@ -128,8 +131,11 @@ func (s *Server) applyOne(ctx context.Context, sess session, o op) (opResult, er
 	}
 
 	a := &applier{s: s, tx: tx, ctx: ctx, sess: sess, now: store.Now()}
+	// The client's time orders its edits against other devices'. A phone
+	// whose clock runs ahead would otherwise win every conflict until real
+	// time caught up, so a time in the future counts as now.
 	at := time.Now()
-	if t, err := time.Parse(time.RFC3339Nano, o.At); err == nil {
+	if t, err := time.Parse(time.RFC3339Nano, o.At); err == nil && t.Before(at) {
 		at = t
 	}
 	a.at = at.UTC().Format(opTime)
@@ -202,22 +208,30 @@ func (a *applier) apply(o op) error {
 	return rejected("unknown operation type %q", o.Type)
 }
 
+const (
+	maxOpsPerPush  = 500
+	maxSongsPerOp  = 20000 // a queue of the whole library, with room to grow
+	songsPerLookup = 500   // well under SQLite's limit on query parameters
+)
+
 func (a *applier) songsExist(ids []int64) error {
-	if len(ids) == 0 {
-		return nil
+	if len(ids) > maxSongsPerOp {
+		return rejected("more than %d songs in one operation", maxSongsPerOp)
 	}
 	uniq := slices.Compact(slices.Sorted(slices.Values(ids)))
-	q := `SELECT count(*) FROM songs WHERE id IN (?` + strings.Repeat(",?", len(uniq)-1) + `)`
-	args := make([]any, len(uniq))
-	for i, id := range uniq {
-		args[i] = id
-	}
-	var n int
-	if err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&n); err != nil {
-		return err
-	}
-	if n != len(uniq) {
-		return rejected("unknown song id")
+	for chunk := range slices.Chunk(uniq, songsPerLookup) {
+		q := `SELECT count(*) FROM songs WHERE id IN (?` + strings.Repeat(",?", len(chunk)-1) + `)`
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		var n int
+		if err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&n); err != nil {
+			return err
+		}
+		if n != len(chunk) {
+			return rejected("unknown song id")
+		}
 	}
 	return nil
 }
@@ -528,7 +542,20 @@ func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
 	if !(p.Owner.Valid && p.Owner.Int64 == a.sess.UserID) && !(!p.Owner.Valid && a.sess.Admin) {
 		return nil, rejected("playlist %s is not yours to edit", ref)
 	}
-	rows, err := a.tx.QueryContext(a.ctx, `SELECT COALESCE(i.song_id, 0), i.raw_path, i.title, i.duration_s,
+	// The file is the truth: pick up changes made to it outside Dhun first.
+	err = library.RefreshPlaylist(a.ctx, a.tx, a.s.Root, p.Path, p.ID, p.Owner, func() (int64, error) {
+		return store.NextLibraryVersion(a.ctx, a.tx)
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, rejected("playlist %s was removed from the Playlists folder", ref)
+	}
+	if err == nil { // the file may also have been renamed inside (#PLAYLIST:)
+		err = a.tx.QueryRowContext(a.ctx, `SELECT name FROM playlists WHERE id = ?`, p.ID).Scan(&p.Name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := a.tx.QueryContext(a.ctx, `SELECT COALESCE(i.song_id, 0), i.raw_path, i.title, i.duration_s, i.lines_before,
 		COALESCE(s.path, ''), COALESCE(s.title, ''), COALESCE(s.artist, ''), COALESCE(s.duration_ms, 0)
 		FROM playlist_items i LEFT JOIN songs s ON s.id = i.song_id WHERE i.playlist_id = ? ORDER BY i.pos`, p.ID)
 	if err != nil {
@@ -537,14 +564,20 @@ func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var id, durMS int64
-		var raw, title, sPath, sTitle, sArtist string
+		var raw, title, before, sPath, sTitle, sArtist string
 		var dur int
-		if err := rows.Scan(&id, &raw, &title, &dur, &sPath, &sTitle, &sArtist, &durMS); err != nil {
+		if err := rows.Scan(&id, &raw, &title, &dur, &before, &sPath, &sTitle, &sArtist, &durMS); err != nil {
 			return nil, err
 		}
+		// An edit changes only what it is about: every other entry is written
+		// back exactly as it was in the file, its path rewritten only if the
+		// song has moved since. Only new entries get an #EXTINF from the tags.
 		e := library.WriteEntry{Raw: raw, Title: title, DurationS: dur}
-		if id != 0 {
-			e = songEntry(sPath, sTitle, sArtist, durMS)
+		if id != 0 && library.Resolve(p.Path, raw) != library.PathKey(sPath) {
+			e.SongPath = sPath
+		}
+		if before != "" {
+			e.Before = strings.Split(before, "\n")
 		}
 		p.entries = append(p.entries, e)
 		p.songIDs = append(p.songIDs, id)
@@ -594,7 +627,7 @@ func (a *applier) savePlaylist(p *playlistRow, rel string) error {
 	if err != nil {
 		return err
 	}
-	_, err = library.SavePlaylist(a.ctx, a.tx, a.s.Root, rel, p.ID, p.Owner, p.Name, p.entries, v)
+	_, err = library.SavePlaylist(a.ctx, a.tx, a.s.Root, a.s.DataDir, rel, p.ID, p.Owner, p.Name, p.entries, v)
 	return err
 }
 
@@ -622,7 +655,7 @@ func (a *applier) playlistCreate(o op) error {
 	if err != nil {
 		return err
 	}
-	id, err := library.SavePlaylist(a.ctx, a.tx, a.s.Root, rel, 0, p.Owner, p.Name, p.entries, v)
+	id, err := library.SavePlaylist(a.ctx, a.tx, a.s.Root, a.s.DataDir, rel, 0, p.Owner, p.Name, p.entries, v)
 	if err != nil {
 		return err
 	}
@@ -638,8 +671,8 @@ func (a *applier) playlistEdit(o op) error {
 	rel := p.Path
 	switch o.Type {
 	case "playlist.delete":
-		// Moved to _trash/, never deleted outright (plan 004).
-		if err := library.TrashPlaylist(a.s.Root, p.Path, time.Now()); err != nil {
+		// Copied to the data folder first, never deleted outright.
+		if err := library.TrashPlaylist(a.s.Root, a.s.DataDir, p.Path, time.Now()); err != nil {
 			return err
 		}
 		v, err := store.NextLibraryVersion(a.ctx, a.tx)
@@ -659,7 +692,7 @@ func (a *applier) playlistEdit(o op) error {
 		if rel, err = library.PlaylistRel(a.s.Root, path.Dir(p.Path), name, p.Path); err != nil {
 			return rejected("%v", err)
 		}
-		if err := renameFile(a.s.Root, p.Path, rel); err != nil {
+		if err := library.RenamePlaylist(a.s.Root, a.s.DataDir, p.Path, rel, time.Now()); err != nil {
 			return err
 		}
 		p.Name = name
@@ -706,13 +739,6 @@ func (a *applier) playlistEdit(o op) error {
 		}
 	}
 	return a.savePlaylist(p, rel)
-}
-
-func renameFile(root, from, to string) error {
-	if from == to {
-		return nil
-	}
-	return os.Rename(filepath.Join(root, filepath.FromSlash(from)), filepath.Join(root, filepath.FromSlash(to)))
 }
 
 // ---- pull ----

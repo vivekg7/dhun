@@ -63,14 +63,19 @@ type seenFile struct {
 	err      error
 }
 
+// synologyDirs are Synology's own folders: thumbnails, the recycle bin, and
+// snapshots, which would otherwise add a full copy of the library for every
+// snapshot. Exact names only: an album may well be called "#1. Deer Hunter".
+var synologyDirs = map[string]bool{"@eaDir": true, "@tmp": true, "#recycle": true, "#snapshot": true}
+
 // skipDir reports whether a directory is outside the collection: the
-// curation workflow's top-level _inbox/_meta/_trash and Dhun's own _dhun
-// (plan 004), hidden folders, and Synology's @eaDir / #recycle.
+// curation workflow's top-level _inbox/_meta/_trash (plan 004), hidden
+// folders, and Synology's system folders.
 func skipDir(rel, name string) bool {
 	if !strings.Contains(rel, "/") && strings.HasPrefix(name, "_") {
 		return true
 	}
-	return strings.HasPrefix(name, ".") || name == "@eaDir" || name == "#recycle"
+	return strings.HasPrefix(name, ".") || synologyDirs[name]
 }
 
 // coverNames are checked in order for an album's folder art.
@@ -91,6 +96,18 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 	var files []*seenFile
 	if err := s.walk(ctx, "", known, &files); err != nil {
 		return st, err
+	}
+	// A mistyped or unmounted path gives Docker an empty folder. Marking the
+	// whole collection missing would be undone by the next good scan, but the
+	// apps would see an empty library meanwhile; refuse instead.
+	present := 0
+	for _, r := range known {
+		if !r.missing {
+			present++
+		}
+	}
+	if len(files) == 0 && present > 0 {
+		return st, fmt.Errorf("no audio files under %s, but %d songs are known: is the Music folder mounted? Nothing was changed", s.Root, present)
 	}
 
 	seen := make(map[string]bool, len(files))
@@ -288,10 +305,7 @@ func readAll(ctx context.Context, files []*seenFile) {
 		go func() {
 			defer wg.Done()
 			for f := range work {
-				if f.hash, f.err = hashHex(f.abs, f.size); f.err != nil {
-					continue
-				}
-				f.tags, f.err = readTags(f.abs, f.rel)
+				readOne(f)
 			}
 		}()
 	}
@@ -303,6 +317,20 @@ func readAll(ctx context.Context, files []*seenFile) {
 	}
 	close(work)
 	wg.Wait()
+}
+
+// readOne hashes and tags one file. A panic in the tag reader (a malformed
+// file can trip go-taglib's Go side) fails that file, not the whole server.
+func readOne(f *seenFile) {
+	defer func() {
+		if r := recover(); r != nil {
+			f.err = fmt.Errorf("tag reader panicked: %v", r)
+		}
+	}()
+	if f.hash, f.err = hashHex(f.abs, f.size); f.err != nil {
+		return
+	}
+	f.tags, f.err = readTags(f.abs, f.rel)
 }
 
 func hashHex(abs string, size int64) (string, error) {

@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // PlaylistsDir holds the .m3u8 files: shared ones at the top level, each
@@ -17,19 +20,22 @@ const PlaylistsDir = "Playlists"
 
 // Entry is one song line of an .m3u8 playlist.
 type Entry struct {
-	Path      string // as written in the file, relative to the playlist's folder
-	Title     string // from #EXTINF, may be empty
-	DurationS int    // from #EXTINF, -1 if absent
+	Path      string   // as written in the file, relative to the playlist's folder
+	Title     string   // from #EXTINF, may be empty
+	DurationS int      // from #EXTINF, -1 if absent
+	Before    []string // other # lines between the previous entry and this one
 }
 
 // Playlist is a parsed .m3u8 file.
 type Playlist struct {
 	Name    string // #PLAYLIST: header, else the file name
 	Entries []Entry
+	Trailer []string // # lines after the last entry
 }
 
-// ParsePlaylist reads an .m3u/.m3u8 file. Unknown # lines are ignored here;
-// the writer preserves them when it edits a file.
+// ParsePlaylist reads an .m3u/.m3u8 file. Other # lines before the first
+// entry are the header, which the writer re-reads from the file; those
+// between entries travel with the entry that follows them.
 func ParsePlaylist(abs string) (Playlist, error) {
 	f, err := os.Open(abs)
 	if err != nil {
@@ -38,6 +44,7 @@ func ParsePlaylist(abs string) (Playlist, error) {
 	defer f.Close()
 	p := Playlist{Name: strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))}
 	pending := Entry{DurationS: -1}
+	started := false // past the header
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for first := true; sc.Scan(); first = false {
@@ -52,23 +59,36 @@ func ParsePlaylist(abs string) (Playlist, error) {
 				p.Name = name
 			}
 		case strings.HasPrefix(line, "#EXTINF:"):
+			started = true
 			dur, title, _ := strings.Cut(strings.TrimPrefix(line, "#EXTINF:"), ",")
 			if d, err := strconv.Atoi(strings.TrimSpace(dur)); err == nil {
 				pending.DurationS = d
 			}
 			pending.Title = strings.TrimSpace(title)
+		case line == "#EXTM3U":
 		case strings.HasPrefix(line, "#"):
+			if started {
+				pending.Before = append(pending.Before, line)
+			}
 		default:
+			started = true
 			pending.Path = line
 			p.Entries = append(p.Entries, pending)
 			pending = Entry{DurationS: -1}
 		}
 	}
+	p.Trailer = pending.Before
 	return p, sc.Err()
 }
 
-// resolve turns an entry's path into a media-root-relative song path.
-func resolve(playlistRel, entry string) string {
+// PathKey is how song paths are compared: in Unicode NFC. A file copied from
+// a Mac is often named in decomposed form (é as e + combining accent) while a
+// playlist names it composed; both are the same file to every player.
+func PathKey(p string) string { return norm.NFC.String(p) }
+
+// Resolve turns an entry's path into a media-root-relative song path, as a
+// PathKey.
+func Resolve(playlistRel, entry string) string {
 	entry = strings.ReplaceAll(entry, `\`, "/")
 	if path.IsAbs(entry) {
 		return "" // absolute paths are from another machine; they cannot match
@@ -77,7 +97,7 @@ func resolve(playlistRel, entry string) string {
 	if p == ".." || strings.HasPrefix(p, "../") {
 		return ""
 	}
-	return p
+	return PathKey(p)
 }
 
 // indexPlaylists re-reads every playlist file whose size or mtime changed,
@@ -133,9 +153,19 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 			srows.Close()
 			return 0, err
 		}
-		songIDs[p] = id
+		songIDs[PathKey(p)] = id
 	}
 	srows.Close()
+
+	// As with songs: a missing Playlists folder is a mount problem, not every
+	// playlist deleted at once.
+	if _, err := os.Stat(filepath.Join(root, PlaylistsDir)); err != nil {
+		for _, k := range existing {
+			if !k.deleted {
+				return 0, fmt.Errorf("%s is missing but playlists are known: is it mounted? Nothing was changed", PlaylistsDir)
+			}
+		}
+	}
 
 	changed := 0
 	seen := map[string]bool{}
@@ -225,11 +255,12 @@ func storePlaylist(ctx context.Context, tx *sql.Tx, rel string, existingID int64
 	}
 	for i, e := range pl.Entries {
 		var songID any
-		if sid, ok := songAt(resolve(rel, e.Path)); ok {
+		if sid, ok := songAt(Resolve(rel, e.Path)); ok {
 			songID = sid
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO playlist_items (playlist_id, pos, song_id, raw_path, title, duration_s)
-			VALUES (?, ?, ?, ?, ?, ?)`, id, i, songID, e.Path, e.Title, e.DurationS); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO playlist_items (playlist_id, pos, song_id, raw_path, title, duration_s,
+			lines_before) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, i, songID, e.Path, e.Title, e.DurationS,
+			strings.Join(e.Before, "\n")); err != nil {
 			return 0, err
 		}
 	}
@@ -239,4 +270,60 @@ func storePlaylist(ctx context.Context, tx *sql.Tx, rel string, existingID int64
 func isPlaylist(name string) bool {
 	ext := strings.ToLower(path.Ext(name))
 	return ext == ".m3u8" || ext == ".m3u"
+}
+
+// RefreshPlaylist re-indexes the playlist file at rel if it changed on disk
+// since it was indexed: someone edited it over SMB, or another player saved
+// it. An edit through Dhun rebuilds the file from the index, so without this
+// it would silently undo those changes until the next scan. next is called
+// for a library version only when something changed.
+func RefreshPlaylist(ctx context.Context, tx *sql.Tx, root, rel string, id int64, owner sql.NullInt64,
+	next func() (int64, error)) error {
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Stat(abs)
+	if err != nil {
+		return err
+	}
+	var size, mtimeNS int64
+	if err := tx.QueryRowContext(ctx, `SELECT size, mtime_ns FROM playlists WHERE id = ?`, id).Scan(&size, &mtimeNS); err != nil {
+		return err
+	}
+	if size == info.Size() && mtimeNS == info.ModTime().UnixNano() {
+		return nil
+	}
+	pl, err := ParsePlaylist(abs)
+	if err != nil {
+		return err
+	}
+	version, err := next()
+	if err != nil {
+		return err
+	}
+	_, err = storePlaylist(ctx, tx, rel, id, owner, pl, info, version, songAtTx(ctx, tx))
+	return err
+}
+
+// songAtTx looks songs up by PathKey. SQL cannot compare in NFC, so the
+// paths are loaded once, on the first lookup (7,000 rows: a few milliseconds).
+func songAtTx(ctx context.Context, tx *sql.Tx) func(string) (int64, bool) {
+	var ids map[string]int64
+	return func(p string) (int64, bool) {
+		if ids == nil {
+			ids = map[string]int64{}
+			rows, err := tx.QueryContext(ctx, `SELECT id, path FROM songs`)
+			if err != nil {
+				return 0, false
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var id int64
+				var sp string
+				if rows.Scan(&id, &sp) == nil {
+					ids[PathKey(sp)] = id
+				}
+			}
+		}
+		id, ok := ids[p]
+		return id, ok
+	}
 }

@@ -14,13 +14,14 @@ The backend ([001](001_own_backend_in_go.md)) has to:
 - keep all of that attached to the right song when files are moved, upgraded
   or changed outside Dhun ([004](004_curation_workflow.md)).
 
-The state lives in `Music/_dhun/` ([003](003_deployment.md)).
+The state lives in Dhun's data folder, `DHUN_DATA` (`/data` in the
+container, the project folder on the NAS; [003](003_deployment.md)).
 
 ## Decisions
 
 ### Database: SQLite, pure-Go driver
 
-- **SQLite in WAL mode** at `_dhun/dhun.db`. A few users and a few thousand
+- **SQLite in WAL mode** at `data/dhun.db`. A few users and a few thousand
   rows need no database server.
 - **`modernc.org/sqlite`** (pure Go) rather than `mattn/go-sqlite3` (cgo).
   With no cgo the binary stays static and the Docker image can be `scratch`
@@ -28,7 +29,7 @@ The state lives in `Music/_dhun/` ([003](003_deployment.md)).
 - **Migrations are numbered `.sql` files** embedded in the binary and applied
   at startup inside a transaction, tracked in a `schema_version` table. That
   is about 30 lines of our own code instead of a migration library.
-- **Backups:** each night, `VACUUM INTO '_dhun/backups/dhun-YYYY-MM-DD.db'`,
+- **Backups:** each night, `VACUUM INTO 'data/backups/dhun-YYYY-MM-DD.db'`,
   keeping 14. Copying a live WAL database file is not guaranteed to be
   consistent, so whatever backs up `Music` (Hyper Backup, Snapshot
   Replication) picks up these snapshots instead.
@@ -95,14 +96,34 @@ fallback is `dhowden/tag` for tags plus our own duration parsing.
   `playlists` and `playlist_items`, resolving each relative path to a song ID.
   An entry that resolves to nothing is kept as its raw line and shown as
   unavailable; it is never dropped, because the file may be fixed later.
+- **Paths are compared in Unicode NFC.** Files copied from a Mac are often
+  named in decomposed form (é as `e` + a combining accent) while playlists
+  use the composed form; every player treats them as the same file. On the
+  owner's NAS, 982 of 7,045 file names are decomposed, and comparing raw
+  bytes left 118 of 911 playlist entries unresolved.
 - **When Dhun edits a playlist** (for example, a user adds a song), it
-  rewrites the file atomically (write a temporary file, then rename),
-  preserving the header and any comments, and writing `#EXTINF` lines and
-  relative paths in the existing style. Then it re-indexes the playlist.
+  changes only the lines the edit is about. Untouched entries are written
+  back byte for byte (a path is rewritten only if its song has moved); the
+  header, the lines after the last entry, and comments or directives between
+  entries (which travel with the entry below them) are kept; `#PLAYLIST:` is
+  added only for a name that differs from the file name. New entries get an
+  `#EXTINF` line and a relative path in the existing style.
+- **Before the edit, the file is re-read if it changed on disk** (size or
+  mtime differs from the index), so an edit over SMB since the last scan is
+  never undone.
+- **The write is atomic and durable:** a temporary file in the same folder,
+  fsynced, given the old file's permissions, then renamed over it, and the
+  folder fsynced. A power cut leaves the old file or the new one.
+- **Nothing a user made is lost:** before the first change of the day to a
+  playlist file (rewrite or rename), it is copied to
+  `data/playlists/history/<date>/`; a deleted playlist is copied to
+  `data/playlists/deleted/<date>/` and only then removed.
 - When an admin action moves a song, every playlist that contains it is
   rewritten in the same operation ([004](004_curation_workflow.md)).
-- Two edits to the same playlist are serialised by a per-file lock in the
-  server; with 3–4 users, contention is not a concern.
+- Two edits to the same playlist are serialised because each runs inside a
+  database transaction that takes SQLite's write lock when it begins
+  (`_txlock=immediate`), and the file is written within it; with 3–4 users,
+  contention is not a concern.
 
 ## Changed during implementation (2026-10-06)
 

@@ -30,7 +30,13 @@ func Open(path string) (*sql.DB, error) {
 		"?_pragma=journal_mode(WAL)" +
 		"&_pragma=foreign_keys(1)" +
 		"&_pragma=busy_timeout(10000)" +
-		"&_pragma=synchronous(NORMAL)"
+		"&_pragma=synchronous(NORMAL)" +
+		// Every transaction takes the write lock when it begins, so writers
+		// queue for up to busy_timeout. Deferred transactions that read first
+		// fail at once with SQLITE_BUSY when they try to write while another
+		// writer is active. It also serialises the playlist file writes that
+		// happen inside those transactions.
+		"&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

@@ -3,7 +3,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -28,15 +30,15 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	root := t.TempDir()
-	db, err := store.Open(filepath.Join(root, "_dhun", "dhun.db"))
+	root, data := t.TempDir(), t.TempDir()
+	db, err := store.Open(filepath.Join(data, "dhun.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sc := &library.Scanner{DB: db, Root: root, Log: log}
-	s := &Server{DB: db, Root: root, DataDir: filepath.Join(root, "_dhun"), Scanner: sc, Log: log}
+	s := &Server{DB: db, Root: root, DataDir: data, Scanner: sc, Log: log}
 	s.Rescan = func() { sc.Scan(context.Background()) }
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
@@ -92,6 +94,9 @@ func (e *env) do(method, path, token string, body any, want int, out any) *http.
 	req, _ := http.NewRequest(method, e.srv.URL+path, rd)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -229,13 +234,14 @@ func TestArtIsScaledAndLyricsPreferLrc(t *testing.T) {
 	e.scan()
 	tok := e.login("vivek")
 
-	resp := e.do("GET", "/api/v1/art/1?size=300", tok, nil, 200, nil)
+	// Sizes round up to a few steps, so the cache stays small.
+	resp := e.do("GET", "/api/v1/art/1?size=200", tok, nil, 200, nil)
 	got, _, err := image.Decode(resp.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := got.Bounds(); b.Dx() != 300 || b.Dy() != 240 {
-		t.Errorf("scaled art is %dx%d, want 300x240", b.Dx(), b.Dy())
+	if b := got.Bounds(); b.Dx() != 256 || b.Dy() != 204 {
+		t.Errorf("scaled art is %dx%d, want 256x204", b.Dx(), b.Dy())
 	}
 
 	var l library.Lyrics
@@ -305,4 +311,99 @@ func TestAdminManagesFamilyMembers(t *testing.T) {
 	e.do("GET", "/api/v1/me", priya, nil, 401, nil)
 	e.do("POST", "/api/v1/login", "", map[string]string{"username": "priya", "password": "battery staple", "device": "Phone"}, 200, nil)
 	e.do("PUT", "/api/v1/admin/users/999/password", admin, map[string]string{"password": "battery staple"}, 404, nil)
+}
+
+// The cookie exists for <audio> and <img>. Anything else that arrives with
+// only the cookie (another site, or another service on the same host) must
+// be refused, and so must a cross-site browser request or a non-JSON body.
+func TestCookieOnlyFetchesMedia(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", true)
+	e.file("Library/A/Hello.mp3", fixture(t, "a.mp3"))
+	e.scan()
+	resp := e.do("POST", "/api/v1/login", "", map[string]string{"username": "vivek", "password": "correct horse", "device": "Web"}, 200, nil)
+	var cookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == cookieName {
+			cookie = c
+		}
+	}
+	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("cookie = %+v", cookie)
+	}
+	send := func(method, path, contentType, origin string, body string) int {
+		req, _ := http.NewRequest(method, e.srv.URL+path, bytes.NewReader([]byte(body)))
+		req.AddCookie(cookie)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+			req.Header.Set("Sec-Fetch-Site", "cross-site")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.Header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s %s: no nosniff header", method, path)
+		}
+		return resp.StatusCode
+	}
+	if got := send("GET", "/api/v1/stream/1", "", "", ""); got != 200 {
+		t.Errorf("stream with the cookie: %d, want 200", got)
+	}
+	if got := send("GET", "/api/v1/library", "", "", ""); got != 401 {
+		t.Errorf("library with only the cookie: %d, want 401", got)
+	}
+	if got := send("POST", "/api/v1/admin/users", "application/json", "", `{"name":"x","password":"correct horse"}`); got != 401 {
+		t.Errorf("admin call with only the cookie: %d, want 401", got)
+	}
+	if got := send("POST", "/api/v1/login", "application/json", "http://evil.example", `{"username":"vivek","password":"correct horse","device":"x"}`); got != 403 {
+		t.Errorf("cross-site login: %d, want 403", got)
+	}
+	if got := send("POST", "/api/v1/login", "text/plain", "", `{"username":"vivek","password":"correct horse","device":"x"}`); got != 415 {
+		t.Errorf("text/plain body: %d, want 415", got)
+	}
+}
+
+func TestRepeatedWrongPasswordsWait(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", true)
+	bad := map[string]string{"username": "vivek", "password": "wrong", "device": "x"}
+	for range freeFailures {
+		e.do("POST", "/api/v1/login", "", bad, 401, nil)
+	}
+	e.do("POST", "/api/v1/login", "", bad, 401, nil) // starts the wait
+	resp := e.do("POST", "/api/v1/login", "", map[string]string{"username": "Vivek", "password": "correct horse", "device": "x"}, 429, nil)
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("429 without Retry-After")
+	}
+	// Another name is unaffected.
+	e.user("priya", false)
+	e.login("priya")
+}
+
+// A tiny file claiming a huge image must not be decoded (a gigabyte of
+// memory); it is served as it is.
+func TestHugeArtIsNotDecoded(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", false)
+	e.file("Library/A/Hello.mp3", fixture(t, "a.mp3"))
+	var buf bytes.Buffer
+	png.Encode(&buf, image.NewGray(image.Rect(0, 0, 1, 1)))
+	bomb := buf.Bytes()
+	bomb[16], bomb[17], bomb[20], bomb[21] = 0, 0, 0, 0                    // IHDR width and height
+	bomb[18], bomb[19], bomb[22], bomb[23] = 0x3e, 0x80, 0x3e, 0x80        // 16000 x 16000
+	binary.BigEndian.PutUint32(bomb[29:], crc32.ChecksumIEEE(bomb[12:29])) // a valid header
+	if c, _, err := image.DecodeConfig(bytes.NewReader(bomb)); err != nil || c.Width != 16000 {
+		t.Fatalf("test image header: %+v %v", c, err)
+	}
+	e.file("Library/A/cover.png", bomb)
+	e.scan()
+	resp := e.do("GET", "/api/v1/art/1?size=256", e.login("vivek"), nil, 200, nil)
+	if got, _ := io.ReadAll(resp.Body); !bytes.Equal(got, bomb) {
+		t.Error("the oversized cover was not served unchanged")
+	}
 }

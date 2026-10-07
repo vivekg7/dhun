@@ -10,8 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/argon2"
 
@@ -63,19 +66,32 @@ func checkPassword(encoded, password string) bool {
 // or four users, so there is no sign-up flow.
 func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bool) error {
 	name = strings.TrimSpace(name)
-	if name == "" || strings.ContainsAny(name, `/\:*?"<>|`) || strings.HasPrefix(name, ".") {
+	if name == "" || len(name) > 64 || strings.ContainsAny(name, `/\:*?"<>|`) || strings.ContainsFunc(name, unicode.IsControl) ||
+		strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || strings.HasPrefix(name, "#") || strings.HasPrefix(name, "@") {
 		// The name is also the user's Playlists/<name>/ folder.
 		return errBadRequest("user name must be non-empty and usable as a folder name")
 	}
 	if len(password) < 8 {
 		return errBadRequest("password must be at least 8 characters")
 	}
-	var exists bool
-	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE name = ?)`, name).Scan(&exists); err != nil {
+	// Compared in Go: SQLite's NOCASE folds ASCII only, and "Émile" and
+	// "émile" would otherwise share one Playlists/ folder.
+	rows, err := db.QueryContext(ctx, `SELECT name FROM users`)
+	if err != nil {
 		return err
 	}
-	if exists {
-		return &apiError{http.StatusConflict, "user_exists", fmt.Sprintf("a user named %q already exists", name)}
+	defer rows.Close()
+	for rows.Next() {
+		var other string
+		if err := rows.Scan(&other); err != nil {
+			return err
+		}
+		if strings.EqualFold(other, name) {
+			return &apiError{http.StatusConflict, "user_exists", fmt.Sprintf("a user named %q already exists", other)}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -142,13 +158,24 @@ func tokenHash(token string) []byte {
 	return h[:]
 }
 
-// authed wraps a handler that needs a signed-in device. Apps send
-// "Authorization: Bearer <token>"; the web client sends the same token as an
-// HttpOnly cookie, because <audio> cannot set headers (plan 006).
+// authed wraps a handler that needs a signed-in device, which sends
+// "Authorization: Bearer <token>".
 func (s *Server) authed(h func(http.ResponseWriter, *http.Request, session)) http.Handler {
+	return s.auth(h, false)
+}
+
+// media is authed for the GET routes a browser loads by URL (<audio>, <img>),
+// which cannot set headers: these also accept the token as the HttpOnly
+// cookie. Nowhere else does, so a request another site or another service on
+// the same host makes with the cookie can at most fetch a song (plan 006).
+func (s *Server) media(h func(http.ResponseWriter, *http.Request, session)) http.Handler {
+	return s.auth(h, true)
+}
+
+func (s *Server) auth(h func(http.ResponseWriter, *http.Request, session), cookie bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == "" || token == r.Header.Get("Authorization") {
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok && cookie {
 			if c, err := r.Cookie(cookieName); err == nil {
 				token = c.Value
 			}
@@ -195,6 +222,57 @@ type userJSON struct {
 	Admin bool   `json:"admin"`
 }
 
+// Login guards. Every password check costs 64 MiB for argon2, so at most two
+// run at once, whatever arrives. A name that keeps failing waits longer and
+// longer, and an unknown name costs the same time as a known one, so neither
+// guessing nor timing reveals much.
+var (
+	hashSlots = make(chan struct{}, 2)
+	dummyHash = sync.OnceValue(func() string { h, _ := HashPassword("not a password"); return h })
+)
+
+const (
+	freeFailures = 5                // per name, before any wait
+	maxLockout   = 15 * time.Minute // the longest wait after failures
+)
+
+type loginFailures struct {
+	mu    sync.Mutex
+	names map[string]failure
+}
+
+type failure struct {
+	count int
+	until time.Time
+}
+
+// wait returns how long name must wait before trying again.
+func (l *loginFailures) wait(name string) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return time.Until(l.names[name].until)
+}
+
+func (l *loginFailures) record(name string, ok bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if ok {
+		delete(l.names, name)
+		return
+	}
+	if l.names == nil || len(l.names) > 1000 { // bounded: random names cannot grow it
+		l.names = map[string]failure{}
+	}
+	f := l.names[name]
+	f.count++
+	if f.count > freeFailures {
+		// 1 s, 2 s, 4 s, … The shift is capped: past 2^33 s it would overflow
+		// into a negative wait, which would end the lockout.
+		f.until = time.Now().Add(min(time.Second<<min(f.count-freeFailures-1, 10), maxLockout))
+	}
+	l.names[name] = f
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -209,6 +287,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, errBadRequest("device name is required"))
 		return
 	}
+	name := strings.ToLower(strings.TrimSpace(req.Username))
+	if d := s.logins.wait(name); d > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(d.Seconds())+1))
+		s.fail(w, r, &apiError{http.StatusTooManyRequests, "too_many_attempts", "too many wrong passwords; try again later"})
+		return
+	}
 	var u userJSON
 	var hash string
 	err := s.DB.QueryRowContext(r.Context(), `SELECT id, name, is_admin, password_hash FROM users WHERE name = ?`,
@@ -217,7 +301,19 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if err != nil || !checkPassword(hash, req.Password) {
+	known := err == nil
+	if !known {
+		hash = dummyHash()
+	}
+	select {
+	case hashSlots <- struct{}{}:
+	case <-r.Context().Done():
+		return
+	}
+	ok := checkPassword(hash, req.Password) && known
+	<-hashSlots
+	s.logins.record(name, ok)
+	if !ok {
 		s.fail(w, r, &apiError{http.StatusUnauthorized, "bad_credentials", "wrong user name or password"})
 		return
 	}
@@ -236,7 +332,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: cookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Name: cookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		// Behind `tailscale serve` the browser speaks HTTPS; keep the cookie
+		// off plain HTTP then.
+		Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		MaxAge: 10 * 365 * 24 * 3600, // a device stays signed in until it is removed
 	})
 	writeJSON(w, r, map[string]any{"token": token, "deviceId": deviceID, "user": u})

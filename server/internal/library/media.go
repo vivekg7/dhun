@@ -30,6 +30,13 @@ type SongFile struct {
 
 func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
 
+// Decoding allocates width×height×4 bytes whatever the file size, so a
+// 70-byte PNG claiming 16000×16000 pixels would take a gigabyte. Larger
+// images are served unscaled, and two decodes at most run at once.
+const maxArtPixels = 40_000_000
+
+var decodeSlots = make(chan struct{}, 2)
+
 // Art returns the song's cover: embedded art first, then the folder's cover
 // file, the same order Musicolet uses. size > 0 scales the longest side down
 // to size pixels and re-encodes as JPEG; the original is never upscaled.
@@ -49,16 +56,21 @@ func Art(root string, f SongFile, size int) (data []byte, mimeType string, err e
 		return nil, "", err
 	}
 	if size <= 0 {
-		return data, sniffImage(data), nil
+		return data, SniffImage(data), nil
 	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width*cfg.Height > maxArtPixels || cfg.Width <= size && cfg.Height <= size {
+		// Undecodable (e.g. WebP), too large to decode safely, or small
+		// enough already: serve as-is.
+		return data, SniffImage(data), nil
+	}
+	decodeSlots <- struct{}{}
 	img, _, err := image.Decode(bytes.NewReader(data))
+	<-decodeSlots
 	if err != nil {
-		return data, sniffImage(data), nil // undecodable (e.g. WebP): serve as-is
+		return data, SniffImage(data), nil
 	}
 	b := img.Bounds()
-	if b.Dx() <= size && b.Dy() <= size {
-		return data, sniffImage(data), nil
-	}
 	w, h := size, b.Dy()*size/b.Dx()
 	if b.Dy() > b.Dx() {
 		w, h = b.Dx()*size/b.Dy(), size
@@ -72,7 +84,10 @@ func Art(root string, f SongFile, size int) (data []byte, mimeType string, err e
 	return buf.Bytes(), "image/jpeg", nil
 }
 
-func sniffImage(b []byte) string {
+// SniffImage names an image type from its first bytes. Anything that is not
+// PNG or WebP is called JPEG: art is only ever served as an image type, never
+// as something a browser would run (see the nosniff header in the API).
+func SniffImage(b []byte) string {
 	switch {
 	case bytes.HasPrefix(b, []byte("\x89PNG")):
 		return "image/png"

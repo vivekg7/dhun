@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,11 +20,13 @@ import (
 type Server struct {
 	DB      *sql.DB
 	Root    string // media root
-	DataDir string // Dhun's own folder (_dhun), for the art cache
+	DataDir string // Dhun's own state (DHUN_DATA): art cache, kept playlist copies
 	Scanner *library.Scanner
 	Log     *slog.Logger
 	// Rescan starts a scan in the background; set by main.
 	Rescan func()
+
+	logins loginFailures
 }
 
 type route struct {
@@ -44,9 +47,9 @@ func (s *Server) routes() []route {
 		{"DELETE /api/v1/devices/{id}", s.authed(s.deleteDevice)},
 
 		{"GET /api/v1/library", s.authed(s.library)},
-		{"GET /api/v1/stream/{id}", s.authed(s.stream)},
-		{"GET /api/v1/art/{id}", s.authed(s.art)},
-		{"GET /api/v1/lyrics/{id}", s.authed(s.lyrics)},
+		{"GET /api/v1/stream/{id}", s.media(s.stream)},
+		{"GET /api/v1/art/{id}", s.media(s.art)},
+		{"GET /api/v1/lyrics/{id}", s.media(s.lyrics)},
 
 		{"GET /api/v1/sync", s.authed(s.pullSync)},
 		{"POST /api/v1/sync", s.authed(s.pushSync)},
@@ -63,13 +66,26 @@ func (s *Server) routes() []route {
 	}
 }
 
-// Handler returns the routed API.
+// Handler returns the routed API, behind protections that apply everywhere:
+// browsers may not make state-changing requests from another origin (the
+// apps send no Origin and are unaffected), and responses are never sniffed
+// into something runnable, framed or given a referrer.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	for _, rt := range s.routes() {
 		mux.Handle(rt.pattern, rt.handler)
 	}
-	return mux
+	protected := http.NewCrossOriginProtection().Handler(mux)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox")
+		}
+		protected.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +142,11 @@ func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 }
 
 func readJSON(r *http.Request, v any) error {
+	// A JSON body only: a cross-site form cannot send this content type
+	// without a CORS preflight, which the server never grants.
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+		return &apiError{http.StatusUnsupportedMediaType, "bad_content_type", "send Content-Type: application/json"}
+	}
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {

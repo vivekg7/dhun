@@ -13,15 +13,21 @@ lives on a NAS.
 
 On the NAS (Synology Container Manager or any Docker host):
 
-1. Copy [`deploy/docker-compose.yml`](deploy/docker-compose.yml). Edit the
-   line marked `MEDIA_PATH` to point at your `Music` folder, and set
-   `DHUN_ADMIN_USER` and `DHUN_ADMIN_PASSWORD`: that account, the admin, is
-   created on first start. Dhun keeps its own data in `Music/_dhun/`.
-2. `docker compose up -d`. Once it is running, you can remove the admin
-   password from the file; it is never read again.
-3. Add each family member from the admin panel. Their playlists go in
+1. Create a project folder with a `data` folder in it, as your own user (on
+   Synology: `docker/dhun/data` in File Station).
+2. Copy [`deploy/docker-compose.yml`](deploy/docker-compose.yml) into the
+   project folder and edit the lines marked `EDIT`: your `Music` path (it is
+   mounted read-only, apart from `Playlists/`), your user ID, and the admin's
+   name and password. That account is created on first start.
+3. Start the project (Container Manager → Project → Create). The log should
+   say `scan done … failed=0`. Then delete the password line; it is never
+   read again.
+4. Open `http://<nas>:8585` at home, or the NAS's Tailscale address away.
+5. Add each family member from the admin panel. Their playlists go in
    `Music/Playlists/<name>/`.
-4. Reach it at `http://<nas>:8585` over Tailscale.
+
+Why it is set up this way, and what protects the collection:
+[`docs/plans/003_deployment.md`](docs/plans/003_deployment.md).
 
 Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 

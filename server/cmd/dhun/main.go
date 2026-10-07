@@ -8,6 +8,7 @@
 // image (docs/plans/003_deployment.md):
 //
 //	DHUN_MEDIA           media root, the mounted Music folder   (/media)
+//	DHUN_DATA            Dhun's own state, outside Music        (/data)
 //	DHUN_ADDR            listen address                        (:8585)
 //	DHUN_RESCAN          interval between automatic rescans    (1h)
 //	DHUN_ADMIN_USER      the admin, created on first start while there are
@@ -77,7 +78,23 @@ func run(log *slog.Logger, args []string) error {
 	if info, err := os.Stat(media); err != nil || !info.IsDir() {
 		return fmt.Errorf("media folder %s is not mounted (set DHUN_MEDIA)", media)
 	}
-	dataDir := filepath.Join(media, "_dhun")
+	// Dhun's own state lives outside Music, in the Docker project folder like
+	// every other container's (plan 003): the database, its backups, the art
+	// cache and the kept copies of changed playlists.
+	dataDir, err := filepath.Abs(env("DHUN_DATA", "/data"))
+	if err != nil {
+		return err
+	}
+	// The tag reader keeps its compiled WebAssembly in the temp folder. The
+	// container's file system is read-only, so that is a folder in the data
+	// folder, which also spares the compile on every restart.
+	if os.Getenv("TMPDIR") == "" {
+		tmp := filepath.Join(dataDir, "tmp")
+		if err := os.MkdirAll(tmp, 0o700); err != nil {
+			return fmt.Errorf("data folder %s is not writable (create it as your own user): %w", dataDir, err)
+		}
+		os.Setenv("TMPDIR", tmp)
+	}
 	db, err := store.Open(filepath.Join(dataDir, "dhun.db"))
 	if err != nil {
 		return err
@@ -144,6 +161,9 @@ func run(log *slog.Logger, args []string) error {
 			DB: db, Root: media, DataDir: dataDir, Scanner: scanner, Log: log, Rescan: rescan,
 		}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       time.Minute,     // request bodies are small (4 MiB at most)
+		IdleTimeout:       2 * time.Minute, // no WriteTimeout: a stream may take long
+		MaxHeaderBytes:    64 << 10,
 	}
 	go func() {
 		<-ctx.Done()

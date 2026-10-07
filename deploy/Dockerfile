@@ -13,7 +13,9 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 
 FROM scratch
 COPY --from=build /dhun /dhun
-ENV DHUN_MEDIA=/media DHUN_ADDR=:8585
+ENV DHUN_MEDIA=/media DHUN_DATA=/data DHUN_ADDR=:8585
+# Never root, even if the compose file forgets `user:` (nobody:nogroup).
+USER 65534:65534
 EXPOSE 8585
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD ["/dhun", "healthcheck"]
 ENTRYPOINT ["/dhun"]

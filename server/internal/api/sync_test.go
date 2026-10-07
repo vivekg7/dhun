@@ -152,7 +152,7 @@ func TestTwentyFirstQueueDropsTheLeastRecentlyUsed(t *testing.T) {
 // without fractions must compare correctly.
 func TestLaterChangeWins(t *testing.T) {
 	e, phone, mac := syncEnv(t, 2)
-	e.push(phone, 0, o("queue.create", map[string]any{"queue": "q1", "name": "Q", "songs": []int64{1, 2}}))
+	e.push(phone, 0, o("queue.create", map[string]any{"queue": "q1", "name": "Q", "songs": []int64{1, 2}, "at": "2026-10-06T08:00:00Z"}))
 	e.push(mac, 0, o("queue.set_current", map[string]any{"queue": "q1", "song": 2, "positionMs": 9000, "at": "2026-10-06T08:12:03.5Z"}))
 	e.push(phone, 0, o("queue.set_current", map[string]any{"queue": "q1", "song": 1, "positionMs": 100, "at": "2026-10-06T08:12:03Z"}))
 	if q := e.queue(phone, "q1"); q.CurrentSong != 2 || q.PositionMS != 9000 {
@@ -164,6 +164,13 @@ func TestLaterChangeWins(t *testing.T) {
 	r := e.push(phone, 0)
 	if len(r.Favorites) != 1 || r.Favorites[0].Deleted {
 		t.Errorf("favorites = %+v, want song 1 still a favorite", r.Favorites)
+	}
+
+	// A phone with its clock a year ahead must not win every later conflict.
+	e.push(phone, 0, o("queue.set_current", map[string]any{"queue": "q1", "song": 1, "positionMs": 1, "at": "2099-01-01T00:00:00Z"}))
+	e.push(mac, 0, o("queue.set_current", map[string]any{"queue": "q1", "song": 2, "positionMs": 2}))
+	if q := e.queue(phone, "q1"); q.CurrentSong != 2 {
+		t.Errorf("a clock in the future won: current = song %d, want song 2", q.CurrentSong)
 	}
 }
 
@@ -238,7 +245,17 @@ func TestPlaylistOpsRewriteTheM3u8(t *testing.T) {
 		t.Error("another user edited a private playlist")
 	}
 
-	// Remove the second copy of song 1, rename, then delete (to _trash).
+	// The file as it was before today's edits is kept: here, the very first
+	// version (one entry), not any later one.
+	kept, _ := filepath.Glob(filepath.Join(e.s.DataDir, "playlists/history/*/vivek/Road- Trip.m3u8"))
+	if len(kept) != 1 {
+		t.Fatalf("kept copies = %v, want one", kept)
+	}
+	if b, _ := os.ReadFile(kept[0]); strings.Count(string(b), "#EXTINF") != 2 {
+		t.Errorf("kept copy is not the day's original:\n%s", b)
+	}
+
+	// Remove the second copy of song 1, rename, then delete.
 	e.push(phone, 0,
 		o("playlist.remove", map[string]any{"playlist": itoa(id), "song": 1, "occurrence": 1}),
 		o("playlist.rename", map[string]any{"playlist": itoa(id), "name": "Goa"}))
@@ -246,13 +263,71 @@ func TestPlaylistOpsRewriteTheM3u8(t *testing.T) {
 		t.Errorf("renamed file: %v", err)
 	}
 	e.push(phone, 0, o("playlist.delete", map[string]any{"playlist": itoa(id)}))
-	trashed, _ := filepath.Glob(filepath.Join(e.s.Root, "_trash/playlists-*/vivek/Goa.m3u8"))
+	if _, err := os.Stat(filepath.Join(e.s.Root, "Playlists/vivek/Goa.m3u8")); !os.IsNotExist(err) {
+		t.Errorf("deleted playlist still in Playlists/: %v", err)
+	}
+	trashed, _ := filepath.Glob(filepath.Join(e.s.DataDir, "playlists/deleted/*/vivek/Goa.m3u8"))
 	if len(trashed) != 1 {
-		t.Error("a deleted playlist must be moved to _trash, not deleted")
+		t.Error("a deleted playlist must be kept in the data folder, not deleted")
 	}
 
 	// A rescan must not resurrect or duplicate anything Dhun wrote.
 	if st, err := e.s.Scanner.Scan(t.Context()); err != nil || st.Playlists != 0 {
 		t.Errorf("rescan after Dhun's own writes: %+v %v", st, err)
+	}
+}
+
+// An edit through Dhun must never undo what someone changed in the file over
+// SMB since the last scan, nor drop comments and directives between entries.
+func TestPlaylistEditKeepsOutsideChanges(t *testing.T) {
+	e, phone, _ := syncEnv(t, 3)
+	file := filepath.Join(e.s.Root, "Playlists", "Mix.m3u8")
+	write := func(s string) { e.file("Playlists/Mix.m3u8", []byte(s)) }
+	write("#EXTM3U\n# made by hand\n../Library/Artist/Album/01 - Song 1.m4a\n")
+	e.scan()
+	var lib libraryResp
+	e.do("GET", "/api/v1/library", phone, nil, 200, &lib)
+	id := lib.Playlists[0].ID
+
+	// Edited over SMB, and not rescanned yet.
+	write("#EXTM3U\n# made by hand\n../Library/Artist/Album/01 - Song 1.m4a\n" +
+		"#EXTGRP:Calm\n# keep me\n../Library/Artist/Album/02 - Song 2.opus\n# the end\n")
+	r := e.push(phone, 0, o("playlist.insert", map[string]any{"playlist": itoa(id), "songs": []int64{3}}))
+	if r.Results[0].Status != "applied" {
+		t.Fatalf("insert: %+v", r.Results[0])
+	}
+	b, _ := os.ReadFile(file)
+	got := string(b)
+	for _, want := range []string{"# made by hand", "#EXTGRP:Calm\n# keep me\n../Library/Artist/Album/02 - Song 2.opus",
+		"03 - Song 3.mp3\n# the end\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("file lost %q:\n%s", want, got)
+		}
+	}
+	// Untouched entries are byte-for-byte: no #EXTINF added to song 1 or
+	// rewritten from tags for song 2 (its file says "Song 2", its tags agree
+	// here, so check the shape: exactly one generated line, for song 3).
+	if !strings.Contains(got, "# made by hand\n../Library/Artist/Album/01 - Song 1.m4a\n") {
+		t.Errorf("song 1's entry was changed:\n%s", got)
+	}
+	if n := strings.Count(got, "#EXTINF"); n != 1 {
+		t.Errorf("%d #EXTINF lines, want only the new entry's:\n%s", n, got)
+	}
+	if n := strings.Count(got, ".m4a\n") + strings.Count(got, ".opus\n") + strings.Count(got, ".mp3\n"); n != 3 {
+		t.Errorf("%d entries, want 3:\n%s", n, got)
+	}
+}
+
+// A name is one line of the file: a newline in it must not add entries.
+func TestPlaylistNameCannotAddLines(t *testing.T) {
+	e, phone, _ := syncEnv(t, 1)
+	e.push(phone, 0, o("playlist.create", map[string]any{"ref": "x", "name": "Evil\n../../../secret.mp3", "songs": []int64{1}}))
+	files, _ := filepath.Glob(filepath.Join(e.s.Root, "Playlists/vivek/*.m3u8"))
+	if len(files) != 1 {
+		t.Fatalf("files = %v", files)
+	}
+	b, _ := os.ReadFile(files[0])
+	if strings.Count(string(b), "\n") != 4 || strings.Contains(string(b), "\n../../../secret") {
+		t.Errorf("name leaked into the file:\n%s", b)
 	}
 }

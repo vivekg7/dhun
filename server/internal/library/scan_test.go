@@ -70,14 +70,17 @@ func TestInitialScanReadsTagsAndSkipsNonCollectionFolders(t *testing.T) {
 	put("a.mp3", "Library/Adele/25 (2015)/1-01 - Hello.mp3")
 	put("b.m4a", "Library/A.R. Rahman/Jab Tak Hai Jaan (2012)/1-09 - Saans.m4a")
 	put("c.opus", "Collection/Motivation/1-02 - Do Not Go Gentle.opus")
-	put("a.mp3", "_inbox/jiosaavn-2026-10-05/x.mp3")     // curation inbox
-	put("a.mp3", "_trash/dedupe-2026-10-06/y.mp3")       // curation trash
-	put("a.mp3", "Library/Adele/@eaDir/Hello.mp3/z.mp3") // Synology thumbnails
-	put("a.mp3", "Library/Adele/.hidden/w.mp3")          // hidden folder
+	put("a.mp3", "_inbox/jiosaavn-2026-10-05/x.mp3")             // curation inbox
+	put("a.mp3", "_trash/dedupe-2026-10-06/y.mp3")               // curation trash
+	put("a.mp3", "Library/Adele/@eaDir/Hello.mp3/z.mp3")         // Synology thumbnails
+	put("a.mp3", "Library/Adele/.hidden/w.mp3")                  // hidden folder
+	put("a.mp3", "#snapshot/GMT+05-2026.10.06/Library/v.mp3")    // Synology snapshots
+	put("a.mp3", "#recycle/Library/u.mp3")                       // Synology recycle bin
+	put("a.mp3", "Library/Various/#1. Deer Hunter (1991)/t.mp3") // an album, not a system folder
 
 	st := scan(t, s)
-	if st.Added != 3 {
-		t.Fatalf("added %d songs, want 3 (%s)", st.Added, st)
+	if st.Added != 4 {
+		t.Fatalf("added %d songs, want 4 (%s)", st.Added, st)
 	}
 
 	var title, artists, genres string
@@ -106,7 +109,7 @@ func TestInitialScanReadsTagsAndSkipsNonCollectionFolders(t *testing.T) {
 		t.Errorf("fallback title %q", title)
 	}
 
-	if st := scan(t, s); st.Unchanged != 3 || st.Added+st.Updated+st.Moved+st.Missing != 0 {
+	if st := scan(t, s); st.Unchanged != 4 || st.Added+st.Updated+st.Moved+st.Missing != 0 {
 		t.Errorf("rescan of an unchanged tree: %s", st)
 	}
 }
@@ -140,6 +143,7 @@ func TestMoveKeepsSongID(t *testing.T) {
 func TestMissingSongComesBackWithItsID(t *testing.T) {
 	s, put := setup(t)
 	put("b.m4a", "Library/A/Saans.m4a")
+	put("a.mp3", "Library/B/Hello.mp3") // so the library is not left empty
 	scan(t, s)
 	id := songID(t, s.DB, "Library/A/Saans.m4a")
 
@@ -246,5 +250,46 @@ func TestPlaylistsResolveOwnershipAndTombstones(t *testing.T) {
 	s.DB.QueryRow(`SELECT deleted FROM playlists WHERE path = 'Playlists/vivek/Drive.m3u8'`).Scan(&deleted)
 	if !deleted {
 		t.Error("a removed playlist file must leave a tombstone so clients drop it")
+	}
+}
+
+// A mistyped or unmounted Music path is an empty folder to the container.
+// That must not mark the collection missing or tombstone the playlists.
+func TestEmptyMountChangesNothing(t *testing.T) {
+	s, put := setup(t)
+	put("a.mp3", "Library/A/Hello.mp3")
+	writeFile(t, filepath.Join(s.Root, "Playlists", "Mix.m3u8"), []byte("../Library/A/Hello.mp3\n"))
+	scan(t, s)
+
+	os.RemoveAll(filepath.Join(s.Root, "Library"))
+	if _, err := s.Scan(t.Context()); err == nil {
+		t.Error("scanned an empty media folder without complaint")
+	}
+	put("a.mp3", "Library/A/Hello.mp3")
+	os.RemoveAll(filepath.Join(s.Root, "Playlists"))
+	if _, err := s.Scan(t.Context()); err == nil {
+		t.Error("scanned without Playlists/ without complaint")
+	}
+	var missing, deleted int
+	s.DB.QueryRow(`SELECT count(*) FROM songs WHERE missing_since IS NOT NULL`).Scan(&missing)
+	s.DB.QueryRow(`SELECT count(*) FROM playlists WHERE deleted = 1`).Scan(&deleted)
+	if missing != 0 || deleted != 0 {
+		t.Errorf("%d songs marked missing, %d playlists deleted; want none", missing, deleted)
+	}
+}
+
+// Files copied from a Mac are often named in decomposed Unicode (é as e plus
+// a combining accent) while playlists use the composed form. On the owner's
+// NAS this left 118 of 911 entries unresolved before paths were compared in
+// NFC.
+func TestPlaylistMatchesDecomposedFileNames(t *testing.T) {
+	s, put := setup(t)
+	put("a.mp3", "Library/Beyonce\u0301/Halo.mp3")                                                             // NFD on disk
+	writeFile(t, filepath.Join(s.Root, "Playlists", "Mix.m3u8"), []byte("../Library/Beyonc\u00e9/Halo.mp3\n")) // NFC
+	scan(t, s)
+	var resolved int
+	s.DB.QueryRow(`SELECT count(*) FROM playlist_items WHERE song_id IS NOT NULL`).Scan(&resolved)
+	if resolved != 1 {
+		t.Error("a composed playlist entry did not match the decomposed file name")
 	}
 }

@@ -1,25 +1,44 @@
 # Dhun on a Synology NAS (Container Manager) or any Docker host.
-# Edit the line marked MEDIA_PATH and the admin's name and password, then:
-# docker compose up -d
 # Why it looks like this: docs/plans/003_deployment.md
+#
+# 1. Create the project folder and its data folder as your own user, e.g. in
+#    File Station: docker/dhun/data. (If Docker creates `data` it is owned
+#    by root and Dhun cannot write to it.)
+# 2. Put this file in docker/dhun/ and edit the lines marked EDIT.
+# 3. Create the project in Container Manager from that folder.
 
 services:
   dhun:
     container_name: dhun
-    image: ghcr.io/vivekg7/dhun:latest
-    # A user that can read and write your Music folder. On Synology the first
-    # user is usually 1026 and the "users" group is 100; check with `id <you>`.
+    image: ghcr.io/vivekg7/dhun:server-v0.1.1 # a fixed release: upgrade on purpose
+    # Your DSM user and the "users" group; check with `id <you>` (EDIT if
+    # different). Files Dhun writes stay yours and editable over SMB.
     user: "1026:100"
     ports:
+      # http://<nas>:8585 at home, and over Tailscale away. For HTTPS, see
+      # `tailscale serve` in docs/plans/003_deployment.md.
       - "8585:8585"
     volumes:
-      - /volume1/homes/you/Media/Music:/media # MEDIA_PATH: your Music folder
+      # Dhun's own state: database, backups, art cache, kept playlist copies.
+      - ./data:/data
+      # Your Music folder, READ-ONLY: Dhun cannot change any song (EDIT path).
+      - /volume1/homes/you/Media/Music:/media:ro
+      # ...except Playlists/, which Dhun edits (EDIT path, same folder).
+      - /volume1/homes/you/Media/Music/Playlists:/media/Playlists
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Kolkata
       # The admin, created on first start. Read only while there are no users,
-      # so you can delete the password once Dhun is running. Everyone else is
-      # added from the admin panel.
-      - DHUN_ADMIN_USER=vivek
+      # so delete the password line once Dhun is running (EDIT both).
+      - DHUN_ADMIN_USER=you
       - DHUN_ADMIN_PASSWORD=change-me-now
+    # Hardening: nothing in the container can be modified, gain privileges
+    # or use Linux capabilities, and it cannot take more than 1 GB of memory.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 200
     restart: unless-stopped

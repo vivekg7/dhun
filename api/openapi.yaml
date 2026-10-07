@@ -9,11 +9,15 @@ info:
 
     Design and merge rules: docs/plans/006_api_and_sync.md.
 
-    - Plain HTTP over Tailscale; JSON bodies; responses are gzipped when the
-      client sends `Accept-Encoding: gzip`.
-    - Apps authenticate with `Authorization: Bearer <token>` from
-      `POST /api/v1/login`; the web client gets the same token as the
-      `dhun_token` HttpOnly cookie.
+    - Plain HTTP on the home network and over Tailscale; HTTPS optionally
+      through `tailscale serve`. Request bodies must be `Content-Type: application/json`
+      (else 415); responses are gzipped when the client sends
+      `Accept-Encoding: gzip`.
+    - Clients authenticate with `Authorization: Bearer <token>` from
+      `POST /api/v1/login`. The `dhun_token` HttpOnly cookie that login also
+      sets is accepted only by GET /stream, /art and /lyrics, for `<audio>`
+      and `<img>` in the web client.
+    - Browsers' cross-origin state-changing requests are refused (403).
     - Errors are `{"code": "...", "message": "..."}` with a matching status.
 servers:
   - url: http://{host}:8585
@@ -23,7 +27,6 @@ servers:
 
 security:
   - bearer: []
-  - cookie: []
 
 paths:
   /healthz:
@@ -68,6 +71,10 @@ paths:
                   deviceId: { type: integer }
                   user: { $ref: "#/components/schemas/User" }
         "401": { $ref: "#/components/responses/Error" }
+        "429":
+          description: |
+            Too many wrong passwords for this name (after five, each try
+            waits twice as long, up to 15 minutes); see Retry-After.
 
   /api/v1/logout:
     post:
@@ -152,6 +159,7 @@ paths:
     get:
       summary: The original audio file, with HTTP Range support
       description: Never transcoded. Downloads use this endpoint too.
+      security: [{ bearer: [] }, { cookie: [] }]
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200": { description: Whole file }
@@ -162,12 +170,16 @@ paths:
     get:
       summary: A song's cover art
       description: Embedded art first, else the folder's cover file. Supports ETag.
+      security: [{ bearer: [] }, { cookie: [] }]
       parameters:
         - { $ref: "#/components/parameters/Id" }
         - name: size
           in: query
-          description: Longest side in pixels (JPEG); 0 or absent for the original
-          schema: { type: integer, minimum: 0, maximum: 2048 }
+          description: |
+            Longest side in pixels (JPEG), rounded up to 128, 256, 512 or
+            1024; 0, absent or larger for the original. Images over 40
+            megapixels are always served as they are.
+          schema: { type: integer, minimum: 0 }
       responses:
         "200": { description: Image bytes }
         "304": { description: Not modified }
@@ -179,6 +191,7 @@ paths:
       description: |
         The sibling .lrc file if there is one, else embedded lyrics.
         Clients parse LRC timestamps themselves.
+      security: [{ bearer: [] }, { cookie: [] }]
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "200":
@@ -214,6 +227,11 @@ paths:
         not applied again. A `rejected` operation can never succeed and
         must be dropped from the client's outbox. Playlist operations
         rewrite the .m3u8 file and are visible through /library.
+
+        At most 500 operations are applied per request: the rest get no
+        result, stay in the outbox and go with the next sync. An operation
+        may name at most 20,000 songs. An `at` in the future counts as the
+        server's now.
       requestBody:
         required: true
         content:
@@ -524,7 +542,7 @@ components:
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
         | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8 |
         | playlist.rename | playlist, name | renames the file |
-        | playlist.delete | playlist | file moved to _trash/ |
+        | playlist.delete | playlist | file removed after a copy is kept in the data folder |
         | playlist.insert | playlist, songs, after?, afterOccurrence? | duplicates allowed |
         | playlist.remove | playlist, song, occurrence? | |
         | playlist.move | playlist, song, occurrence?, after?, afterOccurrence? | |

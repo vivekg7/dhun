@@ -36,7 +36,10 @@ Open source under GPL-3.0.
   Audio files change only through an admin-panel action: move, upgrade or
   remove. Each action moves the old file to `_trash/` rather than deleting
   it, and is logged in `_meta/`. Everything else the app writes is `.m3u8`
-  playlists in `Music/Playlists/` and its own `Music/_dhun/` folder.
+  playlists in `Music/Playlists/`, each copied to the data folder before it
+  changes, and its own data folder outside `Music`. In v1 the container
+  mounts `Music` read-only apart from `Playlists/`
+  ([003](docs/plans/003_deployment.md)); keep it that way.
 - **User data points at a song ID, never a path.** Moves and upgrades must
   leave play counts, favorites, queues and playlists attached to the song
   ([004](docs/plans/004_curation_workflow.md)).

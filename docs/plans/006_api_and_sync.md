@@ -21,16 +21,21 @@ It has to:
 
 - **JSON over HTTP, under `/api/v1/`**, served by Go's standard `net/http`
   with its built-in route patterns. No web framework.
-- **Plain HTTP over Tailscale.** Tailscale already encrypts the traffic
-  end-to-end. For HTTPS (for example, for the web client's secure-context
+- **Plain HTTP**, on the home network and over Tailscale, which encrypts
+  the traffic away from home; the home network is trusted (the owner's
+  decision, [003](003_deployment.md)). For HTTPS (for example, for the web client's secure-context
   features), use `tailscale serve` in front, with no change to Dhun.
 - **Sign-in:** username and password → a long-lived **device token**. One
   token per app install; only its hash is stored, in `devices`
   ([005](005_storage_and_library_model.md)).
   - Apps send `Authorization: Bearer <token>`, including on stream requests.
     ExoPlayer and URLSession both support headers.
-  - The web client gets the same token in an `HttpOnly` cookie, because
-    `<audio>` cannot send headers.
+  - The web client keeps the token and sends it the same way. It also gets
+    it as an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS),
+    because `<audio>` and `<img>` cannot send headers; the server accepts
+    the cookie **only** on `GET` stream, art and lyrics. Cookies are scoped
+    to a host, not a port, so every other service on the NAS's name receives
+    it too; at most it could fetch a song.
   - Removing a device in the settings revokes its token.
 - **The contract is a hand-written `api/openapi.yaml`** in the repo,
   reviewed like code. Clients are hand-written against it, which for about
@@ -145,6 +150,29 @@ rescan; curation and uploads come after v1 ([004](004_curation_workflow.md)).
 - An operation's `at` is stored in a fixed-width format. "The later change
   wins" compares these as strings, and RFC 3339 with variable fractions sorts
   `03.5Z` before `03Z`.
+
+## Hardened before the first install (2026-10-07)
+
+An adversarial review before running on the NAS added:
+
+- **Login:** at most two password checks at once (argon2 takes 64 MiB
+  each), an unknown name costs the same time as a known one, and after five
+  wrong passwords for a name each try waits twice as long, up to 15 minutes
+  (`429` with `Retry-After`).
+- **Requests:** bodies must be `application/json` (a cross-site form cannot
+  send that without a preflight, which is never granted); browsers' cross-
+  origin state-changing requests are refused (`http.CrossOriginProtection`);
+  every response has `nosniff`, `no-referrer` and `DENY` framing, and API
+  responses a `sandbox` CSP. Read and idle timeouts are set; there is no write
+  timeout, because a stream may be long.
+- **Sync:** at most 500 operations are applied per request (the rest stay in
+  the outbox for the next one) and 20,000 songs per operation. A client time
+  in the future counts as now, so a phone with a fast clock cannot win every
+  later conflict.
+- **Art:** sizes round up to 128, 256, 512 or 1024; an image over 40
+  megapixels is served unscaled rather than decoded (a 70-byte file can
+  claim 16000×16000); cache files are written atomically and replace the
+  song's older versions.
 
 ## Rejected
 
