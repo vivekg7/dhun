@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -106,7 +107,14 @@ private fun SpeedDialog(onDismiss: () -> Unit) {
                 Row(Modifier.fillMaxWidth()) {
                     for (p in listOf(0.75f, 1f, 1.25f, 1.5f, 2f)) {
                         val on = p == tempo.speed
-                        Box(Modifier.weight(1f).heightIn(min = 40.dp).clickable { set(tempo.copy(speed = p)) }, contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { set(tempo.copy(speed = p)) },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
                                 "${Tempo.fmt(p)}×",
                                 style = MaterialTheme.typography.labelLarge,

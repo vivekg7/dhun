@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -293,7 +294,11 @@ private fun TabBar(
                 val selected = t == current
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     Tip(t.label) {
-                        Box(Modifier.fillMaxSize().clickable { onSelect(t) }, contentAlignment = Alignment.Center) {
+                        // A circle round the icon when pressed, as on the icon buttons, not the whole cell.
+                        Box(
+                            Modifier.fillMaxSize().clickable(interactionSource = null, indication = ripple(bounded = false, radius = 28.dp)) { onSelect(t) },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             if (selected) {
                                 Box(
                                     Modifier

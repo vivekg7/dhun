@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -149,7 +150,7 @@ fun AlbumsScreen(nav: Nav) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(albums, key = { it.key }) { a ->
-                Column(Modifier.clickable { nav.open(Tab.Albums, Page.AlbumPage(a.key)) }) {
+                Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable { nav.open(Tab.Albums, Page.AlbumPage(a.key)) }) {
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         Art(a.songs.first(), maxWidth, RoundedCornerShape(10.dp))
                     }

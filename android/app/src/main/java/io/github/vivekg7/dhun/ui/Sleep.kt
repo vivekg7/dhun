@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,9 +50,19 @@ fun SleepButton() {
     if (open) SleepDialog { open = false }
     if (mode == null) return
     val c = MaterialTheme.colorScheme
-    Row(Modifier.clickable { open = true }, verticalAlignment = Alignment.CenterVertically) {
-        Tip("Sleep timer") { IconButton({ open = true }) { Icon(Icons.Sleep, "Sleep timer", tint = c.primary) } }
-        Text(sleepState() ?: "", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelMedium, color = c.primary)
+    // One pill, the moon and the time left together: a tap anywhere on it opens the timer.
+    Tip("Sleep timer") {
+        Row(
+            Modifier
+                .heightIn(min = 48.dp)
+                .clip(CircleShape)
+                .clickable { open = true }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Sleep, "Sleep timer", tint = c.primary)
+            Text(sleepState() ?: "", Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelMedium, color = c.primary)
+        }
     }
 }
 
