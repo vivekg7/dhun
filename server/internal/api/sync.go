@@ -59,6 +59,8 @@ type op struct {
 	End       string `json:"end,omitempty"`
 	Source    string `json:"source,omitempty"`
 	UTCOffset *int   `json:"utcOffset,omitempty"` // minutes
+
+	Value json.RawMessage `json:"value,omitempty"` // setting.set
 }
 
 type opResult struct {
@@ -203,6 +205,10 @@ func (a *applier) apply(o op) error {
 		return a.play(o)
 	case "playback.state":
 		return a.playbackState(o)
+	case "resume.set", "resume.unset":
+		return a.resume(o)
+	case "setting.set":
+		return a.setting(o)
 	case "playlist.create":
 		return a.playlistCreate(o)
 	case "playlist.rename", "playlist.delete", "playlist.insert", "playlist.remove", "playlist.move", "playlist.replace":
@@ -506,13 +512,8 @@ func (a *applier) favorite(o op) error {
 	if err := a.songsExist([]int64{o.Song}); err != nil {
 		return err
 	}
-	var at string
-	err := a.tx.QueryRowContext(a.ctx, `SELECT at FROM favorites WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song).Scan(&at)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if err == nil && a.at < at {
-		return nil // the later set/unset wins
+	if later, err := a.isLater(`SELECT at FROM favorites WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song); !later {
+		return err // the later set/unset wins
 	}
 	v, err := a.bump()
 	if err != nil {
@@ -522,6 +523,77 @@ func (a *applier) favorite(o op) error {
 		ON CONFLICT (user_id, song_id) DO UPDATE SET at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
 		a.sess.UserID, o.Song, a.at, o.Type == "favorite.unset", v)
 	return err
+}
+
+// resume records where the user stopped in a long file, or forgets it once
+// the file is finished. Like favorites, the later change wins.
+func (a *applier) resume(o op) error {
+	if err := a.songsExist([]int64{o.Song}); err != nil {
+		return err
+	}
+	if later, err := a.isLater(`SELECT at FROM resume_points WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song); !later {
+		return err
+	}
+	v, err := a.bump()
+	if err != nil {
+		return err
+	}
+	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO resume_points (user_id, song_id, position_ms, at, deleted, version)
+		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, song_id) DO UPDATE SET position_ms = excluded.position_ms,
+		at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
+		a.sess.UserID, o.Song, max(o.PositionMS, 0), a.at, o.Type == "resume.unset", v)
+	return err
+}
+
+// Settings are the apps' business; these limits only keep one user from
+// filling the database.
+const (
+	maxSettings     = 100
+	maxSettingBytes = 4 << 10
+)
+
+// setting stores one app setting for every device of the user. The later
+// change wins.
+func (a *applier) setting(o op) error {
+	if o.Name == "" || len(o.Name) > 64 || strings.ContainsFunc(o.Name, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-')
+	}) {
+		return rejected("setting name must be 1–64 letters, digits, '.', '_' or '-'")
+	}
+	if len(o.Value) == 0 || len(o.Value) > maxSettingBytes {
+		return rejected("setting value must be JSON of at most %d bytes", maxSettingBytes)
+	}
+	later, err := a.isLater(`SELECT at FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, o.Name)
+	if !later {
+		return err
+	}
+	var n int
+	if err := a.tx.QueryRowContext(a.ctx, `SELECT count(*) FROM settings WHERE user_id = ? AND name != ?`,
+		a.sess.UserID, o.Name).Scan(&n); err != nil {
+		return err
+	}
+	if n >= maxSettings {
+		return rejected("more than %d settings", maxSettings)
+	}
+	v, err := a.bump()
+	if err != nil {
+		return err
+	}
+	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO settings (user_id, name, value, at, version) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value, at = excluded.at, version = excluded.version`,
+		a.sess.UserID, o.Name, string(o.Value), a.at, v)
+	return err
+}
+
+// isLater reports whether this op is at least as new as the row q finds (an
+// "at" column), or there is none: the later change wins.
+func (a *applier) isLater(q string, args ...any) (bool, error) {
+	var at string
+	err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	return err == nil && a.at >= at, err
 }
 
 func (a *applier) playbackState(o op) error {
@@ -852,11 +924,52 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	}
 	rows.Close()
 
+	type resumeJSON struct {
+		Song       int64  `json:"song"`
+		Deleted    bool   `json:"deleted,omitempty"`
+		PositionMS int64  `json:"positionMs,omitempty"`
+		At         string `json:"at,omitempty"`
+	}
+	resume := []resumeJSON{}
+	rows, err = tx.QueryContext(ctx, `SELECT song_id, deleted, position_ms, at FROM resume_points
+		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, userID, since, since)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p resumeJSON
+		if err := rows.Scan(&p.Song, &p.Deleted, &p.PositionMS, &p.At); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if p.Deleted {
+			p = resumeJSON{Song: p.Song, Deleted: true}
+		}
+		resume = append(resume, p)
+	}
+	rows.Close()
+
+	settings := map[string]json.RawMessage{}
+	rows, err = tx.QueryContext(ctx, `SELECT name, value FROM settings WHERE user_id = ? AND version > ?`, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var name, value string
+		if err := rows.Scan(&name, &value); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		settings[name] = json.RawMessage(value)
+	}
+	rows.Close()
+
 	np, err := nowPlaying(ctx, tx, userID, since)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"version": version, "queues": queues, "favorites": favs, "nowPlaying": np}, nil
+	return map[string]any{"version": version, "queues": queues, "favorites": favs, "resume": resume,
+		"settings": settings, "nowPlaying": np}, nil
 }
 
 type nowPlayingJSON struct {

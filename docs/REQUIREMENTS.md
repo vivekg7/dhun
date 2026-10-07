@@ -209,6 +209,11 @@ Proposed. Awaiting the owner's confirmation.
   time and how it ended, for a future recommender. A listen adds to the
   play count only when at least half the song was heard —
   [plans/008](plans/008_listening_history.md).
+- **Long files resume** (audiobooks, podcasts): a file of at least 15
+  minutes continues where it was left, on any device, however much else was
+  played in between. The length, and whether to resume automatically, ask or
+  not at all, are settings that follow the user to every device —
+  [plans/009](plans/009_resume_long_files.md).
 - **Downloads** with a storage limit.
 - **Phone-local songs**, kept separate from NAS songs as described above.
 - An offline working copy of the synced data, pushed back on reconnect.
@@ -217,7 +222,8 @@ Proposed. Awaiting the owner's confirmation.
 **macOS and Web (minimal)**
 
 - Sign in, browse, search, play, switch between queues, and play playlists.
-- Hand-off (resume), so a session started on the phone continues here.
+- Hand-off (resume), so a session started on the phone continues here, and
+  long files resume where they were left on any device.
 - Web only: the admin panel's first screen, **Users** — add a family member
   and reset a forgotten password.
 

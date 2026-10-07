@@ -208,7 +208,7 @@ paths:
 
   /api/v1/sync:
     get:
-      summary: The caller's queues, favorites and now-playing changed since a cursor
+      summary: The caller's queues, favorites, resume points, settings and now-playing changed since a cursor
       parameters:
         - name: since
           in: query
@@ -518,6 +518,24 @@ components:
             properties:
               song: { type: integer }
               deleted: { type: boolean }
+        resume:
+          description: Where long files were left (docs/plans/009_resume_long_files.md)
+          type: array
+          items:
+            type: object
+            properties:
+              song: { type: integer }
+              deleted: { type: boolean, description: Finished; forget it }
+              positionMs: { type: integer }
+              at: { type: string, format: date-time }
+        settings:
+          description: |
+            App settings changed since the cursor, as name → JSON value. A
+            missing setting or null means the app's default.
+            `longFiles.minMinutes` (default 15) and `longFiles.resume`
+            ("auto", "ask" or "off"; default "auto").
+          type: object
+          additionalProperties: true
         nowPlaying:
           oneOf:
             - { $ref: "#/components/schemas/NowPlaying" }
@@ -541,6 +559,8 @@ components:
         | queue.set_current | queue, song, positionMs | later `at` wins |
         | queue.set_mode | queue, shuffle?, repeat? | |
         | favorite.set / favorite.unset | song | later `at` wins |
+        | resume.set / resume.unset | song, positionMs | later `at` wins; where a long file was left |
+        | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 100 per user |
         | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
         | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8 |
@@ -594,3 +614,4 @@ components:
             description: "What the queue was started from: album:<id>, artist:<name>, playlist:<id>, folder:<path>, favorites, search",
           }
         utcOffset: { type: integer, description: "The device's UTC offset, in minutes" }
+        value: { description: "setting.set: any JSON" }

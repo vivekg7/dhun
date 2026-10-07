@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,12 @@ type syncResp struct {
 		Song    int64
 		Deleted bool
 	}
+	Resume []struct {
+		Song       int64
+		Deleted    bool
+		PositionMS int64 `json:"positionMs"`
+	}
+	Settings   map[string]json.RawMessage
 	NowPlaying *nowPlayingJSON
 	Results    []opResult
 }
@@ -165,6 +172,43 @@ func TestEveryListenIsLoggedButOnlyHalfOrMoreCounts(t *testing.T) {
 	e.do("GET", "/api/v1/plays", phone, nil, 200, &plays)
 	if fmt.Sprint(plays.Plays) != "[{1 2}]" {
 		t.Errorf("play counts = %v, want song 1 twice and song 2 not at all", plays.Plays)
+	}
+}
+
+// An audiobook paused on the phone continues on the laptop at the same
+// place, however much else was played in between, and an offline device
+// reporting an older place later does not move it back (plan 009).
+func TestLongFileResumesOnAnotherDevice(t *testing.T) {
+	e, phone, mac := syncEnv(t, 2)
+	r := e.push(phone, 0,
+		o("setting.set", map[string]any{"name": "longFiles.minMinutes", "value": 20}),
+		o("resume.set", map[string]any{"song": 1, "positionMs": 3_600_000}),
+		o("setting.set", map[string]any{"name": "../evil", "value": true}))
+	if r.Results[2].Status != "rejected" {
+		t.Errorf("bad setting name: %+v", r.Results[2])
+	}
+	got := e.push(mac, 0)
+	if len(got.Resume) != 1 || got.Resume[0].PositionMS != 3_600_000 {
+		t.Errorf("laptop sees resume points %+v, want song 1 at 1:00:00", got.Resume)
+	}
+	if string(got.Settings["longFiles.minMinutes"]) != "20" {
+		t.Errorf("laptop sees settings %v", got.Settings)
+	}
+
+	// The laptop listens on; the phone, offline since an hour ago, reports
+	// an older place afterwards.
+	e.push(mac, 0, o("resume.set", map[string]any{"song": 1, "positionMs": 5_400_000}))
+	e.push(phone, 0, o("resume.set", map[string]any{"song": 1, "positionMs": 3_000_000,
+		"at": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)}))
+	if got := e.push(phone, 0); got.Resume[0].PositionMS != 5_400_000 {
+		t.Errorf("resume point = %d ms, want the later 5,400,000", got.Resume[0].PositionMS)
+	}
+
+	// Finished: forgotten everywhere.
+	before := e.push(mac, 0).Version
+	e.push(phone, 0, o("resume.unset", map[string]any{"song": 1}))
+	if got := e.push(mac, before); len(got.Resume) != 1 || !got.Resume[0].Deleted {
+		t.Errorf("after finishing, laptop sees %+v, want song 1 deleted", got.Resume)
 	}
 }
 
