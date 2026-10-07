@@ -1,6 +1,6 @@
 # 010 — Special playlists and automatic views
 
-**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); Android built against a local server ([011](011_android_app.md)), not yet released
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.2`); Android built against a local server ([011](011_android_app.md)), not yet released
 **Started:** 2026-10-07
 
 ## Problem

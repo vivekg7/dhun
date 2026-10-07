@@ -1,6 +1,6 @@
 # 013 — Editing playlists on Android
 
-**Status:** `IN PROGRESS` — built and tested on the emulator
+**Status:** `IN PROGRESS` — server side (`ref` in `/library`) on the NAS in `server-v0.1.2`; the app built and tested on the emulator, not yet on the owner's phone
 **Started:** 2026-10-07
 
 ## Problem
