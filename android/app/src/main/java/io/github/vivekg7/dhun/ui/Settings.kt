@@ -54,6 +54,7 @@ import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.BuildConfig
 import io.github.vivekg7.dhun.data.ApiException
 import io.github.vivekg7.dhun.data.bool
+import io.github.vivekg7.dhun.data.bytes
 import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.string
 import io.github.vivekg7.dhun.ui.theme.Palette
@@ -119,6 +120,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                 settings.int("listenLater.finishedPercent", 90),
                 { "$it%" },
             ) { set("listenLater.finishedPercent", JsonPrimitive(it)) }
+        }
+
+        // This phone's storage and network, so not synced (docs/plans/012_downloads.md).
+        SectionLabel("Downloads")
+        val status by app.downloads.status.collectAsState()
+        Hint("Saved on ${app.downloads.location()} · ${bytes(status.usedBytes)} used. At the limit, downloads stop; nothing is deleted to make room.")
+        Chips(listOf(2, 5, 10, 20, 50, 0), prefs.downloadLimitGb, { if (it == 0) "No limit" else "$it GB" }) {
+            prefs.chooseDownloadLimit(it)
+            app.downloads.poke()
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    prefs.chooseWifiOnly(!prefs.wifiOnly)
+                    app.downloads.poke()
+                }.padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Download on Wi-Fi only", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(prefs.wifiOnly, {
+                prefs.chooseWifiOnly(it)
+                app.downloads.poke()
+            })
         }
 
         SectionLabel("Account")

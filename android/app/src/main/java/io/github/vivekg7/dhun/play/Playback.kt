@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun.play
 
+import android.net.Uri
 import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
@@ -7,8 +8,11 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -59,7 +63,7 @@ class Playback(
     val player: ExoPlayer =
         ExoPlayer
             .Builder(app)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.api.http).setCacheControl(Api.NO_STORE)))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource()))
             // Pause for calls and other apps, and when headphones are unplugged.
             .setAudioAttributes(
                 AudioAttributes
@@ -71,6 +75,20 @@ class Playback(
             ).setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+
+    /**
+     * Items keep the stream URL; when a song is opened, a downloaded file
+     * takes its place (docs/plans/012_downloads.md). Resolving at open time
+     * means a download that finishes while the queue is loaded is used too.
+     */
+    private fun dataSource(): ResolvingDataSource.Factory {
+        val stream = OkHttpDataSource.Factory(app.api.http).setCacheControl(Api.NO_STORE)
+        return ResolvingDataSource.Factory(DefaultDataSource.Factory(app, stream)) { spec ->
+            val id = spec.uri.lastPathSegment?.toLongOrNull()
+            val file = if (id != null && spec.uri.toString() == app.api.streamUrl(id)) app.downloads.file(id) else null
+            if (file != null) spec.withUri(Uri.fromFile(file)) else spec
+        }
+    }
 
     val queues: StateFlow<List<QueueRow>> =
         app.db
@@ -556,6 +574,27 @@ class Playback(
             }
         }
 
+        /**
+         * A song that could not be fetched (offline, the NAS asleep): the
+         * server is marked unreachable, so the lists dim what is not
+         * downloaded, and the player goes on to the next song that is.
+         */
+        override fun onPlayerError(error: PlaybackException) {
+            if (error.errorCode !in NETWORK_ERRORS) return
+            app.sync.reachable.value = false
+            app.sync.soon()
+            val t = player.currentTimeline
+            var i = player.currentMediaItemIndex
+            while (true) {
+                i = t.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+                if (i == C.INDEX_UNSET) return
+                if (app.downloads.file(player.getMediaItemAt(i).mediaId.toLong()) != null) break
+            }
+            player.seekTo(i, 0)
+            player.prepare()
+            player.play()
+        }
+
         override fun onPlaybackStateChanged(state: Int) {
             if (state != Player.STATE_ENDED) return
             val s = current.value
@@ -568,6 +607,9 @@ class Playback(
 
     companion object {
         const val MAX_QUEUES = 20
+
+        /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
+        private val NETWORK_ERRORS = 2000..2999
 
         fun repeatMode(r: String) =
             when (r) {

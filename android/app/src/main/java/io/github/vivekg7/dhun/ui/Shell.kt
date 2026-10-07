@@ -82,6 +82,8 @@ sealed interface Page {
         val id: Long,
     ) : Page
 
+    data object DownloadsPage : Page
+
     /** Favorites, Listen Later, or one of the automatic views ([ListKind]). */
     data class ListPage(
         val kind: ListKind,
@@ -186,6 +188,7 @@ private fun PageContent(
         is Page.FolderPage -> FolderScreen(page.path, nav, root = false, onBack = back)
         is Page.PlaylistPage -> PlaylistScreen(page.id, nav, back)
         is Page.ListPage -> ListScreen(page.kind, nav, back)
+        Page.DownloadsPage -> DownloadsScreen(nav, back)
     }
 }
 

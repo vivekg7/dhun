@@ -3,6 +3,7 @@ package io.github.vivekg7.dhun
 import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
@@ -12,6 +13,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Db
+import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
 import io.github.vivekg7.dhun.play.Playback
@@ -34,6 +36,7 @@ class App : Application() {
     val store by lazy { Store(this) }
     val sync by lazy { Sync(this) }
     val playback by lazy { Playback(this) }
+    val downloads by lazy { Downloads(this) }
 
     /** The catalogue in memory: 7,000 songs browse and search faster there than through SQL. */
     val catalog by lazy {
@@ -50,17 +53,21 @@ class App : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
-                    if (prefs.token.isNotEmpty()) scope.launch { sync.now() }
+                    if (prefs.token.isEmpty()) return
+                    scope.launch { sync.now() }
+                    // Downloads that could not start from the background go on now.
+                    downloads.poke()
                 }
             },
         )
     }
 
-    /** Forgets the account, everything synced from it, and what was playing. */
+    /** Forgets the account, everything synced from it, what was playing, and its downloads. */
     fun signOut() {
         scope.launch(kotlinx.coroutines.Dispatchers.Main) {
             playback.reset()
             prefs.signOut()
+            downloads.deleteAll()
             db.clearAllTables()
         }
     }
@@ -91,6 +98,27 @@ class Prefs(
         private set
     var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.DullOrange))
         private set
+
+    /** Downloads (docs/plans/012_downloads.md): this phone's storage and network, so not synced. 0 is no limit. */
+    var downloadLimitGb by mutableIntStateOf(sp.getInt("downloadLimitGb", 10))
+        private set
+    var wifiOnly by mutableStateOf(sp.getBoolean("wifiOnly", true))
+        private set
+
+    fun chooseDownloadLimit(gb: Int) {
+        downloadLimitGb = gb
+        sp.edit { putInt("downloadLimitGb", gb) }
+    }
+
+    fun chooseWifiOnly(on: Boolean) {
+        wifiOnly = on
+        sp.edit { putBoolean("wifiOnly", on) }
+    }
+
+    /** Asked once, with the first download: Android 13 hides the progress notification without it. */
+    var askedNotifications: Boolean
+        get() = sp.getBoolean("askedNotifications", false)
+        set(v) = sp.edit { putBoolean("askedNotifications", v) }
 
     fun chooseTheme(mode: ThemeMode) {
         themeMode = mode

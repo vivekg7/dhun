@@ -1,6 +1,7 @@
 package io.github.vivekg7.dhun.data
 
 import android.content.Context
+import androidx.room3.AutoMigration
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Entity
@@ -20,8 +21,14 @@ import kotlinx.coroutines.flow.Flow
  * read and written whole, so a join table would buy nothing.
  */
 @Database(
-    entities = [Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class],
-    version = 1,
+    entities = [
+        Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
+        Pin::class, Download::class,
+    ],
+    version = 2,
+    // Migrations are generated from the exported schemas, so an upgrade
+    // keeps the outbox: offline edits are never lost (AGENTS.md).
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun dao(): DbDao
@@ -32,8 +39,8 @@ abstract class Db : RoomDatabase() {
                 .databaseBuilder(context, Db::class.java, "dhun.db")
                 // The platform's SQLite: Room's bundled one is native code we don't need.
                 .setDriver(AndroidSQLiteDriver())
-                // Everything here can be fetched again from the server, except
-                // the outbox; a schema change before 1.0 may start over.
+                // Only for a schema with no migration path; everything but the
+                // outbox can be fetched again from the server.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
     }
@@ -139,6 +146,29 @@ data class PlayStat(
     val lastPlayedAt: Long,
 )
 
+/**
+ * Something the user downloaded, kept in step with the server
+ * (docs/plans/012_downloads.md): [kind] is song, album, folder, artist,
+ * genre, playlist or list, and [ref] says which one.
+ */
+@Entity(tableName = "pin")
+data class Pin(
+    @PrimaryKey val key: String,
+    val kind: String,
+    val ref: String,
+    val name: String,
+    val at: Long,
+)
+
+/** A downloaded file. [size] is the catalogue's size when it was fetched, to notice an upgraded file. */
+@Entity(tableName = "download")
+data class Download(
+    @PrimaryKey val song: Long,
+    val path: String,
+    val size: Long,
+    val at: Long,
+)
+
 @Dao
 interface DbDao {
     @Query("SELECT * FROM song WHERE missing = 0")
@@ -221,4 +251,22 @@ interface DbDao {
 
     @Query("DELETE FROM play_stat")
     suspend fun clearPlayStats()
+
+    @Query("SELECT * FROM pin ORDER BY at DESC")
+    fun pins(): Flow<List<Pin>>
+
+    @Upsert
+    suspend fun putPin(p: Pin)
+
+    @Query("DELETE FROM pin WHERE key = :key")
+    suspend fun deletePin(key: String)
+
+    @Query("SELECT * FROM download")
+    fun downloads(): Flow<List<Download>>
+
+    @Upsert
+    suspend fun putDownload(d: Download)
+
+    @Query("DELETE FROM download WHERE song = :song")
+    suspend fun deleteDownload(song: Long)
 }

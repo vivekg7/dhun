@@ -149,7 +149,7 @@ user (example: Downloads 10 GB, Cache 3 GB).
 | Who controls it | The user, explicitly                      | The app, automatically ("smart")                |
 | Visible to user | Yes — user picks playlists, albums, songs | No — hidden                                     |
 | Typical use     | A trip: take whole playlists offline      | Make normal listening fast and resilient        |
-| When full       | New downloads may evict older downloads   | Evicts its own entries                          |
+| When full       | Downloads stop and say how much is needed | Evicts its own entries                          |
 | Overlap         | —                                         | Never holds a song that is already in Downloads |
 | File stored     | Original file                             | Original file                                   |
 
@@ -159,6 +159,17 @@ user (example: Downloads 10 GB, Cache 3 GB).
   is played, pre-fetch the next songs of the current queue, pre-fetch the rest
   of the current queue, and predict from listening history.
 - **Downloads are in v1. Smart cache comes later.**
+- A downloaded playlist, album, folder, artist, genre, Favorites or Listen
+  Later **stays in step** with the server: songs added later are fetched,
+  songs removed are deleted unless something else downloaded has them. The
+  automatic views cannot be downloaded (owner, 2026-10-07;
+  [plan 012](plans/012_downloads.md)).
+- Downloads use **Wi-Fi only** by default, with a setting to allow mobile
+  data. At the storage limit (10 GB by default) they **stop and say so**;
+  nothing downloaded is deleted to make room.
+- Downloaded songs carry a mark, and a **Downloads** card sits in the
+  Playlists tab. **Offline**, songs that are not downloaded are dimmed and
+  the player skips them.
 
 ### Delivery
 

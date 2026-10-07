@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Catalog
+import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Song
 
 /** Plays [songs] from [index] in a new queue named after the list (AGENTS.md). */
@@ -67,6 +71,18 @@ fun SongList(
     }
 }
 
+/** Whether this album, folder, artist or genre is downloaded, for its mark in a list. */
+@Composable
+fun pinned(
+    kind: String,
+    ref: String,
+): Boolean {
+    val pins by App.app.downloads.pins
+        .collectAsState()
+    val key = Downloads.key(kind, ref)
+    return pins.any { it.key == key }
+}
+
 @Composable
 fun Empty(text: String) =
     Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
@@ -92,13 +108,19 @@ fun FolderScreen(
             if (root) {
                 SectionLabel("Music · ${catalog.songs.size} songs")
             } else {
-                PageHeader(folder.name, path.replace("/", " › "), onBack, { playList(folder.name, "folder:$path", folder.allSongs(), 0) }) {
+                PageHeader(
+                    folder.name,
+                    path.replace("/", " › "),
+                    onBack,
+                    { playList(folder.name, "folder:$path", folder.allSongs(), 0) },
+                    DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
+                ) {
                     shuffleList(folder.name, "folder:$path", folder.allSongs())
                 }
             }
         }
         items(folder.children, key = { "f/" + it.path }) { f ->
-            NameRow(Icons.Folder, f.name, "${f.allSongs().size}") { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
+            NameRow(Icons.Folder, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
         }
         val songs = folder.songs
         itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
@@ -130,7 +152,18 @@ fun AlbumsScreen(nav: Nav) {
                     androidx.compose.foundation.layout.BoxWithConstraints {
                         Art(a.songs.first(), maxWidth, RoundedCornerShape(10.dp))
                     }
-                    Text(a.name, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            a.name,
+                            Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (pinned(Downloads.ALBUM, a.key)) {
+                            Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     Text(
                         a.artist,
                         style = MaterialTheme.typography.bodySmall,
@@ -155,7 +188,13 @@ fun AlbumScreen(
     val facts = listOfNotNull(album.artist, album.year.takeIf { it > 0 }?.toString(), summary(album.songs)).joinToString(" · ")
     SongList(album.name, "album:${album.name}", album.songs, nav) {
         Column {
-            PageHeader(album.name, facts, onBack, { playList(album.name, "album:${album.name}", album.songs, 0) }) {
+            PageHeader(
+                album.name,
+                facts,
+                onBack,
+                { playList(album.name, "album:${album.name}", album.songs, 0) },
+                DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs),
+            ) {
                 shuffleList(album.name, "album:${album.name}", album.songs)
             }
         }
@@ -179,7 +218,7 @@ fun GroupsScreen(
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, if (artists) "Search ${all.size} artists…" else "Search ${all.size} genres…") }
         items(shown, key = { it.name }) { g ->
-            NameRow(if (artists) Icons.Artist else Icons.Genre, g.name, "${g.songs.size}") {
+            NameRow(if (artists) Icons.Artist else Icons.Genre, g.name, "${g.songs.size}", pinned(if (artists) Downloads.ARTIST else Downloads.GENRE, g.name)) {
                 nav.open(if (artists) Tab.Artists else Tab.Genres, if (artists) Page.ArtistPage(g.name) else Page.GenrePage(g.name))
             }
         }
@@ -201,7 +240,13 @@ fun GroupScreen(
     val songs = remember(group) { group.songs.sortedWith(compareBy<Song>({ it.album.lowercase() }, { it.disc }, { it.track })) }
     val source = if (artists) "artist:${group.name}" else "genre:${group.name}"
     SongList(group.name, source, songs, nav) {
-        PageHeader(group.name, summary(songs), onBack, { playList(group.name, source, songs, 0) }) { shuffleList(group.name, source, songs) }
+        PageHeader(
+            group.name,
+            summary(songs),
+            onBack,
+            { playList(group.name, source, songs, 0) },
+            DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
+        ) { shuffleList(group.name, source, songs) }
     }
 }
 

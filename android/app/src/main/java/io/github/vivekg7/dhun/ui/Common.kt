@@ -31,12 +31,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
 import kotlinx.coroutines.launch
@@ -103,6 +105,7 @@ fun PageHeader(
     subtitle: String,
     onBack: () -> Unit,
     onPlay: (() -> Unit)?,
+    download: DownloadTarget? = null,
     onShuffle: (() -> Unit)?,
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -125,6 +128,7 @@ fun PageHeader(
                         Text("Shuffle")
                     }
                 }
+                if (download != null) DownloadButton(download)
             }
         }
     }
@@ -136,6 +140,7 @@ fun NameRow(
     icon: ImageVector,
     name: String,
     detail: String,
+    downloaded: Boolean = false,
     onClick: () -> Unit,
 ) {
     Row(
@@ -149,6 +154,7 @@ fun NameRow(
         Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(16.dp))
         Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(end = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -166,12 +172,18 @@ fun SongRow(
     menu: SongMenu = SongMenu(),
 ) {
     val c = MaterialTheme.colorScheme
+    val app = App.app
+    val files by app.downloads.files.collectAsState()
+    val reachable by app.sync.reachable.collectAsState()
+    val downloaded = song.id in files
     Row(
         Modifier
             .fillMaxWidth()
             .background(if (current) c.primaryContainer.copy(alpha = 0.55f) else c.surface)
             .clickable(onClick = onClick)
             .height(64.dp)
+            // Offline, what is not downloaded cannot play (docs/plans/012_downloads.md).
+            .alpha(if (reachable || downloaded) 1f else 0.38f)
             .padding(start = if (leading == null) 16.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -194,6 +206,7 @@ fun SongRow(
                 color = c.onSurfaceVariant,
             )
         }
+        if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
         Text(
             duration(song.durationMs),
             Modifier.width(56.dp),
@@ -219,6 +232,7 @@ fun SongMenuButton(
     val app = App.app
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
+    val pin = rememberPinner()
     Box {
         IconButton({ open = true }) { Icon(Icons.More, "Song options", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         DropdownMenu(open, { open = false }) {
@@ -232,6 +246,14 @@ fun SongMenuButton(
             MenuItem("Add to queue", close) { app.playback.addToQueue(listOf(song)) }
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
+            val pins by app.downloads.pins.collectAsState()
+            val files by app.downloads.files.collectAsState()
+            val key = Downloads.key(Downloads.SONG, song.id.toString())
+            if (pins.any { it.key == key }) {
+                MenuItem("Remove download", close) { scope.launch { app.downloads.unpin(key) } }
+            } else if (song.id !in files) {
+                MenuItem("Download", close) { pin(Downloads.SONG, song.id.toString(), song.title) }
+            }
             menu.nav?.let { nav ->
                 val catalog by app.catalog.collectAsState()
                 val album =

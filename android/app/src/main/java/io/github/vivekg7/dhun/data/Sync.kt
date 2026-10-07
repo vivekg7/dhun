@@ -30,6 +30,13 @@ class Sync(
     /** The last error, for the menu; null when the last sync worked. */
     val error: StateFlow<String?> = _error
 
+    /**
+     * False while the server cannot be reached: the last sync failed to
+     * connect, or there is no network. Songs not downloaded are dimmed then
+     * (docs/plans/012_downloads.md).
+     */
+    val reachable = MutableStateFlow(true)
+
     /** Another device's playback, for hand-off (plan 002). */
     val nowPlaying = MutableStateFlow<NowPlaying?>(null)
 
@@ -40,7 +47,14 @@ class Sync(
         // Back online: send what piled up while offline.
         app.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(
             object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) = soon()
+                override fun onAvailable(network: Network) {
+                    soon()
+                    app.downloads.poke()
+                }
+
+                override fun onLost(network: Network) {
+                    reachable.value = false
+                }
             },
         )
     }
@@ -76,14 +90,21 @@ class Sync(
                 while (pushAndPull() > 0 && dao.outboxSize() > 0) Unit
                 pullPlays()
                 _error.value = null
+                reachable.value = true
                 true
             } catch (e: ApiException) {
+                // The server answered, so it is reachable.
+                reachable.value = true
                 // A revoked token (password changed, device removed): sign in again.
                 if (e.code == 401) app.signOut()
                 _error.value = e.message
                 e.code !in 500..599
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: java.io.IOException) {
+                reachable.value = false
+                _error.value = e.message ?: e.toString()
+                false
             } catch (e: Exception) {
                 _error.value = e.message ?: e.toString()
                 false

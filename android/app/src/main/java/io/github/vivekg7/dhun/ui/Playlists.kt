@@ -27,10 +27,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Catalog
+import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Mark
 import io.github.vivekg7.dhun.data.PlayStat
 import io.github.vivekg7.dhun.data.Resume
 import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.songIds
 
 /**
@@ -143,6 +145,7 @@ fun PlaylistsScreen(nav: Nav) {
                     }
                 }
             }
+            item { DownloadsCard { nav.open(Tab.Playlists, Page.DownloadsPage) } }
             item { SectionLabel("Automatic") }
             items(ListKind.entries.drop(2), key = { it.name }) { k ->
                 NameRow(k.icon, k.label, "${lists(k).size}") { nav.open(Tab.Playlists, Page.ListPage(k)) }
@@ -152,7 +155,9 @@ fun PlaylistsScreen(nav: Nav) {
         val shown = playlists.filter { q.isEmpty() || Catalog.fold(it.name).contains(q) }
         items(shown, key = { it.id }) { p ->
             val count = songIds(p.songs).count { it != 0L && catalog.byId.containsKey(it) }
-            NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count") { nav.open(Tab.Playlists, Page.PlaylistPage(p.id)) }
+            NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count", pinned(Downloads.PLAYLIST, p.id.toString())) {
+                nav.open(Tab.Playlists, Page.PlaylistPage(p.id))
+            }
         }
         if (playlists.isEmpty()) item { Empty("No playlists yet") }
     }
@@ -180,6 +185,29 @@ private fun PinnedCard(
     }
 }
 
+/** Under Favorites and Listen Later: what is on the phone, and what the downloader is doing. */
+@Composable
+private fun DownloadsCard(onClick: () -> Unit) {
+    val status by App.app.downloads.status
+        .collectAsState()
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .background(c.surfaceContainer, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Download, null, Modifier.size(26.dp), tint = c.secondary)
+        Column(Modifier.padding(start = 16.dp)) {
+            Text("Downloads", style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+            Text(describe(status), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 fun ListScreen(
     kind: ListKind,
@@ -188,7 +216,20 @@ fun ListScreen(
 ) {
     val songs = listSongs(kind)
     SongList(kind.label, kind.source, songs, nav) {
-        PageHeader(kind.label, summary(songs), onBack, { playList(kind.label, kind.source, songs, 0) }) { shuffleList(kind.label, kind.source, songs) }
+        // Favorites and Listen Later can be downloaded; the automatic views change after every listen (docs/plans/012_downloads.md).
+        val markKind =
+            when (kind) {
+                ListKind.Favorites -> Store.FAV
+                ListKind.ListenLater -> Store.LATER
+                else -> null
+            }
+        PageHeader(
+            kind.label,
+            summary(songs),
+            onBack,
+            { playList(kind.label, kind.source, songs, 0) },
+            markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) },
+        ) { shuffleList(kind.label, kind.source, songs) }
     }
 }
 
@@ -206,7 +247,13 @@ fun PlaylistScreen(
     val songs = catalog.songsOf(songIds(p.songs).filter { it != 0L })
     val source = "playlist:${p.id}"
     SongList(p.name, source, songs, nav) {
-        PageHeader(p.name, summary(songs) + if (p.shared) " · shared" else "", onBack, { playList(p.name, source, songs, 0) }) {
+        PageHeader(
+            p.name,
+            summary(songs) + if (p.shared) " · shared" else "",
+            onBack,
+            { playList(p.name, source, songs, 0) },
+            DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
+        ) {
             shuffleList(p.name, source, songs)
         }
     }

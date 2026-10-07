@@ -38,7 +38,7 @@ are used at home or the office over Tailscale, where the server is reachable.
 | Playback     | Media3 ExoPlayer in a `MediaLibraryService`. The same service gives the notification, lock screen, Bluetooth and headset controls now, and **Android Auto later with no rework**. Gapless playback, and speed and pitch (`PlaybackParameters`), are built in. |
 | Local data   | Room. It holds the catalogue copy, the user-data working copy, the outbox, and the download index ([006](006_api_and_sync.md)).                                                                                                                               |
 | Network      | OkHttp plus kotlinx.serialization. Media3's OkHttp data source shares the same client, so auth is one interceptor.                                                                                                                                            |
-| Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads are still to be decided.                                                                                            |
+| Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads run in a `dataSync` foreground service ([012](012_downloads.md)).                                                   |
 | DI           | Manual: one `AppGraph` object. Hilt is not worth it for a single-module app.                                                                                                                                                                                  |
 | Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                |
 | `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest. The owner's A35 runs Android 16.                                                                                                                                      |
@@ -62,8 +62,8 @@ again" impossible. Instead, both are folders of original files under the
 app's external storage. The owner's phone has an SD card, and the app's own
 folder on it needs no permission. Room tracks their sizes and quotas.
 Promoting a cached song to Downloads is a **file rename**, as in Ultrasonic
-([INSPIRATIONS](../INSPIRATIONS.md)). Downloads are fetched in full by
-WorkManager, never by the player.
+([INSPIRATIONS](../INSPIRATIONS.md)). Downloads are fetched in full by a
+foreground service, never by the player ([012](012_downloads.md)).
 
 **Phone-local songs** come from MediaStore. They are a separate source with
 their own IDs, which are never sent to the server ([REQUIREMENTS](../REQUIREMENTS.md#phone-local-songs)).
