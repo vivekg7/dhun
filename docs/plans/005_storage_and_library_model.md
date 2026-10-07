@@ -1,6 +1,6 @@
 # 005 — Storage and library model
 
-**Status:** `IN PROGRESS` — implemented in `server/` (migrations 0001–0002); not yet on `main`
+**Status:** `RELEASED` — implemented in `server/` (migrations 0001–0006); running on the NAS as `server-v0.1.1` since 2026-10-07
 **Started:** 2026-10-06
 
 ## Problem

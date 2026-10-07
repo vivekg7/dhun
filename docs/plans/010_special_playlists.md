@@ -1,6 +1,6 @@
 # 010 — Special playlists and automatic views
 
-**Status:** `IN PROGRESS` — server side implemented; the apps will show them
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
 **Started:** 2026-10-07
 
 ## Problem

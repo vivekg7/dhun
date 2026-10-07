@@ -1,6 +1,6 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `IN PROGRESS` — `server-v0.1.0` published to `ghcr.io/vivekg7/dhun` (amd64, arm64); not yet running on the NAS
+**Status:** `RELEASED` — `server-v0.1.1` running on the owner's DS1525+ since 2026-10-07
 **Started:** 2026-10-06 · **Revised:** 2026-10-07 (safety review before the first install)
 
 ## Problem

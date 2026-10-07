@@ -1,6 +1,6 @@
 # 009 — Resume long files on every device
 
-**Status:** `IN PROGRESS` — server side implemented; the clients will use it
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
 **Started:** 2026-10-07
 
 ## Problem

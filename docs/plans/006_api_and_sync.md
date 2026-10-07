@@ -1,6 +1,6 @@
 # 006 — API and sync
 
-**Status:** `IN PROGRESS` — implemented in `server/`, contract in `api/openapi.yaml`; not yet on `main`
+**Status:** `RELEASED` — implemented in `server/`, contract in `api/openapi.yaml`; running on the NAS as `server-v0.1.1` since 2026-10-07
 **Started:** 2026-10-06
 
 ## Problem

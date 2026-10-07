@@ -20,7 +20,7 @@ import (
 // Scanner reconciles the database with the media root. One scan runs at a time.
 type Scanner struct {
 	DB   *sql.DB
-	Root string // absolute media root (MEDIA_PATH, mounted at /media)
+	Root string // absolute media root (DHUN_MEDIA, mounted at /media)
 	Log  *slog.Logger
 
 	mu sync.Mutex

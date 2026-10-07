@@ -14,9 +14,11 @@ is the date of the latest review. The findings of each review go to
 
 What we have actually taken, and from where.
 
-| Project                                                                                                                                       | What we took                                                                   | Where in our code                             |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
-| [go.senan.xyz/taglib](https://github.com/sentriz/go-taglib) (by Gonic's author; TagLib compiled to WebAssembly; LGPL-2.1, GPL-3.0-compatible) | Tag and audio-property reading without cgo, so the server is one static binary | `server/internal/library/tags.go`, `media.go` |
+| Project                                                                                                                                       | What we took                                                                                                                                            | Where in our code                                                         |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Musicolet (behaviour only, never code)                                                                                                        | Remembering the place in long files, with a minimum length and resume-or-ask ([plan 009](plans/009_resume_long_files.md)); Favorites as a built-in list | `server/internal/api/sync.go` (`resume`, `mark`)                          |
+| Immich, Navidrome                                                                                                                             | Creating the first admin from environment variables, read only while there are no users ([plan 003](plans/003_deployment.md))                           | `server/cmd/dhun/main.go`, `EnsureAdmin` in `server/internal/api/auth.go` |
+| [go.senan.xyz/taglib](https://github.com/sentriz/go-taglib) (by Gonic's author; TagLib compiled to WebAssembly; LGPL-2.1, GPL-3.0-compatible) | Tag and audio-property reading without cgo, so the server is one static binary                                                                          | `server/internal/library/tags.go`, `media.go`                             |
 
 ## Watched
 

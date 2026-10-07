@@ -1,6 +1,6 @@
 # 008 — Listening history
 
-**Status:** `IN PROGRESS` — server side implemented; the Android app will send it
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
 **Started:** 2026-10-07
 
 ## Problem

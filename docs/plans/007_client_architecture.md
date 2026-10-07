@@ -71,6 +71,19 @@ their own IDs, which are never sent to the server ([REQUIREMENTS](../REQUIREMENT
 **Lyrics:** `.lrc` and embedded lyrics are parsed on the device by a small
 parser of our own. Synced lines are highlighted from the player's position.
 
+**What the server already expects from the app** (plans 008–010):
+
+- **One `play` per listen**, skips included, built from the player's events.
+  The open listen is saved in Room as it plays, so a killed app closes it as
+  `interrupted` on the next start ([008](008_listening_history.md)).
+- **Resume points** for files of at least `longFiles.minMinutes`: saved on
+  pause, on switching away and every 30 s, with one `resume.set` per song
+  kept in the outbox, and cleared at the end ([009](009_resume_long_files.md)).
+- **Favorites and Listen Later** pinned above the playlists. **Continue
+  listening, Recently added, Recently played, Most played and Not played
+  lately** are computed from Room ([010](010_special_playlists.md)).
+- **Synced settings**, read from every pull and written with `setting.set`.
+
 ## macOS
 
 SwiftUI, with AVFoundation (`AVQueuePlayer`) for playback and `URLSession` for

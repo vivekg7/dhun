@@ -82,15 +82,15 @@ wrong.
 
 ## Index
 
-| Plan                                                                       | Status                                                              |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [010 — Special playlists and automatic views](010_special_playlists.md)    | `IN PROGRESS` — server side implemented; not yet on `main`          |
-| [009 — Resume long files on every device](009_resume_long_files.md)        | `IN PROGRESS` — server side implemented; not yet on `main`          |
-| [008 — Listening history](008_listening_history.md)                        | `IN PROGRESS` — server side implemented; not yet on `main`          |
-| [007 — Client architecture and repo layout](007_client_architecture.md)    | `ACCEPTED` — no code yet                                            |
-| [006 — API and sync](006_api_and_sync.md)                                  | `IN PROGRESS` — implemented; not yet on `main`                      |
-| [005 — Storage and library model](005_storage_and_library_model.md)        | `IN PROGRESS` — implemented; not yet on `main`                      |
-| [004 — Dhun owns every change to the collection](004_curation_workflow.md) | `ACCEPTED` — option C; no code yet                                  |
-| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)       | `IN PROGRESS` — `server-v0.1.0` image published; not yet on the NAS |
-| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                | `ACCEPTED` — mechanics in 006                                       |
-| [001 — Our own backend, in Go](001_own_backend_in_go.md)                   | `IN PROGRESS` — server in `server/`; not yet on `main`              |
+| Plan                                                                       | Status                                                   |
+| -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [010 — Special playlists and automatic views](010_special_playlists.md)    | `IN PROGRESS` — server side on the NAS; apps not built   |
+| [009 — Resume long files on every device](009_resume_long_files.md)        | `IN PROGRESS` — server side on the NAS; apps not built   |
+| [008 — Listening history](008_listening_history.md)                        | `IN PROGRESS` — server side on the NAS; apps not built   |
+| [007 — Client architecture and repo layout](007_client_architecture.md)    | `ACCEPTED` — no code yet                                 |
+| [006 — API and sync](006_api_and_sync.md)                                  | `RELEASED` — `server-v0.1.1` on the NAS since 2026-10-07 |
+| [005 — Storage and library model](005_storage_and_library_model.md)        | `RELEASED` — `server-v0.1.1` on the NAS since 2026-10-07 |
+| [004 — Dhun owns every change to the collection](004_curation_workflow.md) | `ACCEPTED` — option C; no code yet                       |
+| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)       | `RELEASED` — `server-v0.1.1` on the NAS since 2026-10-07 |
+| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                | `ACCEPTED` — mechanics in 006                            |
+| [001 — Our own backend, in Go](001_own_backend_in_go.md)                   | `RELEASED` — `server-v0.1.1` on the NAS since 2026-10-07 |
