@@ -13,6 +13,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Listen
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.Song
@@ -58,7 +59,7 @@ class Playback(
     val player: ExoPlayer =
         ExoPlayer
             .Builder(app)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.api.http)))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(app.api.http).setCacheControl(Api.NO_STORE)))
             // Pause for calls and other apps, and when headphones are unplugged.
             .setAudioAttributes(
                 AudioAttributes

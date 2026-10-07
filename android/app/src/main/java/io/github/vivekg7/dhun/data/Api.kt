@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.Cache
+import okhttp3.CacheControl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -116,6 +117,12 @@ class Api(
 
     companion object {
         private val JSON = "application/json".toMediaType()
+
+        /**
+         * For songs: the server sends Last-Modified and no Cache-Control,
+         * which OkHttp would cache, pushing the art out of its 64 MB cache.
+         */
+        val NO_STORE: CacheControl = CacheControl.Builder().noStore().build()
     }
 }
 
