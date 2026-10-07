@@ -36,6 +36,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,8 +93,16 @@ sealed interface Page {
     ) : Page
 }
 
-/** Each tab keeps its own stack of pages, so going to an album and back leaves the other tabs as they were. */
-class Nav {
+/**
+ * Each tab keeps its own stack of pages, so going to an album and back leaves the other tabs as they were.
+ *
+ * Whatever is under the top page leaves composition, and with it the state its
+ * `rememberSaveable` keeps (a search, a scroll). [saved] holds that state per
+ * page until the page is popped, so going back finds it as it was.
+ */
+class Nav(
+    private val saved: SaveableStateHolder,
+) {
     private val stacks = Tab.entries.associateWith { mutableStateListOf<Page>() }
     var tab by mutableStateOf(Tab.Now)
     var settings by mutableStateOf(false)
@@ -101,7 +111,20 @@ class Nav {
 
     fun canPop(t: Tab) = stacks.getValue(t).isNotEmpty()
 
-    fun pop(t: Tab) = stacks.getValue(t).removeLastOrNull()
+    /**
+     * The key of [t]'s top page, or of its own list, in [saved]. The page is
+     * in it because the stacks are not saved but [saved] is: after the
+     * activity is recreated, another album at the same depth must not take
+     * this one's scroll.
+     */
+    fun key(t: Tab) = "${t.name}/${stacks.getValue(t).size}/${top(t)}"
+
+    fun pop(t: Tab) {
+        if (!canPop(t)) return
+        // A page popped is gone: opening one again starts it afresh.
+        saved.removeState(key(t))
+        stacks.getValue(t).removeAt(stacks.getValue(t).lastIndex)
+    }
 
     fun open(
         t: Tab,
@@ -114,7 +137,8 @@ class Nav {
 
 @Composable
 fun Shell() {
-    val nav = remember { Nav() }
+    val saved = rememberSaveableStateHolder()
+    val nav = remember { Nav(saved) }
     val pager = rememberPagerState(initialPage = Tab.Now.ordinal) { Tab.entries.size }
     val scope = rememberCoroutineScope()
     // The pager and nav.tab drive each other: a swipe sets the tab, "Go to album" moves the pager.
@@ -124,6 +148,7 @@ fun Shell() {
     BackHandler(nav.settings) { nav.settings = false }
     BackHandler(!nav.settings && nav.canPop(nav.tab)) { nav.pop(nav.tab) }
 
+    // Settings replaces the tabs: they keep their state for coming back.
     if (nav.settings) {
         Box(
             Modifier
@@ -137,24 +162,28 @@ fun Shell() {
         }
         return
     }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        HorizontalPager(pager, Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars), key = { it }) { page ->
-            val tab = Tab.entries[page]
-            Box(Modifier.fillMaxSize()) {
-                when (val top = nav.top(tab)) {
-                    null -> TabRoot(tab, nav)
-                    else -> PageContent(tab, top, nav)
+    saved.SaveableStateProvider("tabs") {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            HorizontalPager(pager, Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars), key = { it }) { page ->
+                val tab = Tab.entries[page]
+                Box(Modifier.fillMaxSize()) {
+                    saved.SaveableStateProvider(nav.key(tab)) {
+                        when (val top = nav.top(tab)) {
+                            null -> TabRoot(tab, nav)
+                            else -> PageContent(tab, top, nav)
+                        }
+                    }
                 }
             }
+            HandoffBar()
+            if (nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
+            TabBar(nav.tab, onSelect = { t ->
+                // Tapping the tab you are on goes back to its own list.
+                if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
+                nav.tab = t
+                scope.launch { pager.scrollToPage(t.ordinal) }
+            }, onSettings = { nav.settings = true })
         }
-        HandoffBar()
-        if (nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
-        TabBar(nav.tab, onSelect = { t ->
-            // Tapping the tab you are on goes back to its own list.
-            if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
-            nav.tab = t
-            scope.launch { pager.scrollToPage(t.ordinal) }
-        }, onSettings = { nav.settings = true })
     }
 }
 
