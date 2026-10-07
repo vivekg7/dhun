@@ -9,7 +9,7 @@ STUDIO_JBR := /Applications/Android Studio.app/Contents/jbr/Contents/Home
 export JAVA_HOME ?= $(shell [ -d "$(STUDIO_JBR)" ] && echo "$(STUDIO_JBR)")
 GRADLE = cd android && ./gradlew -q
 
-.PHONY: help init fmt lint test check image lint-server lint-android test-server test-android
+.PHONY: help init fmt lint test check image apk lint-server lint-android test-server test-android
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
@@ -18,6 +18,7 @@ help:
 	@echo 'test   the server suite (race detector) and the Android unit tests'
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
+	@echo 'apk    build the signed release APK and archive it in local/'
 
 # Writes the one setting that cannot be committed: autoMemoryDirectory takes an
 # absolute path, so it lives in the git-ignored settings.local.json while the
@@ -67,3 +68,6 @@ check: lint test
 
 image:
 	docker build -f deploy/Dockerfile -t dhun:dev .
+
+apk:
+	scripts/archive-apk.sh

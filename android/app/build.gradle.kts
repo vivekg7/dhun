@@ -8,11 +8,12 @@ plugins {
     alias(libs.plugins.room)
 }
 
-// The release key and its passwords live in local/, which git ignores. A
-// checkout without them still builds a release, unsigned.
+// The release key and its passwords live in the repository's local/ folder,
+// which git ignores. A checkout without them still builds a release, unsigned.
+val repoRoot: File = rootProject.projectDir.parentFile
 val keystore =
     Properties().apply {
-        val file = rootProject.file("local/keystore.properties")
+        val file = repoRoot.resolve("local/keystore.properties")
         if (file.exists()) file.inputStream().use(::load)
     }
 
@@ -32,7 +33,7 @@ android {
     signingConfigs {
         if (keystore.isNotEmpty()) {
             create("release") {
-                storeFile = rootProject.file(keystore.getProperty("storeFile"))
+                storeFile = repoRoot.resolve(keystore.getProperty("storeFile"))
                 storePassword = keystore.getProperty("storePassword")
                 keyAlias = keystore.getProperty("keyAlias")
                 keyPassword = keystore.getProperty("keyPassword")

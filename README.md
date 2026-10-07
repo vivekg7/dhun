@@ -40,9 +40,35 @@ Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 
 ## Develop
 
-`make init` once per clone, then `make check` (formatting, `go vet`, tests),
-`make fmt`, and `make image`. The API contract is
-[`api/openapi.yaml`](api/openapi.yaml).
+`make init` once per clone, then `make check` (formatting, `go vet`, ktlint,
+Android lint, tests), `make fmt`, and `make image`. The API contract is
+[`api/openapi.yaml`](api/openapi.yaml). The Android app needs a JDK (Android
+Studio's is found on its own) and `android/local.properties` pointing at an
+Android SDK with platform 37.
+
+### Release builds
+
+A release APK is signed when `local/keystore.properties` exists at the
+repository root:
+
+```properties
+storeFile=local/dhun-release.jks
+storePassword=…
+keyAlias=dhun
+keyPassword=…
+```
+
+`local/` is gitignored, so neither the key nor its password reaches the
+repository; without the file, the release build comes out unsigned. **The key
+cannot be recovered.** Lose it and no installed copy of Dhun can be updated,
+because Android refuses an update signed by another key, so keep a copy off
+this machine.
+
+`make apk` (`scripts/archive-apk.sh`) builds the release and archives it in
+`local/` as `dhun-v<version>.apk`, with its `.sha256` and the R8 `mapping.txt`
+that turns an obfuscated crash back into names. A dirty working tree is
+archived as `-dirty-g<commit>`, so work in progress never takes a release's
+name, and an existing archive is never overwritten without `--force`.
 
 - What it must do — [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
 - Why it is built this way — [`docs/plans/`](docs/plans/README.md)

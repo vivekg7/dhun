@@ -2,6 +2,10 @@
 # raw dumps. Never commit -- this repo is open source and Musicolet is not.
 tmp/
 
+# This machine only: the Android release key and its passwords, and the
+# archived release APKs (scripts/archive-apk.sh). Never committed.
+local/
+
 # Secrets and signing keys.
 .env
 .env.*

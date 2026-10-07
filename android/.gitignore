@@ -7,5 +7,3 @@ captures/
 *.hprof
 # This machine's SDK path.
 local.properties
-# Signing: the key and its passwords stay on the machine that releases.
-local/
