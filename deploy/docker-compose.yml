@@ -15,7 +15,7 @@ services:
     container_name: dhun
     # The newest release, fetched on every Build: upgrading is Stop → Build.
     # To stay on (or roll back to) one release, use its tag instead, e.g.
-    # ghcr.io/vivekg7/dhun:server-v0.1.2, and remove pull_policy.
+    # ghcr.io/vivekg7/dhun:server-v0.1.3, and remove pull_policy.
     image: ghcr.io/vivekg7/dhun:latest
     pull_policy: always
     # Your DSM user and the "users" group; check with `id <you>` (EDIT if

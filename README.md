@@ -6,11 +6,13 @@ clients for Android (full-featured, primary), macOS and the web — with
 Musicolet, the offline Android player, rebuilt for a music collection that
 lives on a NAS.
 
-**Status:** the server runs on the owner's NAS (`server-v0.1.2`). It covers the library
+**Status:** the server runs on the owner's NAS (`server-v0.1.3`). It covers the library
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
-Later. The Android app is being built in `android/`
-([plan 011](docs/plans/011_android_app.md)); macOS and web come after it.
+Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
+runs on the owner's phone as 0.3.0, with downloads, playlist editing, the
+sleep timer, lyrics, speed and pitch, and hand-off; there is no GitHub
+release yet. macOS and web come after it.
 
 ## Run the server
 

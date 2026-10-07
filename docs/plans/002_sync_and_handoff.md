@@ -1,7 +1,8 @@
 # 002 — Sync, offline and hand-off
 
-**Status:** `ACCEPTED` — working copy, hand-off level and operation-log sync
-decided; mechanics in [006](006_api_and_sync.md)
+**Status:** `MERGED` — operation-log sync on the NAS ([006](006_api_and_sync.md));
+resume hand-off in the Android app on the owner's phone
+([017](017_handoff.md)); live transfer after v1
 **Started:** 2026-10-06
 
 ## Problem

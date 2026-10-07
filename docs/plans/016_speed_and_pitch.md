@@ -1,7 +1,7 @@
 # 016 — Play speed and pitch on Android
 
-**Status:** `IN PROGRESS` — built and tested on the emulator; the server's
-settings cap change is in the next server release
+**Status:** `MERGED` — in 0.3.0 on the owner's phone; the settings cap on
+the NAS in `server-v0.1.3`; tested live there on 2026-10-07
 **Started:** 2026-10-07
 
 ## Problem
@@ -52,8 +52,9 @@ The server takes any setting the app names, so it needed only one change:
 its cap of 100 settings per user, meant to stop one user filling the
 database, would have been reached by songs given a speed over the years.
 The cap is now **1,000**, and **settings set back to `null` no longer
-count**. Until the NAS runs that release, the old cap applies; a setting
-past it is rejected and the song keeps its speed on that phone only.
+count** (`server-v0.1.3`). A server older than that keeps the old cap; a
+setting past it is rejected and the song keeps its speed on that phone
+only.
 
 ### Where it lives
 

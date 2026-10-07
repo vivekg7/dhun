@@ -1,6 +1,6 @@
 # 014 — The sleep timer on Android
 
-**Status:** `IN PROGRESS` — built and tested on the emulator
+**Status:** `MERGED` — in 0.3.0 on the owner's phone
 **Started:** 2026-10-07
 
 ## Problem
