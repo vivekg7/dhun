@@ -71,8 +71,12 @@ v1**, built on the same live connection. H3 only if it turns out to be wanted.
 
 ## Open questions
 
-- How often does the playing device report its position (battery cost versus
-  how precisely a hand-off resumes)?
-- Should a hand-off move the whole queue state, or only the active queue?
+- ~~How often does the playing device report its position?~~ Every 30 s
+  while playing, and on play, pause and each new song
+  ([017](017_handoff.md)).
+- ~~Should a hand-off move the whole queue state, or only the active
+  queue?~~ Only the active queue: the others are synced anyway
+  ([017](017_handoff.md)).
 - Phone-local songs are not synced. When a queue mixing local and NAS songs is
-  handed off, what does the other device show for the local ones?
+  handed off, what does the other device show for the local ones? Open until
+  phone-local songs are built.

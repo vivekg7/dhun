@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -146,6 +147,7 @@ fun Shell() {
                 }
             }
         }
+        HandoffBar()
         if (nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
         TabBar(nav.tab, onSelect = { t ->
             // Tapping the tab you are on goes back to its own list.
@@ -273,5 +275,42 @@ private fun MiniPlayer(onOpen: () -> Unit) {
             }
             IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) }
         }
+    }
+}
+
+/**
+ * "Continue from MacBook" (docs/plans/017_handoff.md), above the mini player
+ * on every tab, so it is seen wherever the app opens without blocking it.
+ */
+@Composable
+private fun HandoffBar() {
+    val app = App.app
+    val offer by app.playback.handoff.collectAsState()
+    val np = offer ?: return
+    val song = app.catalog.value.byId[np.song] ?: return
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().background(c.primaryContainer).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Devices, null, Modifier.size(22.dp), tint = c.onPrimaryContainer)
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                "Continue from ${np.deviceName.ifEmpty { "another device" }}",
+                style = MaterialTheme.typography.labelLarge,
+                color = c.onPrimaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${song.title} · ${duration(app.playback.placeOf(np))}",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.onPrimaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TextButton({ app.playback.continueFrom(np) }) { Text("Continue") }
+        IconButton({ app.playback.dismissHandoff(np) }) { Icon(Icons.Close, "Dismiss", tint = c.onPrimaryContainer) }
     }
 }

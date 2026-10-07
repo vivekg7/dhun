@@ -106,6 +106,10 @@ class Api(
 
     suspend fun lyrics(song: Long): LyricsDto = call(Request.Builder().url("${prefs.server}/api/v1/lyrics/$song").build())
 
+    suspend fun me(): Me = call(Request.Builder().url("${prefs.server}/api/v1/me").build())
+
+    suspend fun nowPlaying(): NowPlaying? = call<NowPlayingResponse>(Request.Builder().url("${prefs.server}/api/v1/now-playing").build()).nowPlaying
+
     suspend fun plays(): Plays = call(Request.Builder().url("${prefs.server}/api/v1/plays").build())
 
     private suspend inline fun <reified T> call(req: Request): T =
@@ -265,6 +269,15 @@ data class NowPlaying(
     val positionMs: Long = 0,
     val playing: Boolean = false,
     val at: String = "",
+)
+
+@Serializable data class NowPlayingResponse(
+    val nowPlaying: NowPlaying? = null,
+)
+
+@Serializable data class Me(
+    val user: User = User(),
+    val deviceId: Long = 0,
 )
 
 @Serializable data class OpResult(

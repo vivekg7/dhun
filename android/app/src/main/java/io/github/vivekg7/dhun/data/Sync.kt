@@ -221,7 +221,26 @@ class Sync(
             if ("setting:$name" in pending) continue
             if (value is JsonNull) dao.deleteSetting(name) else dao.putSetting(Setting(name, value.toString()))
         }
-        nowPlaying.value = s.nowPlaying
+        // Sent only when it changed since the cursor: no news is not "nothing playing".
+        s.nowPlaying?.let { nowPlaying.value = it }
+    }
+
+    /**
+     * On coming to the foreground: what the user's devices played last, for
+     * "Continue from …" (docs/plans/017_handoff.md). Asked directly, because
+     * after a restart the sync cursor is already past it.
+     */
+    suspend fun checkHandoff() {
+        if (app.prefs.token.isEmpty()) return
+        try {
+            // Signed in before the app kept its device id.
+            if (app.prefs.deviceId == 0L) app.prefs.deviceId = app.api.me().deviceId
+            app.api.nowPlaying()?.let { nowPlaying.value = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Offline, or an answer we cannot read: nothing to hand off from this time.
+        }
     }
 
     private suspend fun pullPlays() {

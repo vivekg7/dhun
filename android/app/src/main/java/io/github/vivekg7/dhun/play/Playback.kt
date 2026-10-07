@@ -19,10 +19,12 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Listen
+import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.joinIds
+import io.github.vivekg7.dhun.data.parseTime
 import io.github.vivekg7.dhun.data.songIds
 import io.github.vivekg7.dhun.data.string
 import kotlinx.coroutines.CoroutineScope
@@ -124,6 +126,28 @@ class Playback(
     /** What the player uses now. */
     val tempo: StateFlow<Tempo> = combine(everyday, songTempo) { e, s -> s ?: e }.stateIn(scope, SharingStarted.Eagerly, Tempo.NORMAL)
 
+    /** When this device last reported its playback, and the hand-off last dismissed (docs/plans/017_handoff.md). */
+    private val stateAt = MutableStateFlow(app.prefs.stateAt)
+    private val dismissed = MutableStateFlow(app.prefs.handoffDismissed)
+
+    /**
+     * "Continue from MacBook": another device's playback, offered while this
+     * one is not playing, when it is newer than anything this device played
+     * and its queue and song are here. Null when there is nothing to offer.
+     */
+    val handoff: StateFlow<NowPlaying?> =
+        combine(app.sync.nowPlaying, playing, stateAt, dismissed, combine(queues, app.catalog, ::Pair)) { np, playing, mine, gone, (qs, catalog) ->
+            np?.takeIf {
+                !playing &&
+                    app.prefs.deviceId != 0L &&
+                    it.deviceId != app.prefs.deviceId &&
+                    parseTime(it.at) > mine &&
+                    it.at != gone &&
+                    qs.any { q -> q.id == it.queue } &&
+                    catalog.byId[it.song] != null
+            }
+        }.stateIn(scope, SharingStarted.Eagerly, null)
+
     /** The speed the open listen's heard time is counted at, until the next change. */
     private var heardSpeed = 1f
 
@@ -183,10 +207,58 @@ class Playback(
         scope.launch { store.setting(Tempo.songSetting(s.id), JsonNull) }
     }
 
+    /**
+     * Where a hand-off continues: the other device's place, moved on by the
+     * time passed if it was still playing when it last reported, and never
+     * at the very end of the song.
+     */
+    fun placeOf(np: NowPlaying): Long {
+        var pos = np.positionMs
+        if (np.playing) pos += (System.currentTimeMillis() - parseTime(np.at)).coerceAtLeast(0)
+        val length =
+            app.catalog.value.byId[np.song]
+                ?.durationMs ?: 0
+        if (length > 0) pos = pos.coerceAtMost(length - END_MARGIN_MS)
+        return pos.coerceAtLeast(0)
+    }
+
+    /** Takes over from another device: its queue (queues are synced), its song, and its place. */
+    fun continueFrom(np: NowPlaying) =
+        scope.launch {
+            val q = queues.value.firstOrNull { it.id == np.queue } ?: return@launch
+            val song = app.catalog.value.byId[np.song] ?: return@launch
+            val pos = placeOf(np)
+            if (q.id != activeId.value) saveActive()
+            load(q.copy(currentSong = song.id, positionMs = pos, usedAt = System.currentTimeMillis()), play = true, position = pos)
+        }
+
+    /** ✕ on the offer: not offered again, though a newer playback on that device will be. */
+    fun dismissHandoff(np: NowPlaying) {
+        app.prefs.handoffDismissed = np.at
+        dismissed.value = np.at
+    }
+
+    /** Tells the server what this device plays, for the others' hand-off; a newer report hides this device's own offer. */
+    private fun report(
+        q: QueueRow,
+        s: Song,
+        pos: Long,
+        isPlaying: Boolean,
+    ) {
+        val now = System.currentTimeMillis()
+        app.prefs.stateAt = now
+        stateAt.value = now
+        scope.launch { store.playbackState(q.id, s.id, pos, isPlaying) }
+    }
+
     /** On sign-out: the open listen belongs to the account being left, and is dropped. */
     fun reset() {
         sleep.cancel()
         open = null
+        // The hand-off belongs to the account being left too.
+        app.sync.nowPlaying.value = null
+        stateAt.value = 0
+        dismissed.value = ""
         player.clearMediaItems()
         current.value = null
         offerResume.value = null
@@ -356,6 +428,7 @@ class Playback(
     private suspend fun load(
         q: QueueRow,
         play: Boolean,
+        position: Long? = null,
     ) {
         close("switched")
         val songs = app.catalog.value.songsOf(songIds(q.songs))
@@ -367,17 +440,18 @@ class Playback(
         }
         val index = songs.indexOfFirst { it.id == q.currentSong }.coerceAtLeast(0)
         val song = songs[index]
-        // For a long file, the resume point is kept up to date across
-        // devices and wins over the queue's own position (plan 009).
-        val position = startPosition(song) ?: if (song.id == q.currentSong) q.positionMs else 0
-        player.setMediaItems(songs.map(::item), index, position)
+        // A hand-off names its place; else, for a long file, the resume
+        // point is kept up to date across devices and wins over the queue's
+        // own position (plan 009).
+        val start = position?.also { offerResume.value = null } ?: startPosition(song) ?: if (song.id == q.currentSong) q.positionMs else 0
+        player.setMediaItems(songs.map(::item), index, start)
         player.shuffleModeEnabled = q.shuffle
         player.repeatMode = repeatMode(q.repeat)
         player.prepare()
         if (play) player.play()
         current.value = song
         store.putQueue(q)
-        openListen(song, position)
+        openListen(song, start)
     }
 
     private fun setActive(id: String) {
@@ -544,6 +618,7 @@ class Playback(
             val s = current.value ?: return
             store.setCurrent(q.copy(currentSong = s.id, positionMs = o.lastPos))
             saveResume(s, o.lastPos)
+            report(q, s, o.lastPos, true)
         }
     }
 
@@ -562,8 +637,8 @@ class Playback(
             val q = active.value ?: return
             val s = current.value ?: return
             val pos = player.currentPosition
+            report(q, s, pos, isPlaying)
             scope.launch {
-                store.playbackState(q.id, s.id, pos, isPlaying)
                 if (!isPlaying) {
                     store.setCurrent(q.copy(currentSong = s.id, positionMs = pos))
                     saveResume(s, pos)
@@ -630,6 +705,8 @@ class Playback(
                 openListen(song, start ?: 0)
                 val q = active.value ?: return@launch
                 store.setCurrent(q.copy(currentSong = song.id, positionMs = start ?: 0))
+                // The next song, for a hand-off from another device.
+                if (player.isPlaying) report(q, song, start ?: 0, true)
             }
         }
 
@@ -681,6 +758,9 @@ class Playback(
 
     companion object {
         const val MAX_QUEUES = 20
+
+        /** A hand-off never starts closer than this to the song's end: the other device may have been closed mid-song. */
+        private const val END_MARGIN_MS = 5_000L
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val NETWORK_ERRORS = 2000..2999

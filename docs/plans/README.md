@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                         | Status                                                                           |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [017 — Hand-off (resume) on Android](017_handoff.md)                         | `IN PROGRESS` — built and tested on the emulator                                 |
 | [016 — Play speed and pitch on Android](016_speed_and_pitch.md)              | `IN PROGRESS` — built and tested on the emulator; server cap in the next release |
 | [015 — Lyrics on Android](015_lyrics.md)                                     | `IN PROGRESS` — built and tested on the emulator                                 |
 | [014 — The sleep timer on Android](014_sleep_timer.md)                       | `IN PROGRESS` — built and tested on the emulator                                 |

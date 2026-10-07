@@ -98,18 +98,18 @@ by the client (option B in [002](002_sync_and_handoff.md)):
 
 Operations and how each merges:
 
-| Operation                                               | Merge rule                                                                                                                                         |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `queue.create`, `queue.rename`, `queue.delete`          | Delete wins over later edits. A name clash on create or rename gets a suffix (`Hindi (2)`). The 20-queue limit is enforced by the server.          |
-| `queue.insert`, `queue.remove`, `queue.move`            | Applied by song ID. A missing `after` song → append at the end. Inserting a song already in the queue → it is moved there instead (no duplicates). |
-| `queue.set_current`                                     | The latest `at` wins.                                                                                                                              |
-| `playlist.create`, `playlist.rename`, `playlist.delete` | Same as queues. The server rewrites or renames the `.m3u8` file ([005](005_storage_and_library_model.md)).                                         |
-| `playlist.insert`, `playlist.remove`, `playlist.move`   | Same as queues. Playlists may contain duplicates, so they address an item by `(song, occurrence)`.                                                 |
-| `favorite.set`, `favorite.unset`                        | The latest `at` wins.                                                                                                                              |
-| `listen_later.add`, `listen_later.remove`               | The latest `at` wins. A `play` that reaches 90% into a listed song removes it ([010](010_special_playlists.md)).                                   |
-| `resume.set`, `resume.unset`, `setting.set`             | The latest `at` wins, as for favorites ([009](009_resume_long_files.md)).                                                                          |
-| `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                           |
-| `playback.state`                                        | Updates `now_playing` if newer. Sent while playing (at most every 15 s, and on pause, skip or queue switch), not stored in the outbox.             |
+| Operation                                               | Merge rule                                                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `queue.create`, `queue.rename`, `queue.delete`          | Delete wins over later edits. A name clash on create or rename gets a suffix (`Hindi (2)`). The 20-queue limit is enforced by the server.               |
+| `queue.insert`, `queue.remove`, `queue.move`            | Applied by song ID. A missing `after` song → append at the end. Inserting a song already in the queue → it is moved there instead (no duplicates).      |
+| `queue.set_current`                                     | The latest `at` wins.                                                                                                                                   |
+| `playlist.create`, `playlist.rename`, `playlist.delete` | Same as queues. The server rewrites or renames the `.m3u8` file ([005](005_storage_and_library_model.md)).                                              |
+| `playlist.insert`, `playlist.remove`, `playlist.move`   | Same as queues. Playlists may contain duplicates, so they address an item by `(song, occurrence)`.                                                      |
+| `favorite.set`, `favorite.unset`                        | The latest `at` wins.                                                                                                                                   |
+| `listen_later.add`, `listen_later.remove`               | The latest `at` wins. A `play` that reaches 90% into a listed song removes it ([010](010_special_playlists.md)).                                        |
+| `resume.set`, `resume.unset`, `setting.set`             | The latest `at` wins, as for favorites ([009](009_resume_long_files.md)).                                                                               |
+| `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                                |
+| `playback.state`                                        | Updates `now_playing` if newer. Sent on play and pause, on each new song, and every 30 s while playing; one kept in the outbox ([017](017_handoff.md)). |
 
 Clients apply their own operations locally at once (optimistic), keep them in
 an **outbox** until the server confirms them, and replace the local copy with

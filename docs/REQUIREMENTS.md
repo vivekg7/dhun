@@ -257,7 +257,11 @@ Proposed. Awaiting the owner's confirmation.
 - **Downloads** with a storage limit.
 - **Phone-local songs**, kept separate from NAS songs as described above.
 - An offline working copy of the synced data, pushed back on reconnect.
-- **Hand-off (resume):** offer to continue what another device was playing.
+- **Hand-off (resume):** offer to continue what another device was playing,
+  in a bar above the mini player, while this device is not playing and when
+  that playback is newer than anything played here. Continue switches to
+  the same queue, song and place (owner, 2026-10-07;
+  [plan 017](plans/017_handoff.md)).
 
 **macOS and Web (minimal)**
 

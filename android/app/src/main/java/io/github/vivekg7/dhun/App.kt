@@ -57,7 +57,11 @@ class App : Application() {
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
                     if (prefs.token.isEmpty()) return
-                    scope.launch { sync.now() }
+                    scope.launch {
+                        // Before the sync: its now-playing is judged by this device's id.
+                        sync.checkHandoff()
+                        sync.now()
+                    }
                     // Downloads that could not start from the background go on now.
                     downloads.poke()
                 }
@@ -99,6 +103,15 @@ class Prefs(
     var serverVersion by stored("serverVersion", "")
     var libraryVersion by storedLong("libraryVersion")
     var syncVersion by storedLong("syncVersion")
+
+    /** This device as the server knows it, to tell its own playback from another device's (docs/plans/017_handoff.md). */
+    var deviceId by storedLong("deviceId")
+
+    /** When this device last reported its playback; a hand-off is offered only for something newer. */
+    var stateAt by storedLong("stateAt")
+
+    /** The `at` of the hand-off last dismissed, so ✕ is not undone by the next sync. */
+    var handoffDismissed by stored("handoffDismissed", "")
     var activeQueue by stored("activeQueue", "")
     var themeMode by mutableStateOf(enumOr(sp.getString("theme", null), ThemeMode.System))
         private set
@@ -170,6 +183,9 @@ class Prefs(
         libraryVersion = 0
         syncVersion = 0
         openListen = ""
+        deviceId = 0
+        stateAt = 0
+        handoffDismissed = ""
     }
 
     private fun stored(

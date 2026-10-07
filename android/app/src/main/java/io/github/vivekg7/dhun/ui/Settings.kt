@@ -249,6 +249,7 @@ fun SignInScreen() {
                 val login = app.api.login(url, user.trim(), password, Build.MODEL)
                 app.prefs.server = url
                 app.prefs.userName = login.user.name
+                app.prefs.deviceId = login.deviceId
                 app.prefs.token = login.token
                 // This screen leaves as soon as the token is set; the first sync outlives it.
                 app.scope.launch { app.sync.now() }
