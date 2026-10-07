@@ -13,7 +13,11 @@
 services:
   dhun:
     container_name: dhun
-    image: ghcr.io/vivekg7/dhun:server-v0.1.1 # a fixed release: upgrade on purpose
+    # The newest release, fetched on every Build: upgrading is Stop → Build.
+    # To stay on (or roll back to) one release, use its tag instead, e.g.
+    # ghcr.io/vivekg7/dhun:server-v0.1.2, and remove pull_policy.
+    image: ghcr.io/vivekg7/dhun:latest
+    pull_policy: always
     # Your DSM user and the "users" group; check with `id <you>` (EDIT if
     # different). Files Dhun writes stay yours and editable over SMB.
     user: "1026:100"

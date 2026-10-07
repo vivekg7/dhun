@@ -62,8 +62,15 @@ project folder.**
   editable over SMB), `read_only: true`, `cap_drop: [ALL]`,
   `no-new-privileges`, `mem_limit: 1g` (steady state is about 30 MB, the
   first scan about 150 MB) and `pids_limit`.
-- **A fixed image tag** (`server-vX.Y.Z`, not `latest`): an upgrade happens
-  when the owner edits the tag, never on a pull.
+- **`latest`, pulled on every Build** (`pull_policy: always`): upgrading is
+  Stop → Build in Container Manager, with no file to edit. Each release is
+  also published under its own tag (`server-vX.Y.Z`), so staying on one,
+  or rolling back, is putting that tag in the compose file. The first
+  version of this plan pinned a fixed tag, so that an upgrade happened only
+  when the owner edited it, never on a pull; the owner chose `latest` on
+  2026-10-07, because he publishes every release himself and editing the
+  tag each time was a chore. What is lost: a Build always takes the newest
+  release, so a release is published only when it is meant to run.
 - **The admin from the environment** (as Immich and Navidrome seed their
   first account). The server refuses to start with no users and no admin
   configured, so a fresh install is never left open. The variables are read
@@ -159,7 +166,9 @@ the Mac.
    afterwards (`POST /api/v1/logout` with the same header), so the token
    stops working.
 
-**Upgrading:** change the image tag in the compose file, then Stop → Build.
+**Upgrading:** Stop → Build: it pulls the newest release. If Container
+Manager reuses the image it already has, delete `ghcr.io/vivekg7/dhun:latest`
+under Image first.
 Database migrations run on start. The database is backed up nightly to
 `data/backups/`, keeping 14 days. **Backing up Dhun** means backing up
 `docker/dhun` (Hyper Backup); everything Dhun knows is in there, apart from
