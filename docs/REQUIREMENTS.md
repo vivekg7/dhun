@@ -232,7 +232,12 @@ Proposed. Awaiting the owner's confirmation.
   the clock it fades out and pauses on time; by songs it pauses where a
   song ends. Shown on Now playing and in the notification (owner,
   2026-10-07; [plan 014](plans/014_sleep_timer.md)).
-- **Lyrics:** synced and plain, as provided by the server.
+- **Lyrics:** synced and plain, as provided by the server, in place of the
+  cover on Now playing (tap the cover, or the lyrics button). Synced lines
+  follow the song and a tap on one plays from it; the screen stays on while
+  they show and the song plays. Kept on the phone with downloads and once
+  viewed, so they show offline (owner, 2026-10-07;
+  [plan 015](plans/015_lyrics.md)).
 - **Play speed and pitch.**
 - Gapless playback.
 - Media notification, lock-screen and Bluetooth / headset controls. Pause on

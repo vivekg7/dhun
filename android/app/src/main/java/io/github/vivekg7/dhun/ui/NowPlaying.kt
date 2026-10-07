@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +33,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
@@ -59,6 +62,13 @@ fun NowPlayingScreen(nav: Nav) {
     val later by app.store.listenLater.collectAsState(emptyList())
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
+    var lyrics by rememberSaveable { mutableStateOf(false) }
+    // Lyrics are read at arm's length: the screen stays on while they show and the song plays.
+    val view = LocalView.current
+    DisposableEffect(view, lyrics && playing) {
+        view.keepScreenOn = lyrics && playing
+        onDispose { view.keepScreenOn = false }
+    }
     val s = song
     if (s == null) {
         Empty("Nothing is playing.\nPick something from your library.")
@@ -82,9 +92,18 @@ fun NowPlayingScreen(nav: Nav) {
             Icon(Icons.ExpandMore, null, Modifier.size(18.dp), tint = c.onSurfaceVariant)
         }
 
-        // The cover takes what height is left, up to a square.
+        // The cover takes what height is left, up to a square; a tap swaps it for the lyrics.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
-            Art(s, minOf(maxWidth, maxHeight), RoundedCornerShape(16.dp))
+            if (lyrics) {
+                LyricsView(s) { lyrics = false }
+            } else {
+                Art(
+                    s,
+                    minOf(maxWidth, maxHeight),
+                    RoundedCornerShape(16.dp),
+                    Modifier.clickable(interactionSource = null, indication = null) { lyrics = true },
+                )
+            }
         }
 
         Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
@@ -136,6 +155,13 @@ fun NowPlayingScreen(nav: Nav) {
                 )
             }
             Spacer(Modifier.weight(1f))
+            IconButton({ lyrics = !lyrics }) {
+                Icon(
+                    Icons.Lyrics,
+                    if (lyrics) "Show the cover" else "Lyrics",
+                    tint = if (lyrics) c.primary else c.onSurfaceVariant.copy(alpha = if (s.hasLyrics) 1f else 0.38f),
+                )
+            }
             SleepButton()
             val repeat = queue?.repeat ?: "off"
             IconButton({ pb.cycleRepeat() }) {
@@ -180,8 +206,8 @@ private fun SeekBar(
             if (!dragging) position = player.currentPosition
             // Until the player has read the file, the catalogue knows the length.
             length = player.duration.takeIf { it > 0 } ?: songMs
-            if (!playing) break
-            delay(250)
+            // Paused too, more slowly: a tap on a lyric line seeks without playing.
+            delay(if (playing) 250 else 500)
         }
     }
     Column(Modifier.padding(horizontal = 24.dp)) {

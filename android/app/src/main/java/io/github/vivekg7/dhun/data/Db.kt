@@ -24,12 +24,12 @@ import kotlinx.coroutines.flow.Flow
 @Database(
     entities = [
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
-        Pin::class, Download::class,
+        Pin::class, Download::class, LyricsRow::class,
     ],
-    version = 3,
+    version = 4,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun dao(): DbDao
@@ -179,6 +179,14 @@ data class Download(
     val at: Long,
 )
 
+/** A song's lyrics as the server sent them, kept for offline (docs/plans/015_lyrics.md). */
+@Entity(tableName = "lyrics")
+data class LyricsRow(
+    @PrimaryKey val song: Long,
+    val text: String,
+    val at: Long,
+)
+
 @Dao
 interface DbDao {
     @Query("SELECT * FROM song WHERE missing = 0")
@@ -292,4 +300,16 @@ interface DbDao {
 
     @Query("DELETE FROM download WHERE song = :song")
     suspend fun deleteDownload(song: Long)
+
+    @Query("SELECT * FROM lyrics WHERE song = :song")
+    suspend fun lyrics(song: Long): LyricsRow?
+
+    @Query("SELECT song FROM lyrics")
+    suspend fun lyricsSongs(): List<Long>
+
+    @Upsert
+    suspend fun putLyrics(l: LyricsRow)
+
+    @Query("DELETE FROM lyrics WHERE song = :song")
+    suspend fun deleteLyrics(song: Long)
 }

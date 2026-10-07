@@ -104,6 +104,8 @@ class Api(
         )
     }
 
+    suspend fun lyrics(song: Long): LyricsDto = call(Request.Builder().url("${prefs.server}/api/v1/lyrics/$song").build())
+
     suspend fun plays(): Plays = call(Request.Builder().url("${prefs.server}/api/v1/plays").build())
 
     private suspend inline fun <reified T> call(req: Request): T =
@@ -291,6 +293,12 @@ data class SyncState(
 
 @Serializable data class Plays(
     val plays: List<PlayDto> = emptyList(),
+)
+
+@Serializable data class LyricsDto(
+    val source: String = "",
+    val synced: Boolean = false,
+    val text: String = "",
 )
 
 typealias Op = JsonObject

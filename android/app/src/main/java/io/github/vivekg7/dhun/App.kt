@@ -14,6 +14,7 @@ import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Db
 import io.github.vivekg7.dhun.data.Downloads
+import io.github.vivekg7.dhun.data.Lyrics
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
 import io.github.vivekg7.dhun.play.Playback
@@ -37,6 +38,7 @@ class App : Application() {
     val sync by lazy { Sync(this) }
     val playback by lazy { Playback(this) }
     val downloads by lazy { Downloads(this) }
+    val lyrics by lazy { Lyrics(this) }
 
     /** The catalogue in memory: 7,000 songs browse and search faster there than through SQL. */
     val catalog by lazy {

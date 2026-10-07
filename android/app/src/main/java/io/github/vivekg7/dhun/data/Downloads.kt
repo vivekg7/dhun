@@ -122,7 +122,9 @@ class Downloads(
         val todo = songs.filter { s -> have[s.id].let { it == null || (s.size > 0 && it.size != s.size) } }
         var used = have.values.filter { it.song in want }.sumOf { it.size }
         update(State.Idle, songs.size, used, have)
-        if (todo.isEmpty() || app.prefs.token.isEmpty()) return
+        if (app.prefs.token.isEmpty()) return
+        keepLyrics(songs.filter { it.id in have })
+        if (todo.isEmpty()) return
 
         for ((i, s) in todo.withIndex()) {
             // Something changed while the last file was fetched (a new pin, an
@@ -151,7 +153,21 @@ class Downloads(
             used += s.size - replacing
             _status.value = _status.value.copy(done = _status.value.done + 1, usedBytes = used)
         }
-        update(State.Idle, songs.size, used, dao.downloads().first().associateBy { it.song })
+        val done = dao.downloads().first().associateBy { it.song }
+        keepLyrics(songs.filter { it.id in done })
+        update(State.Idle, songs.size, used, done)
+    }
+
+    /** A downloaded song's lyrics are kept with it (docs/plans/015_lyrics.md); a failure here never stops the files. */
+    private suspend fun keepLyrics(songs: List<Song>) {
+        if (!hasNetwork()) return
+        try {
+            app.lyrics.keep(songs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Tried again on the next run.
+        }
     }
 
     /** Fetches one song to `<id>.<ext>`, through a `.part` file so a half-written file is never played; null if the server no longer has it. */
