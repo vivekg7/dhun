@@ -50,30 +50,32 @@ class Reorder internal constructor(
     fun Handle(
         i: Int,
         count: Int,
-    ) = Box(
-        Modifier.width(44.dp).fillMaxHeight().pointerInput(i, count) {
-            detectDragGestures(
-                onDragStart = {
-                    dragging = i
-                    offset = 0f
-                },
-                onDragEnd = {
-                    val to = (dragging + (offset / rowPx).roundToInt()).coerceIn(0, count - 1)
-                    if (dragging >= 0 && to != dragging) onMove()(dragging, to)
-                    dragging = -1
-                    offset = 0f
-                },
-                onDragCancel = {
-                    dragging = -1
-                    offset = 0f
-                },
-            ) { change, drag ->
-                change.consume()
-                offset += drag.y
-            }
-        },
-        contentAlignment = Alignment.Center,
-    ) { Icon(Icons.Drag, "Drag to reorder", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
+    ) = Tip("Drag to reorder") {
+        Box(
+            Modifier.width(44.dp).fillMaxHeight().pointerInput(i, count) {
+                detectDragGestures(
+                    onDragStart = {
+                        dragging = i
+                        offset = 0f
+                    },
+                    onDragEnd = {
+                        val to = (dragging + (offset / rowPx).roundToInt()).coerceIn(0, count - 1)
+                        if (dragging >= 0 && to != dragging) onMove()(dragging, to)
+                        dragging = -1
+                        offset = 0f
+                    },
+                    onDragCancel = {
+                        dragging = -1
+                        offset = 0f
+                    },
+                ) { change, drag ->
+                    change.consume()
+                    offset += drag.y
+                }
+            },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Drag, "Drag to reorder", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
+    }
 }
 
 @Composable
