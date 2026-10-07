@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                         | Status                                                   |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [011 — The Android app: look, structure and first build](011_android_app.md) | `IN PROGRESS` — first build works against a local server |
+| [011 — The Android app: look, structure and first build](011_android_app.md) | `MERGED` — on the owner's phone; no GitHub release yet   |
 | [010 — Special playlists and automatic views](010_special_playlists.md)      | `IN PROGRESS` — server on the NAS; Android not released  |
 | [009 — Resume long files on every device](009_resume_long_files.md)          | `IN PROGRESS` — server on the NAS; Android not released  |
 | [008 — Listening history](008_listening_history.md)                          | `IN PROGRESS` — server on the NAS; Android not released  |

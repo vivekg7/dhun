@@ -1,6 +1,6 @@
 # 011 — The Android app: look, structure and first build
 
-**Status:** `IN PROGRESS` — first build in `android/` works against a local server; not yet on the owner's phone
+**Status:** `MERGED` — the first build is on `main` and on the owner's phone against the NAS (installed by hand); no GitHub release yet
 **Started:** 2026-10-07
 
 ## Problem
@@ -146,6 +146,8 @@ What the first build contains, in order:
 Steps 1–5 are built and work against the local server: sign-in, browsing,
 search, playback with the notification, queues, Favorites and Listen Later,
 the automatic views, settings, and listens logged with their end reason.
+Since 2026-10-07 the signed release build (`make apk`) runs on the owner's
+phone against the NAS and the real collection.
 
 Downloads, the sleep timer, lyrics, speed and pitch, hand-off, and adding
 to playlists come next, each in its own step.
