@@ -4,13 +4,18 @@
 
 PRETTIER ?= npx --yes --prefer-offline prettier@latest
 
-.PHONY: help init fmt lint test check image
+# Gradle needs a JDK. A Mac with only Android Studio has one inside the app.
+STUDIO_JBR := /Applications/Android Studio.app/Contents/jbr/Contents/Home
+export JAVA_HOME ?= $(shell [ -d "$(STUDIO_JBR)" ] && echo "$(STUDIO_JBR)")
+GRADLE = cd android && ./gradlew -q
+
+.PHONY: help init fmt lint test check image lint-server lint-android test-server test-android
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
 	@echo 'fmt    rewrite files -- the only target that edits anything'
-	@echo 'lint   prettier --check, gofmt, go vet'
-	@echo 'test   the server suite, with the race detector'
+	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint'
+	@echo 'test   the server suite (race detector) and the Android unit tests'
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
 
@@ -37,14 +42,26 @@ init:
 fmt:
 	$(PRETTIER) --write .
 	gofmt -w server
+	$(GRADLE) ktlintFormat
 
-lint:
+lint: lint-server lint-android
+
+# The docs are linted here too: the server's CI job is the one that runs on every push.
+lint-server:
 	$(PRETTIER) --check .
 	@out=$$(gofmt -l server); [ -z "$$out" ] || { echo "gofmt needed:"; echo "$$out"; exit 1; }
 	cd server && go vet ./...
 
-test:
+lint-android:
+	$(GRADLE) ktlintCheck :app:lintDebug
+
+test: test-server test-android
+
+test-server:
 	cd server && go test -race -count=1 ./...
+
+test-android:
+	$(GRADLE) :app:testDebugUnitTest
 
 check: lint test
 

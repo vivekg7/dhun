@@ -115,12 +115,12 @@ and anything undecided is under [Open questions](#open-questions).
 
 ### Platforms
 
-| Platform                          | Scope                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------- |
-| Android (Samsung A35, Android 16) | **Full feature set, no compromise.** Primary target.                      |
-| macOS                             | Minimal features are fine. **Online-only** (no offline mode).             |
-| Web                               | Minimal features are fine. **Online-only**; served by the backend itself. |
-| Linux                             | Optional.                                                                 |
+| Platform                                                | Scope                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Android 12 and newer (owner's: Samsung A35, Android 16) | **Full feature set, no compromise.** Primary target.                      |
+| macOS                                                   | Minimal features are fine. **Online-only** (no offline mode).             |
+| Web                                                     | Minimal features are fine. **Online-only**; served by the backend itself. |
+| Linux                                                   | Optional.                                                                 |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native
@@ -185,6 +185,11 @@ Proposed. Awaiting the owner's confirmation.
 
 **Android**
 
+- **Looks and works like Musicolet:** its tabs in its order, flat lists
+  with a search box on each, plus a slim mini player. Light, dark and black
+  themes (or following the system, or by time of day) and eight colour
+  palettes, Dull Orange first —
+  [plans/011](plans/011_android_app.md).
 - Connect to the server (its home address, or its Tailscale address away)
   and sign in.
 - Browse **Folders** (the real NAS folder tree), Albums, Artists, Genres and

@@ -1,0 +1,9 @@
+# ktlint reads this (make fmt / make lint, through ./gradlew ktlint*).
+root = true
+
+[*.{kt,kts}]
+indent_size = 4
+max_line_length = 160
+ktlint_code_style = ktlint_official
+# Compose: functions are named like types.
+ktlint_function_naming_ignore_when_annotated_with = Composable

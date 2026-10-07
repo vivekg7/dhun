@@ -2,3 +2,9 @@
 tmp/
 CLAUDE.md
 LICENSE
+# Room writes these; a migration is checked against them as written.
+android/app/schemas/
+# Gradle output (android/.gitignore keeps it out of git; prettier reads only the root one).
+android/**/build/
+android/.gradle/
+android/.kotlin/

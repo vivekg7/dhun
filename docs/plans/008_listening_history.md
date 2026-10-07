@@ -1,6 +1,6 @@
 # 008 — Listening history
 
-**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); Android built against a local server ([011](011_android_app.md)), not yet released
 **Started:** 2026-10-07
 
 ## Problem
@@ -72,7 +72,9 @@ offline is uploaded later with the phone's own times.
 
 1. Server: migration `0004` adds the columns to `plays`, the `play`
    operation takes the fields, and play counts apply the 50% rule. Done.
-2. Android: record listens as above, from the player's own events.
+2. Android: record listens as above, from the player's own events. Built
+   ([011](011_android_app.md)): a listen starts when the song first plays,
+   so one loaded but never started is not logged.
 3. Later: the recommender, with its own plan. It reads `plays` directly or
    through a new endpoint; the log does not need to change for it.
 

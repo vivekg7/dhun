@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mark of ic_glyph, cropped to its own bounds for the status bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="50"
+    android:viewportHeight="50">
+    <group
+        android:translateX="-35"
+        android:translateY="-29">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M44,34 L56.88,42.05 L44,42.05 Z M44,49.55 L68.88,49.55 L76,54 L68.88,58.45 L44,58.45 Z M44,65.95 L56.88,65.95 L44,74 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="6" />
+    </group>
+</vector>

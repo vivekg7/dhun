@@ -1,6 +1,6 @@
 # 010 — Special playlists and automatic views
 
-**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); Android built against a local server ([011](011_android_app.md)), not yet released
 **Started:** 2026-10-07
 
 ## Problem
@@ -84,13 +84,13 @@ for other players are not needed.
 **Automatic views.** These are computed by the apps from data they already
 sync, with no files and no server work:
 
-| View               | From                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| Continue listening | resume points (009), newest first                                                                      |
-| Recently added     | the catalogue's `addedAt`                                                                              |
-| Recently played    | `lastPlayedAt` from `/plays`                                                                           |
-| Most played        | `count` from `/plays` (the 50% rule, [008](008_listening_history.md))                                  |
-| Not played lately  | songs with a high `count` and a `lastPlayedAt` months ago: the first, simple step towards recommending |
+| View               | From                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Continue listening | resume points (009), newest first                                                                                         |
+| Recently added     | the catalogue's `addedAt`                                                                                                 |
+| Recently played    | `lastPlayedAt` from `/plays`                                                                                              |
+| Most played        | `count` from `/plays` (the 50% rule, [008](008_listening_history.md))                                                     |
+| Not played lately  | songs played at least 3 times and not in the last 90 days, most played first: the first, simple step towards recommending |
 
 ## Rejected
 
@@ -108,7 +108,8 @@ sync, with no files and no server work:
 1. Server: migration `0006`, the operations, auto-removal, the pull
    (`listenLater`, and `at` on favorites), and the nightly export. Done.
 2. Android: the two lists pinned above the user's playlists, with the
-   settings; the five views on the home screen.
+   settings, and the five views below them, on the Playlists tab
+   ([011](011_android_app.md)). Each view holds at most 100 songs. Built.
 3. macOS and web: the same lists and views, read-only views first.
 
 ## Open questions

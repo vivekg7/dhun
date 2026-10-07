@@ -1,6 +1,6 @@
 # 009 — Resume long files on every device
 
-**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); the apps are not built yet
+**Status:** `IN PROGRESS` — server side running on the NAS (`server-v0.1.1`); Android built against a local server ([011](011_android_app.md)), not yet released
 **Started:** 2026-10-07
 
 ## Problem
@@ -85,4 +85,5 @@ sitting with a book is one listen.
 1. Server: migration `0005`, the three operations, and the pull fields.
    Done.
 2. Android: the behaviour above, and the two settings in the app's settings.
+   Built ([011](011_android_app.md)).
 3. macOS and web: the same, with the settings read from the sync.

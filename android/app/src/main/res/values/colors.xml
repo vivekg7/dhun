@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dull Orange, the default palette: the icon keeps it whatever palette is chosen. -->
+    <color name="brand">#C27B45</color>
+    <color name="window">#FFFFFF</color>
+</resources>

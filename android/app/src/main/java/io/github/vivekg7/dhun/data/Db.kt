@@ -1,0 +1,224 @@
+package io.github.vivekg7.dhun.data
+
+import android.content.Context
+import androidx.room3.Dao
+import androidx.room3.Database
+import androidx.room3.Entity
+import androidx.room3.Insert
+import androidx.room3.PrimaryKey
+import androidx.room3.Query
+import androidx.room3.Room
+import androidx.room3.RoomDatabase
+import androidx.room3.Upsert
+import androidx.sqlite.driver.AndroidSQLiteDriver
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * The working copy ([docs/plans/006_api_and_sync.md]): the catalogue, the
+ * user's synced data, and the outbox of changes not yet on the server.
+ * Lists of song IDs are stored as comma-separated text: they are only ever
+ * read and written whole, so a join table would buy nothing.
+ */
+@Database(
+    entities = [Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class],
+    version = 1,
+)
+abstract class Db : RoomDatabase() {
+    abstract fun dao(): DbDao
+
+    companion object {
+        fun open(context: Context): Db =
+            Room
+                .databaseBuilder(context, Db::class.java, "dhun.db")
+                // The platform's SQLite: Room's bundled one is native code we don't need.
+                .setDriver(AndroidSQLiteDriver())
+                // Everything here can be fetched again from the server, except
+                // the outbox; a schema change before 1.0 may start over.
+                .fallbackToDestructiveMigration(dropAllTables = true)
+                .build()
+    }
+}
+
+/** Joins and splits the text form of a list (artists, genres). */
+const val SEP = '\u001f'
+
+@Entity(tableName = "song")
+data class Song(
+    @PrimaryKey val id: Long,
+    val path: String,
+    val title: String,
+    val artist: String,
+    val artists: String,
+    val album: String,
+    val albumArtist: String,
+    val composer: String,
+    val genres: String,
+    val year: Int,
+    val track: Int,
+    val disc: Int,
+    val durationMs: Long,
+    val format: String,
+    val bitrate: Int,
+    val sampleRate: Int,
+    val bitDepth: Int,
+    val size: Long,
+    val hasArt: Boolean,
+    val hasLyrics: Boolean,
+    val addedAt: Long,
+    val missing: Boolean,
+) {
+    val artistList get() = if (artists.isEmpty()) emptyList() else artists.split(SEP)
+    val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)
+    val folder get() = path.substringBeforeLast('/', "")
+    val displayArtist get() = artist.ifEmpty { albumArtist }.ifEmpty { "Unknown artist" }
+}
+
+@Entity(tableName = "playlist")
+data class Playlist(
+    @PrimaryKey val id: Long,
+    val name: String,
+    val path: String,
+    val shared: Boolean,
+    val songs: String,
+)
+
+@Entity(tableName = "queue")
+data class QueueRow(
+    @PrimaryKey val id: String,
+    val name: String,
+    val songs: String,
+    val currentSong: Long,
+    val positionMs: Long,
+    val shuffle: Boolean,
+    val repeat: String,
+    val usedAt: Long,
+)
+
+/** One entry of Favorites ("fav") or Listen Later ("later"); [at] decides between two edits. */
+@Entity(tableName = "mark", primaryKeys = ["kind", "song"])
+data class Mark(
+    val kind: String,
+    val song: Long,
+    val at: Long,
+    val deleted: Boolean,
+)
+
+@Entity(tableName = "resume")
+data class Resume(
+    @PrimaryKey val song: Long,
+    val positionMs: Long,
+    val at: Long,
+    val deleted: Boolean,
+)
+
+/** A synced setting, as the JSON text the server returned. */
+@Entity(tableName = "setting")
+data class Setting(
+    @PrimaryKey val name: String,
+    val value: String,
+)
+
+/**
+ * A change not yet acknowledged by the server, as the JSON op it sends.
+ * [key] groups ops where only the latest matters (where a long file was
+ * left, the current song of a queue), so a long offline session does not
+ * pile them up.
+ */
+@Entity(tableName = "outbox")
+data class OutboxOp(
+    @PrimaryKey(autoGenerate = true) val seq: Long = 0,
+    val id: String,
+    val key: String,
+    val json: String,
+)
+
+@Entity(tableName = "play_stat")
+data class PlayStat(
+    @PrimaryKey val song: Long,
+    val count: Int,
+    val lastPlayedAt: Long,
+)
+
+@Dao
+interface DbDao {
+    @Query("SELECT * FROM song WHERE missing = 0")
+    fun songs(): Flow<List<Song>>
+
+    @Upsert
+    suspend fun putSongs(songs: List<Song>)
+
+    @Query("SELECT * FROM playlist ORDER BY shared, name COLLATE NOCASE")
+    fun playlists(): Flow<List<Playlist>>
+
+    @Upsert
+    suspend fun putPlaylist(p: Playlist)
+
+    @Query("DELETE FROM playlist WHERE id = :id")
+    suspend fun deletePlaylist(id: Long)
+
+    @Query("SELECT * FROM queue ORDER BY usedAt DESC")
+    fun queues(): Flow<List<QueueRow>>
+
+    @Query("SELECT * FROM queue WHERE id = :id")
+    suspend fun queue(id: String): QueueRow?
+
+    @Upsert
+    suspend fun putQueue(q: QueueRow)
+
+    @Query("DELETE FROM queue WHERE id = :id")
+    suspend fun deleteQueue(id: String)
+
+    @Query("SELECT * FROM mark WHERE kind = :kind AND deleted = 0 ORDER BY at DESC")
+    fun marks(kind: String): Flow<List<Mark>>
+
+    @Query("SELECT * FROM mark WHERE kind = :kind AND song = :song")
+    suspend fun mark(
+        kind: String,
+        song: Long,
+    ): Mark?
+
+    @Upsert
+    suspend fun putMark(m: Mark)
+
+    @Query("SELECT * FROM resume WHERE deleted = 0 ORDER BY at DESC")
+    fun resumes(): Flow<List<Resume>>
+
+    @Query("SELECT * FROM resume WHERE song = :song")
+    suspend fun resume(song: Long): Resume?
+
+    @Upsert
+    suspend fun putResume(r: Resume)
+
+    @Query("SELECT * FROM setting")
+    fun settings(): Flow<List<Setting>>
+
+    @Upsert
+    suspend fun putSetting(s: Setting)
+
+    @Query("DELETE FROM setting WHERE name = :name")
+    suspend fun deleteSetting(name: String)
+
+    @Query("SELECT * FROM outbox ORDER BY seq LIMIT :limit")
+    suspend fun outbox(limit: Int): List<OutboxOp>
+
+    @Query("SELECT count(*) FROM outbox")
+    suspend fun outboxSize(): Int
+
+    @Insert
+    suspend fun addOp(op: OutboxOp)
+
+    @Query("DELETE FROM outbox WHERE key = :key")
+    suspend fun dropOps(key: String)
+
+    @Query("DELETE FROM outbox WHERE id IN (:ids)")
+    suspend fun ackOps(ids: List<String>)
+
+    @Query("SELECT * FROM play_stat")
+    fun playStats(): Flow<List<PlayStat>>
+
+    @Upsert
+    suspend fun putPlayStats(stats: List<PlayStat>)
+
+    @Query("DELETE FROM play_stat")
+    suspend fun clearPlayStats()
+}

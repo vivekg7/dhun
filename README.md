@@ -9,8 +9,8 @@ lives on a NAS.
 **Status:** the server runs on the owner's NAS (`server-v0.1.1`). It covers the library
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
-Later. The apps are not built yet: Android is next, then macOS and web. Until
-then the server is used through its API.
+Later. The Android app is being built in `android/`
+([plan 011](docs/plans/011_android_app.md)); macOS and web come after it.
 
 ## Run the server
 

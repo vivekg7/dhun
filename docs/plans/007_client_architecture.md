@@ -1,6 +1,6 @@
 # 007 — Client architecture and repo layout
 
-**Status:** `ACCEPTED` — approved by the owner 2026-10-06; no code yet
+**Status:** `IN PROGRESS` — the Android app is being built ([011](011_android_app.md)); macOS and web not started
 **Started:** 2026-10-06
 
 ## Problem
@@ -38,10 +38,10 @@ are used at home or the office over Tailscale, where the server is reachable.
 | Playback     | Media3 ExoPlayer in a `MediaLibraryService`. The same service gives the notification, lock screen, Bluetooth and headset controls now, and **Android Auto later with no rework**. Gapless playback, and speed and pitch (`PlaybackParameters`), are built in. |
 | Local data   | Room. It holds the catalogue copy, the user-data working copy, the outbox, and the download index ([006](006_api_and_sync.md)).                                                                                                                               |
 | Network      | OkHttp plus kotlinx.serialization. Media3's OkHttp data source shares the same client, so auth is one interceptor.                                                                                                                                            |
-| Background   | WorkManager for sync (on reconnect, and periodically) and for downloads.                                                                                                                                                                                      |
+| Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads are still to be decided.                                                                                            |
 | DI           | Manual: one `AppGraph` object. Hilt is not worth it for a single-module app.                                                                                                                                                                                  |
 | Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                |
-| `minSdk`     | 29 (Android 10), which covers any phone in the family, and `targetSdk` the latest. The owner's A35 runs Android 16.                                                                                                                                           |
+| `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest. The owner's A35 runs Android 16.                                                                                                                                      |
 
 **Multiple queues on one player.** Media3's player holds one playlist. The
 app's `QueueManager` owns all 20 queues (in Room, mirrored from the server),
