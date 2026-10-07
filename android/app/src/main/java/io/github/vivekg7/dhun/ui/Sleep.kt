@@ -3,16 +3,12 @@ package io.github.vivekg7.dhun.ui
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,8 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.play.SleepTimer
 import kotlinx.coroutines.delay
@@ -71,37 +65,42 @@ private fun Countdown(endAt: Long) {
 private fun SleepDialog(onDismiss: () -> Unit) {
     val sleep = App.app.playback.sleep
     val mode by sleep.mode.collectAsState()
-    var custom by remember { mutableStateOf("") }
+    // "Other…" asks for a number in a second dialog, in place of this one.
+    var other by remember { mutableStateOf<String?>(null) }
     val pick = { action: () -> Unit ->
         action()
         onDismiss()
+    }
+    when (other) {
+        "minutes" -> return NumberDialog("Pause after", "minutes", 20, 1..999, onDismiss) { m -> pick { sleep.minutes(m) } }
+        "songs" -> return NumberDialog("Pause after", "songs", 3, 1..999, onDismiss) { n -> pick { sleep.songs(n) } }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Sleep timer") },
         text = {
-            Column {
-                mode?.let { Text("Stops ${sleep.label(it)}.", color = MaterialTheme.colorScheme.primary) }
-                SectionLabel("Minutes")
-                Chips(listOf(15, 30, 45, 60, 90), 0, { "$it" }) { m -> pick { sleep.minutes(m) } }
-                Row(Modifier.padding(start = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        custom,
-                        { custom = it.filter(Char::isDigit).take(3) },
-                        Modifier.width(110.dp),
-                        placeholder = { Text("Other") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    )
-                    Spacer(Modifier.size(8.dp))
-                    TextButton({ custom.toIntOrNull()?.let { m -> pick { sleep.minutes(m) } } }, enabled = (custom.toIntOrNull() ?: 0) > 0) { Text("Set") }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when (val m = mode) {
+                    null -> DialogNote("Pauses the music, by the clock or at the end of a song.")
+                    else -> DialogNote("Pauses ${sleep.label(m)}.", MaterialTheme.colorScheme.primary)
                 }
-                SectionLabel("Songs")
-                Chips(listOf(1, 2, 3, 5, 10), 0, { if (it == 1) "End of this song" else "$it songs" }) { n -> pick { sleep.songs(n) } }
-                Chips(listOf("queue"), "", { "End of queue" }) { pick { sleep.endOfQueue() } }
+                DialogLabel("After a time")
+                for (m in listOf(15, 30, 45, 60, 90)) DialogRow(timeLabel(m)) { pick { sleep.minutes(m) } }
+                DialogRow("Other time…") { other = "minutes" }
+                DialogLabel("After songs")
+                DialogRow("At the end of this song") { pick { sleep.endOfSong() } }
+                DialogRow("After a number of songs…") { other = "songs" }
+                DialogRow("At the end of the queue") { pick { sleep.endOfQueue() } }
             }
         },
         confirmButton = { if (mode != null) TextButton({ pick { sleep.cancel() } }) { Text("Turn off") } },
-        dismissButton = { TextButton(onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }
+
+private fun timeLabel(m: Int) =
+    when {
+        m < 60 -> "$m minutes"
+        m == 60 -> "1 hour"
+        else -> "1 hour ${m - 60} minutes"
+    }

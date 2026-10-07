@@ -123,10 +123,10 @@ fun AddToPlaylistDialog(
         title = { Text(if (songs.size == 1) "Add “${songs[0].title}” to" else "Add ${songs.size} songs to") },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
+                item { DialogRow("New playlist", icon = Icons.Add) { naming = true } }
                 items(mine, key = { it.id }) { p ->
                     val count = songIds(p.songs).count { it != 0L }
-                    NameRow(Icons.Playlist, p.name, "$count") {
+                    DialogRow(p.name, icon = Icons.Playlist, detail = "$count") {
                         add(context, p, songs)
                         onDismiss()
                     }

@@ -18,8 +18,11 @@ The ways to set it, how it stops and where it shows are the owner's
 
 - **Minutes:** 15, 30, 45, 60 or 90, or any other number typed in.
 - **End of this song.**
-- **After N songs** (2, 3, 5 or 10), the playing one included. Every song
-  that starts counts, skips included.
+- **After N songs**, any number typed in, the playing one included. Every
+  song that starts counts, skips included. It first offered 2, 3, 5 and 10
+  one tap away; those went (2026-10-07) when every dialog became one list
+  of rows ([018](018_settings_layout.md)), since they made it twelve rows
+  long, and a count of songs is rarer than a time.
 - **End of the queue:** stop after its last song instead of repeating.
 
 A device-only, in-memory setting: it is about this night on this phone, so

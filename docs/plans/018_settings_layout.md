@@ -62,6 +62,17 @@ Details decided while building:
   the list, then to the tabs. "Change the limit in Settings", on a full
   Downloads page, opens the Downloads category directly.
 
+## Every dialog the same way
+
+Set as part of this plan, at the owner's request (2026-10-07): the sleep
+timer and speed dialogs had grown their own looks (chips, headings indented
+twice, sliders with a dot per step, a text box in the middle of the
+options). Every dialog now has a title, perhaps one line saying what it
+does or what is set, one-line rows flush with the title, and text buttons
+below. A number not offered ("Other time…") asks in a small dialog of its
+own. The pieces are in `ui/Dialogs.kt`; a new dialog uses them rather than
+its own layout.
+
 ## Adding a setting
 
 Put it in the category it belongs to; add a category only when no existing

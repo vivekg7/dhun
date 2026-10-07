@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -34,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -314,63 +311,17 @@ private fun <T> ChoiceRow(
         title = { Text(title) },
         text = {
             Column {
-                note?.let {
-                    Text(it, Modifier.padding(bottom = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                note?.let { DialogNote(it) }
                 for (o in options) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .clickable {
-                                open = false
-                                onPick(o)
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(o == selected, null)
-                        Spacer(Modifier.width(16.dp))
-                        Text(label(o), style = MaterialTheme.typography.bodyLarge)
+                    DialogRow(label(o), selected = o == selected) {
+                        open = false
+                        onPick(o)
                     }
                 }
             }
         },
         confirmButton = { TextButton({ open = false }) { Text("Cancel") } },
     )
-}
-
-@Composable
-fun <T> Chips(
-    options: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onPick: (T) -> Unit,
-) {
-    val c = MaterialTheme.colorScheme
-    FlowRow(
-        Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for (o in options) {
-            val on = o == selected
-            Row(
-                Modifier
-                    .height(36.dp)
-                    .background(if (on) c.primaryContainer else c.surface, RoundedCornerShape(18.dp))
-                    .border(BorderStroke(1.dp, if (on) c.primary else c.outline), RoundedCornerShape(18.dp))
-                    .clickable { onPick(o) }
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (on) {
-                    Icon(Icons.Check, null, Modifier.size(16.dp), tint = c.onPrimaryContainer)
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(label(o), style = MaterialTheme.typography.bodyMedium, color = if (on) c.onPrimaryContainer else c.onSurface)
-            }
-        }
-    }
 }
 
 @Composable
