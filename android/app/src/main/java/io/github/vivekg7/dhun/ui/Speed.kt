@@ -43,15 +43,17 @@ fun SpeedButton() {
         .collectAsState()
     var open by remember { mutableStateOf(false) }
     val c = MaterialTheme.colorScheme
-    Box(
-        Modifier.defaultMinSize(48.dp, 48.dp).clip(CircleShape).clickable { open = true },
-        contentAlignment = Alignment.Center,
-    ) {
-        val label = tempo.label()
-        if (label == null) {
-            Icon(Icons.Speed, "Speed and pitch", tint = c.onSurfaceVariant)
-        } else {
-            Text(label, Modifier.padding(horizontal = 6.dp), style = MaterialTheme.typography.labelLarge, color = c.primary)
+    Tip("Speed and pitch") {
+        Box(
+            Modifier.defaultMinSize(48.dp, 48.dp).clip(CircleShape).clickable { open = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            val label = tempo.label()
+            if (label == null) {
+                Icon(Icons.Speed, "Speed and pitch", tint = c.onSurfaceVariant)
+            } else {
+                Text(label, Modifier.padding(horizontal = 6.dp), style = MaterialTheme.typography.labelLarge, color = c.primary)
+            }
         }
     }
     if (open) SpeedDialog { open = false }

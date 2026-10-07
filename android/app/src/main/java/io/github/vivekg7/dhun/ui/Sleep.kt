@@ -49,7 +49,7 @@ fun SleepButton() {
     if (mode == null) return
     val c = MaterialTheme.colorScheme
     Row(Modifier.clickable { open = true }, verticalAlignment = Alignment.CenterVertically) {
-        IconButton({ open = true }) { Icon(Icons.Sleep, "Sleep timer", tint = c.primary) }
+        Tip("Sleep timer") { IconButton({ open = true }) { Icon(Icons.Sleep, "Sleep timer", tint = c.primary) } }
         Text(sleepState() ?: "", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelMedium, color = c.primary)
     }
 }
@@ -188,10 +188,12 @@ private fun Stepper(
     onTouch: () -> Unit,
 ) = Column(horizontalAlignment = Alignment.CenterHorizontally) {
     val c = MaterialTheme.colorScheme
-    IconButton({
-        onTouch()
-        up()
-    }, Modifier.size(32.dp)) { Icon(Icons.ExpandLess, "More", tint = c.onSurfaceVariant) }
+    Tip("More") {
+        IconButton({
+            onTouch()
+            up()
+        }, Modifier.size(32.dp)) { Icon(Icons.ExpandLess, "More", tint = c.onSurfaceVariant) }
+    }
     OutlinedTextField(
         text,
         {
@@ -203,8 +205,10 @@ private fun Stepper(
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
-    IconButton({
-        onTouch()
-        down()
-    }, Modifier.size(32.dp)) { Icon(Icons.ExpandMore, "Less", tint = c.onSurfaceVariant) }
+    Tip("Less") {
+        IconButton({
+            onTouch()
+            down()
+        }, Modifier.size(32.dp)) { Icon(Icons.ExpandMore, "Less", tint = c.onSurfaceVariant) }
+    }
 }

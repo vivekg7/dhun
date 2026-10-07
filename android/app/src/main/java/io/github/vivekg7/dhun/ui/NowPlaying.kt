@@ -140,36 +140,52 @@ fun NowPlayingScreen(nav: Nav) {
         val isFav = favs.any { it.song == s.id }
         val isLater = later.any { it.song == s.id }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton({ scope.launch { app.store.mark(Store.FAV, s.id, !isFav) } }) {
-                Icon(
-                    if (isFav) Icons.Heart else Icons.HeartOutline,
-                    if (isFav) "Remove from Favorites" else "Add to Favorites",
-                    tint = if (isFav) c.primary else c.onSurfaceVariant,
-                )
+            Tip(if (isFav) "Remove from Favorites" else "Add to Favorites") {
+                IconButton({ scope.launch { app.store.mark(Store.FAV, s.id, !isFav) } }) {
+                    Icon(
+                        if (isFav) Icons.Heart else Icons.HeartOutline,
+                        if (isFav) "Remove from Favorites" else "Add to Favorites",
+                        tint = if (isFav) c.primary else c.onSurfaceVariant,
+                    )
+                }
             }
-            IconButton({ scope.launch { app.store.mark(Store.LATER, s.id, !isLater) } }) {
-                Icon(
-                    if (isLater) Icons.Later else Icons.LaterOutline,
-                    if (isLater) "Remove from Listen Later" else "Listen later",
-                    tint = if (isLater) c.primary else c.onSurfaceVariant,
-                )
+            Tip(if (isLater) "Remove from Listen Later" else "Listen later") {
+                IconButton({ scope.launch { app.store.mark(Store.LATER, s.id, !isLater) } }) {
+                    Icon(
+                        if (isLater) Icons.Later else Icons.LaterOutline,
+                        if (isLater) "Remove from Listen Later" else "Listen later",
+                        tint = if (isLater) c.primary else c.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.weight(1f))
-            IconButton({ lyrics = !lyrics }) {
-                Icon(
-                    Icons.Lyrics,
-                    if (lyrics) "Show the cover" else "Lyrics",
-                    tint = if (lyrics) c.primary else c.onSurfaceVariant.copy(alpha = if (s.hasLyrics) 1f else 0.38f),
-                )
+            Tip(if (lyrics) "Show the cover" else "Lyrics") {
+                IconButton({ lyrics = !lyrics }) {
+                    Icon(
+                        Icons.Lyrics,
+                        if (lyrics) "Show the cover" else "Lyrics",
+                        tint = if (lyrics) c.primary else c.onSurfaceVariant.copy(alpha = if (s.hasLyrics) 1f else 0.38f),
+                    )
+                }
             }
             SpeedButton()
             SleepButton()
             val repeat = queue?.repeat ?: "off"
-            IconButton({ pb.cycleRepeat() }) {
-                Icon(if (repeat == "song") Icons.RepeatOne else Icons.Repeat, "Repeat: $repeat", tint = if (repeat == "off") c.onSurfaceVariant else c.primary)
+            val repeatLabel =
+                when (repeat) {
+                    "queue" -> "Repeat the queue"
+                    "song" -> "Repeat this song"
+                    else -> "Repeat: off"
+                }
+            Tip(repeatLabel) {
+                IconButton({ pb.cycleRepeat() }) {
+                    Icon(if (repeat == "song") Icons.RepeatOne else Icons.Repeat, repeatLabel, tint = if (repeat == "off") c.onSurfaceVariant else c.primary)
+                }
             }
-            IconButton({ pb.toggleShuffle() }) {
-                Icon(Icons.Shuffle, "Shuffle", tint = if (queue?.shuffle == true) c.primary else c.onSurfaceVariant)
+            Tip("Shuffle") {
+                IconButton({ pb.toggleShuffle() }) {
+                    Icon(Icons.Shuffle, "Shuffle", tint = if (queue?.shuffle == true) c.primary else c.onSurfaceVariant)
+                }
             }
         }
 
@@ -180,12 +196,17 @@ fun NowPlayingScreen(nav: Nav) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton({ pb.player.seekToPrevious() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) }
-            Box(
-                Modifier.size(76.dp).background(c.primary, CircleShape).clickable { if (playing) pb.player.pause() else pb.player.play() },
-                contentAlignment = Alignment.Center,
-            ) { Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
-            IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) }
+            Tip("Previous") { IconButton({ pb.player.seekToPrevious() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
+            Tip(if (playing) "Pause" else "Play") {
+                Box(
+                    Modifier
+                        .size(76.dp)
+                        .background(c.primary, CircleShape)
+                        .clickable { if (playing) pb.player.pause() else pb.player.play() },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
+            }
+            Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
         }
     }
 }

@@ -86,14 +86,18 @@ fun DownloadButton(t: DownloadTarget) {
     var confirm by remember { mutableStateOf(false) }
     val pinned = pins.any { it.key == t.key }
     val done = t.songs.count { it.id in files }
-    FilledTonalButton(
-        { if (pinned) confirm = true else pin(t.kind, t.ref, t.name) },
-        contentPadding = PaddingValues(horizontal = 14.dp),
-    ) {
-        Icon(if (pinned && done == t.songs.size) Icons.Downloaded else Icons.Download, if (pinned) "Downloaded" else "Download", Modifier.size(18.dp))
-        if (pinned && done < t.songs.size) {
-            Spacer(Modifier.width(6.dp))
-            Text("$done/${t.songs.size}")
+    // A tap on a download removes it, so that is what it is called.
+    val label = if (pinned) "Remove download" else "Download"
+    Tip(label) {
+        FilledTonalButton(
+            { if (pinned) confirm = true else pin(t.kind, t.ref, t.name) },
+            contentPadding = PaddingValues(horizontal = 14.dp),
+        ) {
+            Icon(if (pinned && done == t.songs.size) Icons.Downloaded else Icons.Download, label, Modifier.size(18.dp))
+            if (pinned && done < t.songs.size) {
+                Spacer(Modifier.width(6.dp))
+                Text("$done/${t.songs.size}")
+            }
         }
     }
     if (confirm) RemoveDialog(t.name, { confirm = false }) { app.scope.launch { app.downloads.unpin(t.key) } }
@@ -192,7 +196,7 @@ fun DownloadsScreen(
                     Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                     Text(kindLabel(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) }
+                Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
             }
         }
         if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }

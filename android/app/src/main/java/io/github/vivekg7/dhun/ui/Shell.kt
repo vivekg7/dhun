@@ -291,25 +291,29 @@ private fun TabBar(
         Row(Modifier.fillMaxWidth().height(60.dp)) {
             for (t in Tab.entries) {
                 val selected = t == current
-                Box(Modifier.weight(1f).fillMaxHeight().clickable { onSelect(t) }, contentAlignment = Alignment.Center) {
-                    if (selected) {
-                        Box(
-                            Modifier
-                                .align(
-                                    Alignment.TopCenter,
-                                ).width(32.dp)
-                                .height(3.dp)
-                                .background(c.primary, RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)),
-                        )
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Tip(t.label) {
+                        Box(Modifier.fillMaxSize().clickable { onSelect(t) }, contentAlignment = Alignment.Center) {
+                            if (selected) {
+                                Box(
+                                    Modifier
+                                        .align(
+                                            Alignment.TopCenter,
+                                        ).width(32.dp)
+                                        .height(3.dp)
+                                        .background(c.primary, RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)),
+                                )
+                            }
+                            Icon(t.icon, t.label, Modifier.size(24.dp), tint = if (selected) c.primary else c.onSurfaceVariant.copy(alpha = 0.8f))
+                        }
                     }
-                    Icon(t.icon, t.label, Modifier.size(24.dp), tint = if (selected) c.primary else c.onSurfaceVariant.copy(alpha = 0.8f))
                 }
             }
             var menu by remember { mutableStateOf(false) }
             var sleep by remember { mutableStateOf(false) }
             if (sleep) SleepDialog { sleep = false }
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                IconButton({ menu = true }) { Icon(Icons.More, "Menu", tint = c.onSurfaceVariant) }
+                Tip("Menu") { IconButton({ menu = true }) { Icon(Icons.More, "Menu", tint = c.onSurfaceVariant) } }
                 DropdownMenu(menu, { menu = false }) {
                     val close = { menu = false }
                     MenuItem(sleepState()?.let { "Sleep timer · $it" } ?: "Sleep timer", close) { sleep = true }
@@ -357,10 +361,12 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                 Text(s.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(s.displayArtist, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton({ if (playing) app.playback.player.pause() else app.playback.player.play() }) {
-                Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(28.dp))
+            Tip(if (playing) "Pause" else "Play") {
+                IconButton({ if (playing) app.playback.player.pause() else app.playback.player.play() }) {
+                    Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(28.dp))
+                }
             }
-            IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) }
+            Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
         }
     }
 }
@@ -398,6 +404,6 @@ private fun HandoffBar() {
             )
         }
         TextButton({ app.playback.continueFrom(np) }) { Text("Continue") }
-        IconButton({ app.playback.dismissHandoff(np) }) { Icon(Icons.Close, "Dismiss", tint = c.onPrimaryContainer) }
+        Tip("Dismiss") { IconButton({ app.playback.dismissHandoff(np) }) { Icon(Icons.Close, "Dismiss", tint = c.onPrimaryContainer) } }
     }
 }

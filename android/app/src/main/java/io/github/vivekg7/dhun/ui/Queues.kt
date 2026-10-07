@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -90,13 +89,15 @@ fun QueuesScreen(nav: Nav) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (!isActive) IconButton({ app.playback.switchTo(shown.id) }) { Icon(Icons.Play, "Play this queue") }
-            IconButton({ if (isActive) app.playback.toggleShuffle() }, enabled = isActive) {
-                Icon(Icons.Shuffle, "Shuffle", tint = if (shown.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!isActive) Tip("Play this queue") { IconButton({ app.playback.switchTo(shown.id) }) { Icon(Icons.Play, "Play this queue") } }
+            Tip("Shuffle") {
+                IconButton({ if (isActive) app.playback.toggleShuffle() }, enabled = isActive) {
+                    Icon(Icons.Shuffle, "Shuffle", tint = if (shown.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Box {
                 var menu by remember { mutableStateOf(false) }
-                IconButton({ menu = true }) { Icon(Icons.More, "Queue options") }
+                Tip("Queue options") { IconButton({ menu = true }) { Icon(Icons.More, "Queue options") } }
                 DropdownMenu(menu, { menu = false }) {
                     val close = { menu = false }
                     MenuItem("Rename", close) { editing = shown }

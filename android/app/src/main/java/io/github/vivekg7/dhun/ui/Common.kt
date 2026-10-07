@@ -16,12 +16,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -91,12 +96,23 @@ fun SearchField(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 )
             }
-            if (value.isNotEmpty()) IconButton({ onChange("") }) { Icon(Icons.Close, "Clear", Modifier.size(20.dp)) }
+            if (value.isNotEmpty()) Tip("Clear") { IconButton({ onChange("") }) { Icon(Icons.Close, "Clear", Modifier.size(20.dp)) } }
             trailing()
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
+
+/**
+ * An icon-only control says what it does when long-pressed, as Android's own
+ * do. [tip] is the icon's description for TalkBack too, so the two agree.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun Tip(
+    tip: String,
+    content: @Composable () -> Unit,
+) = TooltipBox(TooltipDefaults.rememberPlainTooltipPositionProvider(), { PlainTooltip { Text(tip) } }, rememberTooltipState(), content = content)
 
 /**
  * A detail page's top: back, title, a line of facts, Play / Shuffle /
@@ -117,12 +133,12 @@ fun PageHeader(
     if (adding) AddToPlaylistDialog(songs) { adding = false }
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Row(Modifier.padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onBack) { Icon(Icons.Back, "Back") }
+            Tip("Back") { IconButton(onBack) { Icon(Icons.Back, "Back") } }
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (songs.isNotEmpty() || actions.isNotEmpty()) {
                 Box {
                     var open by remember { mutableStateOf(false) }
-                    IconButton({ open = true }) { Icon(Icons.More, "More options") }
+                    Tip("More options") { IconButton({ open = true }) { Icon(Icons.More, "More options") } }
                     DropdownMenu(open, { open = false }) {
                         val close = { open = false }
                         if (songs.isNotEmpty()) MenuItem("Add to playlist…", close) { adding = true }
@@ -254,7 +270,9 @@ fun SongMenuButton(
     if (adding) AddToPlaylistDialog(listOf(song)) { adding = false }
     val pin = rememberPinner()
     Box {
-        IconButton({ open = true }) { Icon(Icons.More, "Song options", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Tip("Song options") {
+            IconButton({ open = true }) { Icon(Icons.More, "Song options", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         DropdownMenu(open, { open = false }) {
             // Read only while the menu is open: one database observer per row would add up in a long list.
             val favs by app.store.favorites.collectAsState(emptyList())

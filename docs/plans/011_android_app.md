@@ -31,7 +31,9 @@ dense, and the accent colour marks only the current song and the active tab.
 Dhun keeps that structure tab for tab. Each tab keeps its place: a page
 opened in it (an album, an artist), and the search and scroll of whatever
 that page covers, until you go back. Rotation or Android reclaiming the app
-loses none of it. Plain bottom navigation (four or five
+loses none of it. Every icon-only control, the tabs included, shows its name
+when long-pressed ("Add to Favorites"), the same words TalkBack reads, as
+Android's own icon buttons do (the owner's request, 2026-10-07). Plain bottom navigation (four or five
 labelled tabs) was rejected because it would hide Folders and Genres, which
 the owner uses daily.
 

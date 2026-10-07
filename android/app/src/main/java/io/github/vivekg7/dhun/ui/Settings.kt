@@ -90,7 +90,7 @@ fun SettingsScreen(
     key(page) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Row(Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onBack) { Icon(Icons.Back, "Back") }
+                Tip("Back") { IconButton(onBack) { Icon(Icons.Back, "Back") } }
                 Text(page.title, style = MaterialTheme.typography.headlineSmall)
             }
             when (page) {
