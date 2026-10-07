@@ -16,14 +16,22 @@ The ways to set it, how it stops and where it shows are the owner's
 
 ### What it can do
 
-- **Minutes:** 15, 30, 45, 60 or 90, or any other number typed in.
-- **End of this song.**
-- **After N songs**, any number typed in, the playing one included. Every
-  song that starts counts, skips included. It first offered 2, 3, 5 and 10
-  one tap away; those went (2026-10-07) when every dialog became one list
-  of rows ([018](018_settings_layout.md)), since they made it twelve rows
-  long, and a count of songs is rarer than a time.
-- **End of the queue:** stop after its last song instead of repeating.
+The dialog offers three, one picked by its radio button and set with
+**Start** (the owner's design, 2026-10-07):
+
+- **After a time**, as hours and minutes, 00:30 at first. Each box can be
+  typed in or stepped with a small arrow above and below it: hours by 1,
+  minutes by 5, carrying into the hours (00:55 up is 01:00).
+- **After N songs**, 5 at first, stepped by 1; the playing song counts, and
+  every song that starts counts, skips included. **1 is the end of this
+  song**, so that needs no option of its own.
+- **At the end of this queue:** stop after its last song instead of
+  repeating.
+
+Rejected, both tried first: presets (15 to 90 minutes, 2 to 10 songs) as
+chips, which wrapped into clutter, and the same presets as a list of rows
+with "Other…" for the rest, twelve rows long. Two steppers hold every value
+in less room, and the usual one is a tap or two from the default.
 
 A device-only, in-memory setting: it is about this night on this phone, so
 it is neither synced nor kept across an app restart.

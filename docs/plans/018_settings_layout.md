@@ -69,9 +69,10 @@ timer and speed dialogs had grown their own looks (chips, headings indented
 twice, sliders with a dot per step, a text box in the middle of the
 options). Every dialog now has a title, perhaps one line saying what it
 does or what is set, one-line rows flush with the title, and text buttons
-below. A number not offered ("Other time…") asks in a small dialog of its
-own. The pieces are in `ui/Dialogs.kt`; a new dialog uses them rather than
-its own layout.
+below. The pieces are in `ui/Dialogs.kt`; a new dialog uses them rather than
+its own layout. Where a value is set rather than picked from a list, the
+row holds its control on the right: the sleep timer's steppers
+([014](014_sleep_timer.md)), the speed and pitch sliders.
 
 ## Adding a setting
 

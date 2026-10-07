@@ -75,6 +75,7 @@ object Icons {
     val Play by icon("play", "M8 5v14l11-7z")
     val Lyrics by icon("lyrics", "M14 17H4v2h10v-2zm6-8H4v2h16V9zM4 15h16v-2H4v2zM4 5v2h16V5H4z")
     val Drag by icon("drag", "M20 9H4v2h16V9zM4 15h16v-2H4v2z")
+    val ExpandLess by icon("expandLess", "M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z")
     val ExpandMore by icon("expandMore", "M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z")
     val Add by icon("add", "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
     val Back by icon("back", "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z")
