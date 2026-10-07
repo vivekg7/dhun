@@ -43,7 +43,7 @@ and every device sees the same one.
   without a server change.
 - **Synced settings.** `setting.set {name, value}` stores one app setting
   per user, as JSON, and every pull returns those that changed. The server
-  never interprets them. This is the first setting a user expects to follow
+  reads only the Listen Later ones ([010](010_special_playlists.md)). This is the first setting a user expects to follow
   them to every device, so it is built generally rather than as two special
   columns:
 

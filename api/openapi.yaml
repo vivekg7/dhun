@@ -208,7 +208,7 @@ paths:
 
   /api/v1/sync:
     get:
-      summary: The caller's queues, favorites, resume points, settings and now-playing changed since a cursor
+      summary: The caller's queues, special lists, resume points, settings and now-playing changed since a cursor
       parameters:
         - name: since
           in: query
@@ -506,18 +506,26 @@ components:
         playing: { type: boolean }
         at: { type: string, format: date-time }
 
+    ListItem:
+      type: object
+      properties:
+        song: { type: integer }
+        deleted: { type: boolean }
+        at: { type: string, format: date-time, description: When it was added }
+
     SyncState:
       type: object
       properties:
         version: { type: integer, description: Next cursor }
         queues: { type: array, items: { $ref: "#/components/schemas/Queue" } }
         favorites:
+          description: Newest first by `at` (docs/plans/010_special_playlists.md)
           type: array
-          items:
-            type: object
-            properties:
-              song: { type: integer }
-              deleted: { type: boolean }
+          items: { $ref: "#/components/schemas/ListItem" }
+        listenLater:
+          description: Same as favorites; the server removes an item a listen reached 90% into
+          type: array
+          items: { $ref: "#/components/schemas/ListItem" }
         resume:
           description: Where long files were left (docs/plans/009_resume_long_files.md)
           type: array
@@ -533,7 +541,9 @@ components:
             App settings changed since the cursor, as name → JSON value. A
             missing setting or null means the app's default.
             `longFiles.minMinutes` (default 15) and `longFiles.resume`
-            ("auto", "ask" or "off"; default "auto").
+            ("auto", "ask" or "off"; default "auto"), read by the apps;
+            `listenLater.autoRemove` (default true) and
+            `listenLater.finishedPercent` (default 90), read by the server.
           type: object
           additionalProperties: true
         nowPlaying:
@@ -559,11 +569,12 @@ components:
         | queue.set_current | queue, song, positionMs | later `at` wins |
         | queue.set_mode | queue, shuffle?, repeat? | |
         | favorite.set / favorite.unset | song | later `at` wins |
+        | listen_later.add / listen_later.remove | song | later `at` wins |
         | resume.set / resume.unset | song, positionMs | later `at` wins; where a long file was left |
         | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 100 per user |
-        | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started |
+        | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started; a `toMs` past 90% removes the song from Listen Later |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
-        | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8 |
+        | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8; "Favorites" and "Listen Later" are reserved |
         | playlist.rename | playlist, name | renames the file |
         | playlist.delete | playlist | file removed after a copy is kept in the data folder |
         | playlist.insert | playlist, songs, after?, afterOccurrence? | duplicates allowed |

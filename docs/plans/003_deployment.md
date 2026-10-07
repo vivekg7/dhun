@@ -82,6 +82,8 @@ project folder.**
 - Songs are never deleted from the database: a vanished file is marked
   missing and keeps its ID, plays and queue places until it returns.
 - Synology's `#snapshot`, `#recycle` and `@eaDir` folders are never scanned.
+- Favorites and Listen Later reach `Playlists/<user>/` only through a job
+  at midnight, never on a tap ([010](010_special_playlists.md)).
 
 ## Install
 

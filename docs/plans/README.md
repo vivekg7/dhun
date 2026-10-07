@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                       | Status                                                              |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [010 — Special playlists and automatic views](010_special_playlists.md)    | `IN PROGRESS` — server side implemented; not yet on `main`          |
 | [009 — Resume long files on every device](009_resume_long_files.md)        | `IN PROGRESS` — server side implemented; not yet on `main`          |
 | [008 — Listening history](008_listening_history.md)                        | `IN PROGRESS` — server side implemented; not yet on `main`          |
 | [007 — Client architecture and repo layout](007_client_architecture.md)    | `ACCEPTED` — no code yet                                            |

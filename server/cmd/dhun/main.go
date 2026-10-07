@@ -155,6 +155,26 @@ func run(log *slog.Logger, args []string) error {
 		}
 	}()
 
+	// Favorites and Listen Later are copied to each user's Playlists folder
+	// at midnight (local time, TZ), the only time they touch the music share
+	// (docs/plans/010_special_playlists.md).
+	go func() {
+		for {
+			now := time.Now()
+			midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Until(midnight)):
+			}
+			n, err := library.ExportSpecial(ctx, db, media, dataDir, time.Now())
+			if err != nil && ctx.Err() == nil {
+				log.Error("special playlists export failed", "err", err)
+			}
+			log.Info("special playlists exported", "files", n)
+		}
+	}()
+
 	srv := &http.Server{
 		Addr: env("DHUN_ADDR", ":8585"),
 		Handler: (&api.Server{

@@ -1,14 +1,18 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vivekg7/dhun/server/internal/library"
 )
 
 type syncResp struct {
@@ -22,6 +26,10 @@ type syncResp struct {
 		PositionMS  int64 `json:"positionMs"`
 	}
 	Favorites []struct {
+		Song    int64
+		Deleted bool
+	}
+	ListenLater []struct {
 		Song    int64
 		Deleted bool
 	}
@@ -209,6 +217,85 @@ func TestLongFileResumesOnAnotherDevice(t *testing.T) {
 	e.push(phone, 0, o("resume.unset", map[string]any{"song": 1}))
 	if got := e.push(mac, before); len(got.Resume) != 1 || !got.Resume[0].Deleted {
 		t.Errorf("after finishing, laptop sees %+v, want song 1 deleted", got.Resume)
+	}
+}
+
+// Listen Later drops what was heard far enough into, by position, so an
+// episode finished over several sittings goes too; both rules are the
+// user's settings (plan 010).
+func TestListenLaterDropsWhatWasFinished(t *testing.T) {
+	e, phone, mac := syncEnv(t, 4)
+	if _, err := e.s.DB.Exec(`UPDATE songs SET duration_ms = 600000`); err != nil {
+		t.Fatal(err)
+	}
+	listed := func() string {
+		var ids []int64
+		for _, l := range e.push(mac, 0).ListenLater {
+			ids = append(ids, l.Song)
+		}
+		slices.Sort(ids)
+		return fmt.Sprint(ids)
+	}
+	e.push(phone, 0,
+		o("listen_later.add", map[string]any{"song": 1}),
+		o("listen_later.add", map[string]any{"song": 2}),
+		o("listen_later.add", map[string]any{"song": 3}),
+		o("play", map[string]any{"song": 4, "toMs": 600000}), // not on the list: nothing happens
+		// Song 1: the last sitting reached 92%, though it heard only a few minutes.
+		o("play", map[string]any{"song": 1, "fromMs": 400000, "toMs": 550000, "ms": 150000}),
+		o("play", map[string]any{"song": 2, "toMs": 300000, "ms": 300000})) // half: stays
+	if got := listed(); got != "[2 3]" {
+		t.Errorf("after listening = %s, want [2 3]", got)
+	}
+
+	e.push(phone, 0,
+		o("setting.set", map[string]any{"name": "listenLater.finishedPercent", "value": 50}),
+		o("play", map[string]any{"song": 2, "toMs": 300000}),
+		o("setting.set", map[string]any{"name": "listenLater.autoRemove", "value": false}),
+		o("play", map[string]any{"song": 3, "toMs": 600000}),
+		o("listen_later.add", map[string]any{"song": 1})) // added again after finishing
+	if got := listed(); got != "[1 3]" {
+		t.Errorf("after changing the settings = %s, want [1 3]", got)
+	}
+}
+
+// The special lists reach the music share only through the nightly export:
+// newest first, rewritten only when they changed, never indexed as playlists
+// of their own, and their names cannot be taken by a normal playlist.
+func TestSpecialListsAreExportedNightly(t *testing.T) {
+	e, phone, _ := syncEnv(t, 3)
+	e.push(phone, 0,
+		o("favorite.set", map[string]any{"song": 1, "at": "2026-10-01T10:00:00Z"}),
+		o("favorite.set", map[string]any{"song": 2, "at": "2026-10-02T10:00:00Z"}),
+		o("listen_later.add", map[string]any{"song": 3}))
+	file := filepath.Join(e.s.Root, "Playlists", "vivek", "Favorites.m3u8")
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("a favorite reached the music share before the nightly export")
+	}
+
+	ctx := context.Background()
+	if n, err := library.ExportSpecial(ctx, e.s.DB, e.s.Root, e.s.DataDir, time.Now()); err != nil || n != 2 {
+		t.Fatalf("export wrote %d files, err %v; want 2", n, err)
+	}
+	b, _ := os.ReadFile(file)
+	got := string(b)
+	i1, i2 := strings.Index(got, "../../Library/Artist/Album/01 - Song 1"), strings.Index(got, "../../Library/Artist/Album/02 - Song 2")
+	if i1 < 0 || i2 < 0 || i2 > i1 {
+		t.Errorf("Favorites.m3u8, want song 2 (newest) then song 1, paths relative to the file:\n%s", got)
+	}
+	if n, _ := library.ExportSpecial(ctx, e.s.DB, e.s.Root, e.s.DataDir, time.Now()); n != 0 {
+		t.Errorf("an unchanged export rewrote %d files", n)
+	}
+
+	e.scan()
+	var lib libraryResp
+	e.do("GET", "/api/v1/library", phone, nil, 200, &lib)
+	if len(lib.Playlists) != 0 {
+		t.Errorf("the exported copies were indexed as playlists: %+v", lib.Playlists)
+	}
+	r := e.push(phone, 0, o("playlist.create", map[string]any{"ref": "f", "name": "favorites", "songs": []int64{1}}))
+	if r.Results[0].Status != "rejected" {
+		t.Error("a normal playlist took the Favorites file name")
 	}
 }
 

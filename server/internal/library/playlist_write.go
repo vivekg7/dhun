@@ -231,6 +231,9 @@ func PlaylistRel(root, dir, name, except string) (string, error) {
 	if r := []rune(base); len(r) > 120 { // by character: never split a UTF-8 sequence
 		base = string(r[:120])
 	}
+	if IsSpecialFile(path.Join(dir, base+".m3u8")) {
+		return "", fmt.Errorf("%q is a built-in list", base)
+	}
 	for i := 1; i < 1000; i++ {
 		candidate := base
 		if i > 1 {

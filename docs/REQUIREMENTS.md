@@ -71,7 +71,8 @@ and anything undecided is under [Open questions](#open-questions).
   except the curation workflow's own `_`-prefixed folders (`_inbox`, `_meta`,
   `_trash`), which hold unreviewed and deleted files.
 - **Playlists are `.m3u8` files in `Music/Playlists/`**, stored and edited
-  there by the app; no playlist lives only in the database.
+  there by the app; no playlist lives only in the database. The two
+  special lists below are kept in the database and copied to files nightly.
   - `Playlists/*.m3u8` (top level) are **shared**: everyone sees them; the
     admin edits them.
   - `Playlists/<username>/*.m3u8` are **that user's own** playlists.
@@ -197,7 +198,14 @@ Proposed. Awaiting the owner's confirmation.
 
   Each queue keeps its own current song and position.
 
-- Playlists (create, rename, edit, delete) and Favorites.
+- Playlists (create, rename, edit, delete).
+- **Special lists** every user has: **Favorites**, and **Listen Later**,
+  which drops an item once a listen reaches 90% of the way into it (both
+  the rule and the percentage are settings). Kept in the database; a
+  nightly job at midnight copies them to `Playlists/<user>/`, so no tap
+  writes to the music share. Automatic views: Continue listening, Recently
+  added, Recently played, Most played, Not played lately —
+  [plans/010](plans/010_special_playlists.md).
 - Now playing: play / pause / next / previous / seek, shuffle, repeat.
 - **Sleep timer:** after a set time, after N songs, or after a specific song.
 - **Lyrics:** synced and plain, as provided by the server.

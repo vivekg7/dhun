@@ -200,7 +200,9 @@ func (a *applier) apply(o op) error {
 		"queue.replace", "queue.set_current", "queue.set_mode":
 		return a.queueEdit(o)
 	case "favorite.set", "favorite.unset":
-		return a.favorite(o)
+		return a.mark("favorites", o.Song, o.Type == "favorite.unset", a.at)
+	case "listen_later.add", "listen_later.remove":
+		return a.mark("listen_later", o.Song, o.Type == "listen_later.remove", a.at)
 	case "play":
 		return a.play(o)
 	case "playback.state":
@@ -241,7 +243,43 @@ func (a *applier) play(o op) error {
 		a.sess.UserID, o.Song, a.sess.DeviceID, a.at, max(o.MS, 0),
 		ended, offset, max(o.FromMS, 0), max(o.ToMS, 0), label(o.End, 32), label(o.Source, 200),
 		label(o.Queue, 200), o.Shuffle)
-	return err
+	if err != nil {
+		return err
+	}
+	return a.finishListenLater(o, ended)
+}
+
+// finishListenLater takes a song off Listen Later once a listen reached far
+// enough into it: by position, so a podcast heard over several sittings
+// counts (plan 010). Both rules are the user's synced settings.
+func (a *applier) finishListenLater(o op, ended string) error {
+	on, pct := true, 90.0
+	a.readSetting("listenLater.autoRemove", &on)
+	a.readSetting("listenLater.finishedPercent", &pct)
+	if pct <= 0 || pct > 100 {
+		pct = 90
+	}
+	var listed bool
+	var dur int64
+	err := a.tx.QueryRowContext(a.ctx, `SELECT NOT l.deleted, s.duration_ms FROM listen_later l JOIN songs s ON s.id = l.song_id
+		WHERE l.user_id = ? AND l.song_id = ?`, a.sess.UserID, o.Song).Scan(&listed, &dur)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (!on || !listed || dur <= 0 || float64(o.ToMS) < pct/100*float64(dur)) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// As of the listen's end: adding it again later still wins.
+	return a.mark("listen_later", o.Song, true, ended)
+}
+
+// readSetting decodes one of the user's synced settings into v, leaving v
+// (the default) as it is when the setting is missing, null or malformed.
+func (a *applier) readSetting(name string, v any) {
+	var raw string
+	if a.tx.QueryRowContext(a.ctx, `SELECT value FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, name).Scan(&raw) == nil {
+		json.Unmarshal([]byte(raw), v)
+	}
 }
 
 // label keeps a client-supplied tag to one short line.
@@ -508,20 +546,29 @@ func (a *applier) queueEdit(o op) error {
 
 // ---- favorites and playback ----
 
-func (a *applier) favorite(o op) error {
-	if err := a.songsExist([]int64{o.Song}); err != nil {
+// mark adds a song to one of the user's special lists (favorites,
+// listen_later) or removes it, as of at. The later change wins, so an
+// offline device's older change never undoes a newer one.
+func (a *applier) mark(table string, song int64, removed bool, at string) error {
+	if err := a.songsExist([]int64{song}); err != nil {
 		return err
 	}
-	if later, err := a.isLater(`SELECT at FROM favorites WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song); !later {
-		return err // the later set/unset wins
+	// table is a constant from the caller, never input.
+	var old string
+	err := a.tx.QueryRowContext(a.ctx, `SELECT at FROM `+table+` WHERE user_id = ? AND song_id = ?`, a.sess.UserID, song).Scan(&old)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err == nil && at < old {
+		return nil
 	}
 	v, err := a.bump()
 	if err != nil {
 		return err
 	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO favorites (user_id, song_id, at, deleted, version) VALUES (?, ?, ?, ?, ?)
+	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO `+table+` (user_id, song_id, at, deleted, version) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, song_id) DO UPDATE SET at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
-		a.sess.UserID, o.Song, a.at, o.Type == "favorite.unset", v)
+		a.sess.UserID, song, at, removed, v)
 	return err
 }
 
@@ -904,25 +951,14 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	}
 	rows.Close()
 
-	type favJSON struct {
-		Song    int64 `json:"song"`
-		Deleted bool  `json:"deleted,omitempty"`
-	}
-	favs := []favJSON{}
-	rows, err = tx.QueryContext(ctx, `SELECT song_id, deleted FROM favorites WHERE user_id = ? AND version > ?
-		AND NOT (deleted AND ? = 0)`, userID, since, since)
+	favs, err := marks(ctx, tx, "favorites", userID, since)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var f favJSON
-		if err := rows.Scan(&f.Song, &f.Deleted); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		favs = append(favs, f)
+	later, err := marks(ctx, tx, "listen_later", userID, since)
+	if err != nil {
+		return nil, err
 	}
-	rows.Close()
 
 	type resumeJSON struct {
 		Song       int64  `json:"song"`
@@ -968,8 +1004,36 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"version": version, "queues": queues, "favorites": favs, "resume": resume,
+	return map[string]any{"version": version, "queues": queues, "favorites": favs, "listenLater": later, "resume": resume,
 		"settings": settings, "nowPlaying": np}, nil
+}
+
+type markJSON struct {
+	Song    int64  `json:"song"`
+	Deleted bool   `json:"deleted,omitempty"`
+	At      string `json:"at,omitempty"` // when it was added: the lists show newest first
+}
+
+// marks returns a special list's changes since the cursor.
+func marks(ctx context.Context, tx *sql.Tx, table string, userID, since int64) ([]markJSON, error) {
+	out := []markJSON{}
+	rows, err := tx.QueryContext(ctx, `SELECT song_id, deleted, at FROM `+table+` WHERE user_id = ? AND version > ?
+		AND NOT (deleted AND ? = 0)`, userID, since, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m markJSON
+		if err := rows.Scan(&m.Song, &m.Deleted, &m.At); err != nil {
+			return nil, err
+		}
+		if m.Deleted {
+			m.At = ""
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 type nowPlayingJSON struct {

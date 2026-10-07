@@ -181,6 +181,9 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 		}
 		relOS, _ := filepath.Rel(root, abs)
 		rel := filepath.ToSlash(relOS)
+		if IsSpecialFile(rel) {
+			return nil // a nightly copy of a table, not a playlist of its own
+		}
 		info, err := d.Info()
 		if err != nil {
 			return nil

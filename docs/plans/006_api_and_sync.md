@@ -106,6 +106,7 @@ Operations and how each merges:
 | `playlist.create`, `playlist.rename`, `playlist.delete` | Same as queues. The server rewrites or renames the `.m3u8` file ([005](005_storage_and_library_model.md)).                                         |
 | `playlist.insert`, `playlist.remove`, `playlist.move`   | Same as queues. Playlists may contain duplicates, so they address an item by `(song, occurrence)`.                                                 |
 | `favorite.set`, `favorite.unset`                        | The latest `at` wins.                                                                                                                              |
+| `listen_later.add`, `listen_later.remove`               | The latest `at` wins. A `play` that reaches 90% into a listed song removes it ([010](010_special_playlists.md)).                                   |
 | `resume.set`, `resume.unset`, `setting.set`             | The latest `at` wins, as for favorites ([009](009_resume_long_files.md)).                                                                          |
 | `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                           |
 | `playback.state`                                        | Updates `now_playing` if newer. Sent while playing (at most every 15 s, and on pause, skip or queue switch), not stored in the outbox.             |
