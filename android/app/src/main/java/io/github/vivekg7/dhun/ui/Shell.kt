@@ -134,7 +134,14 @@ class Nav(
 ) {
     private val stacks = Tab.entries.associateWith { mutableStateListOf<Page>() }
     var tab by mutableStateOf(Tab.Now)
-    var settings by mutableStateOf(false)
+
+    /** The settings screen shown over the tabs, or null. */
+    var settings by mutableStateOf<SettingsPage?>(null)
+
+    /** Back from a category goes to the list of them, and from there to the tabs. */
+    fun settingsBack() {
+        settings = if (settings == SettingsPage.Main) null else SettingsPage.Main
+    }
 
     fun top(t: Tab) = stacks.getValue(t).lastOrNull()
 
@@ -170,11 +177,11 @@ class Nav(
          */
         fun saver(saved: SaveableStateHolder) =
             listSaver<Nav, Any>(
-                save = { n -> listOf(n.tab.name, n.settings) + Tab.entries.map { t -> ArrayList(n.stacks.getValue(t).map { it.encode() }) } },
+                save = { n -> listOf(n.tab.name, n.settings?.name ?: "") + Tab.entries.map { t -> ArrayList(n.stacks.getValue(t).map { it.encode() }) } },
                 restore = { l ->
                     Nav(saved).apply {
                         tab = Tab.entries.firstOrNull { it.name == l[0] } ?: Tab.Now
-                        settings = l[1] as Boolean
+                        settings = SettingsPage.entries.firstOrNull { it.name == l[1] }
                         Tab.entries.forEachIndexed { i, t -> (l[2 + i] as List<*>).mapNotNullTo(stacks.getValue(t)) { decodePage(it as String) } }
                     }
                 },
@@ -192,11 +199,12 @@ fun Shell() {
     LaunchedEffect(pager.currentPage) { nav.tab = Tab.entries[pager.currentPage] }
     LaunchedEffect(nav.tab) { if (pager.currentPage != nav.tab.ordinal) pager.animateScrollToPage(nav.tab.ordinal) }
 
-    BackHandler(nav.settings) { nav.settings = false }
-    BackHandler(!nav.settings && nav.canPop(nav.tab)) { nav.pop(nav.tab) }
+    BackHandler(nav.settings != null) { nav.settingsBack() }
+    BackHandler(nav.settings == null && nav.canPop(nav.tab)) { nav.pop(nav.tab) }
 
     // Settings replaces the tabs: they keep their state for coming back.
-    if (nav.settings) {
+    val settings = nav.settings
+    if (settings != null) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -205,7 +213,7 @@ fun Shell() {
                 ).windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars),
         ) {
-            SettingsScreen(onBack = { nav.settings = false })
+            SettingsScreen(settings, { nav.settings = it }, nav::settingsBack)
         }
         return
     }
@@ -229,7 +237,7 @@ fun Shell() {
                 if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
                 nav.tab = t
                 scope.launch { pager.scrollToPage(t.ordinal) }
-            }, onSettings = { nav.settings = true })
+            }, onSettings = { nav.settings = SettingsPage.Main })
         }
     }
 }

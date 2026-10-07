@@ -180,7 +180,7 @@ fun DownloadsScreen(
             }
         }
         if (status.state == State.Full) {
-            item { TextButton({ nav.settings = true }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
+            item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
         }
         item { SectionLabel("Kept in step with the library") }
         items(pins, key = { it.key }) { p ->

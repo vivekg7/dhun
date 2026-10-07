@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,24 +28,29 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,10 +68,87 @@ import io.github.vivekg7.dhun.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 
+/**
+ * Musicolet's shape (docs/plans/018_settings_layout.md): a short list of
+ * categories, each its own screen of one-line rows. A choice shows its value
+ * and opens a dialog; a setting that follows the user says so.
+ */
+enum class SettingsPage(
+    val title: String,
+) {
+    Main("Settings"),
+    Appearance("Appearance"),
+    Playback("Playback"),
+    Downloads("Downloads"),
+    Account("Account"),
+    About("About"),
+}
+
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    page: SettingsPage,
+    open: (SettingsPage) -> Unit,
+    onBack: () -> Unit,
+) {
+    key(page) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Row(Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onBack) { Icon(Icons.Back, "Back") }
+                Text(page.title, style = MaterialTheme.typography.headlineSmall)
+            }
+            when (page) {
+                SettingsPage.Main -> MainSettings(open)
+                SettingsPage.Appearance -> AppearanceSettings()
+                SettingsPage.Playback -> PlaybackSettings()
+                SettingsPage.Downloads -> DownloadSettings()
+                SettingsPage.Account -> AccountSettings()
+                SettingsPage.About -> AboutSettings()
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainSettings(open: (SettingsPage) -> Unit) {
+    val prefs = App.app.prefs
+    SettingRow("Appearance", "${prefs.themeMode.label} · ${prefs.palette.label}", Icons.Palette) { open(SettingsPage.Appearance) }
+    SettingRow("Playback", "Long files, Listen Later", Icons.Play) { open(SettingsPage.Playback) }
+    SettingRow("Downloads", "${limitLabel(prefs.downloadLimitGb)} · ${if (prefs.wifiOnly) "Wi-Fi only" else "Any network"}", Icons.Download) {
+        open(SettingsPage.Downloads)
+    }
+    SettingRow("Account", "${prefs.userName} on ${prefs.server.substringAfter("://")}", Icons.Artist) { open(SettingsPage.Account) }
+    SettingRow("About", "Dhun ${BuildConfig.VERSION_NAME}", Icons.Info) { open(SettingsPage.About) }
+}
+
+@Composable
+private fun AppearanceSettings() {
+    val prefs = App.app.prefs
+    ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }) { prefs.chooseTheme(it) }
+    var palette by remember { mutableStateOf(false) }
+    SettingRow("Accent colour", prefs.palette.label) { palette = true }
+    if (palette) {
+        AlertDialog(
+            onDismissRequest = { palette = false },
+            title = { Text("Accent colour") },
+            text = {
+                FlowRow(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    for (p in Palette.entries) {
+                        PaletteSwatch(p, p == prefs.palette) {
+                            prefs.choosePalette(p)
+                            palette = false
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton({ palette = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+// Synced: these follow the user to every device (docs/plans/009_resume_long_files.md).
+@Composable
+private fun PlaybackSettings() {
     val app = App.app
-    val prefs = app.prefs
     val settings by app.store.settings.collectAsState(emptyMap())
     val scope = rememberCoroutineScope()
 
@@ -74,105 +157,187 @@ fun SettingsScreen(onBack: () -> Unit) {
         value: JsonPrimitive,
     ) = scope.launch { app.store.setting(name, value) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Row(Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onBack) { Icon(Icons.Back, "Back") }
-            Text("Settings", style = MaterialTheme.typography.headlineSmall)
-        }
-
-        SectionLabel("Theme")
-        Chips(ThemeMode.entries, prefs.themeMode, { it.label }) { prefs.chooseTheme(it) }
-
-        SectionLabel("Colour")
-        FlowRow(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            for (p in Palette.entries) PaletteSwatch(p, p == prefs.palette) { prefs.choosePalette(p) }
-        }
-
-        // Synced: these follow the user to every device (docs/plans/009_resume_long_files.md).
-        SectionLabel("Long files")
-        Hint("Audiobooks, podcasts and mixes this long continue where you left them, on any device.")
-        Chips(listOf(5, 10, 15, 20, 30, 60), settings.int("longFiles.minMinutes", 15), { "$it min" }) { set("longFiles.minMinutes", JsonPrimitive(it)) }
-        Chips(listOf("auto", "ask", "off"), settings.string("longFiles.resume", "auto"), {
+    SectionLabel("Long files")
+    ChoiceRow(
+        "Continue long files",
+        listOf(5, 10, 15, 20, 30, 60),
+        settings.int("longFiles.minMinutes", 15),
+        { "$it minutes and longer" },
+        note = "Audiobooks, podcasts and mixes this long continue where you left them.",
+        synced = true,
+    ) { set("longFiles.minMinutes", JsonPrimitive(it)) }
+    ChoiceRow(
+        "Playing one again",
+        listOf("auto", "ask", "off"),
+        settings.string("longFiles.resume", "auto"),
+        {
             when (it) {
-                "auto" -> "Continue"
+                "auto" -> "Continue where you left it"
                 "ask" -> "Ask"
                 else -> "Start over"
             }
-        }) { set("longFiles.resume", JsonPrimitive(it)) }
+        },
+        synced = true,
+    ) { set("longFiles.resume", JsonPrimitive(it)) }
 
-        SectionLabel("Listen Later")
-        val autoRemove = settings.bool("listenLater.autoRemove", true)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    set("listenLater.autoRemove", JsonPrimitive(!autoRemove))
-                }.padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Remove what you finish", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Switch(autoRemove, { set("listenLater.autoRemove", JsonPrimitive(it)) })
-        }
-        if (autoRemove) {
-            Hint("Finished means heard this far into the file.")
-            Chips(
-                listOf(80, 90, 95, 100),
-                settings.int("listenLater.finishedPercent", 90),
-                { "$it%" },
-            ) { set("listenLater.finishedPercent", JsonPrimitive(it)) }
-        }
+    SectionLabel("Listen Later")
+    val autoRemove = settings.bool("listenLater.autoRemove", true)
+    SwitchRow("Remove what you finish", "On all your devices", autoRemove) { set("listenLater.autoRemove", JsonPrimitive(it)) }
+    ChoiceRow(
+        "Finished at",
+        listOf(80, 90, 95, 100),
+        settings.int("listenLater.finishedPercent", 90),
+        { "$it% heard" },
+        note = "A file counts as finished once heard this far.",
+        synced = true,
+        enabled = autoRemove,
+    ) { set("listenLater.finishedPercent", JsonPrimitive(it)) }
+}
 
-        // This phone's storage and network, so not synced (docs/plans/012_downloads.md).
-        SectionLabel("Downloads")
-        val status by app.downloads.status.collectAsState()
-        Hint("Saved on ${app.downloads.location()} · ${bytes(status.usedBytes)} used. At the limit, downloads stop; nothing is deleted to make room.")
-        Chips(listOf(2, 5, 10, 20, 50, 0), prefs.downloadLimitGb, { if (it == 0) "No limit" else "$it GB" }) {
-            prefs.chooseDownloadLimit(it)
-            app.downloads.poke()
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    prefs.chooseWifiOnly(!prefs.wifiOnly)
-                    app.downloads.poke()
-                }.padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Download on Wi-Fi only", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Switch(prefs.wifiOnly, {
-                prefs.chooseWifiOnly(it)
-                app.downloads.poke()
-            })
-        }
+// This phone's storage and network, so not synced (docs/plans/012_downloads.md).
+@Composable
+private fun DownloadSettings() {
+    val app = App.app
+    val prefs = app.prefs
+    val status by app.downloads.status.collectAsState()
+    SettingRow("Storage", "On ${app.downloads.location()} · ${bytes(status.usedBytes)} used")
+    ChoiceRow(
+        "Storage limit",
+        listOf(2, 5, 10, 20, 50, 0),
+        prefs.downloadLimitGb,
+        ::limitLabel,
+        note = "At the limit, downloads stop. Nothing is deleted to make room.",
+    ) {
+        prefs.chooseDownloadLimit(it)
+        app.downloads.poke()
+    }
+    SwitchRow("Wi-Fi only", if (prefs.wifiOnly) "Downloads wait for Wi-Fi" else "Downloads use mobile data too", prefs.wifiOnly) {
+        prefs.chooseWifiOnly(it)
+        app.downloads.poke()
+    }
+}
 
-        SectionLabel("Account")
-        Hint("${prefs.userName} on ${prefs.server}" + if (prefs.serverVersion.isEmpty()) "" else " · server ${prefs.serverVersion}")
-        OutlinedButton({ app.signOut() }, Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Icon(Icons.Logout, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Sign out")
-        }
-        val error by app.sync.error.collectAsState()
-        error?.let { Hint("Last sync failed: $it") }
-
-        Text(
-            "Dhun ${BuildConfig.VERSION_NAME} · GPL-3.0",
-            Modifier.padding(20.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+@Composable
+private fun AccountSettings() {
+    val app = App.app
+    val error by app.sync.error.collectAsState()
+    SettingRow("Signed in as ${app.prefs.userName}", app.prefs.server)
+    error?.let { SettingRow("Last sync failed", it) }
+    var confirm by remember { mutableStateOf(false) }
+    SettingRow("Sign out", "This phone's downloads are deleted") { confirm = true }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Sign out?") },
+            text = { Text("This phone's downloads are deleted. Your queues, playlists and history stay on the server.") },
+            confirmButton = {
+                TextButton({
+                    confirm = false
+                    app.signOut()
+                }) { Text("Sign out") }
+            },
+            dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
         )
     }
 }
 
 @Composable
-private fun Hint(text: String) =
-    Text(
-        text,
-        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun AboutSettings() {
+    val prefs = App.app.prefs
+    SettingRow("Dhun", "Version ${BuildConfig.VERSION_NAME}")
+    if (prefs.serverVersion.isNotEmpty()) SettingRow("Server", "Version ${prefs.serverVersion}")
+    SettingRow("Licence", "GPL-3.0")
+}
+
+private fun limitLabel(gb: Int) = if (gb == 0) "No limit" else "$gb GB"
+
+/** One setting: a title, what it is set to, and an icon on the list of categories only. */
+@Composable
+private fun SettingRow(
+    title: String,
+    summary: String? = null,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    trailing: @Composable (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier)
+            .alpha(if (enabled) 1f else 0.38f)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(24.dp), tint = c.onSurfaceVariant)
+            Spacer(Modifier.width(20.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            summary?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant) }
+        }
+        trailing?.let {
+            Spacer(Modifier.width(16.dp))
+            it()
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    summary: String?,
+    on: Boolean,
+    onChange: (Boolean) -> Unit,
+) = SettingRow(title, summary, trailing = { Switch(on, null) }) { onChange(!on) }
+
+/** A setting with a few values: the row shows the one chosen, a dialog picks another. */
+@Composable
+private fun <T> ChoiceRow(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    note: String? = null,
+    synced: Boolean = false,
+    enabled: Boolean = true,
+    onPick: (T) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    SettingRow(title, label(selected) + if (synced) " · on all your devices" else "", enabled = enabled) { open = true }
+    if (!open) return
+    AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(title) },
+        text = {
+            Column {
+                note?.let {
+                    Text(it, Modifier.padding(bottom = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                for (o in options) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable {
+                                open = false
+                                onPick(o)
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(o == selected, null)
+                        Spacer(Modifier.width(16.dp))
+                        Text(label(o), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton({ open = false }) { Text("Cancel") } },
     )
+}
 
 @Composable
 fun <T> Chips(

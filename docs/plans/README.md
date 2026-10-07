@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                         | Status                                                         |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [018 — The settings screen on Android](018_settings_layout.md)               | `MERGED` — on the owner's phone; no new version number yet     |
 | [017 — Hand-off (resume) on Android](017_handoff.md)                         | `MERGED` — in 0.3.0 on the owner's phone                       |
 | [016 — Play speed and pitch on Android](016_speed_and_pitch.md)              | `MERGED` — in 0.3.0; settings cap on the NAS (`server-v0.1.3`) |
 | [015 — Lyrics on Android](015_lyrics.md)                                     | `MERGED` — in 0.3.0 on the owner's phone                       |
