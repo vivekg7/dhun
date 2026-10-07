@@ -53,7 +53,8 @@ and every device sees the same one.
   | `longFiles.resume`     | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
-  digits, `.`, `_` or `-`; at most 100 settings of 4 KB each per user.
+  digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,
+  not counting those set back to `null` ([016](016_speed_and_pitch.md)).
 
 **What the apps do** (Android first; macOS and web the same way):
 

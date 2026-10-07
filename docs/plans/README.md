@@ -82,20 +82,21 @@ wrong.
 
 ## Index
 
-| Plan                                                                         | Status                                                      |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| [015 — Lyrics on Android](015_lyrics.md)                                     | `IN PROGRESS` — built and tested on the emulator            |
-| [014 — The sleep timer on Android](014_sleep_timer.md)                       | `IN PROGRESS` — built and tested on the emulator            |
-| [013 — Editing playlists on Android](013_playlist_editing.md)                | `IN PROGRESS` — server in `server-v0.1.2`; app not released |
-| [012 — Downloads on Android](012_downloads.md)                               | `MERGED` — in 0.2.0 on the owner's phone                    |
-| [011 — The Android app: look, structure and first build](011_android_app.md) | `MERGED` — on the owner's phone; no GitHub release yet      |
-| [010 — Special playlists and automatic views](010_special_playlists.md)      | `IN PROGRESS` — server on the NAS; Android not released     |
-| [009 — Resume long files on every device](009_resume_long_files.md)          | `IN PROGRESS` — server on the NAS; Android not released     |
-| [008 — Listening history](008_listening_history.md)                          | `IN PROGRESS` — server on the NAS; Android not released     |
-| [007 — Client architecture and repo layout](007_client_architecture.md)      | `IN PROGRESS` — Android under way (011)                     |
-| [006 — API and sync](006_api_and_sync.md)                                    | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07    |
-| [005 — Storage and library model](005_storage_and_library_model.md)          | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07    |
-| [004 — Dhun owns every change to the collection](004_curation_workflow.md)   | `ACCEPTED` — option C; no code yet                          |
-| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)         | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07    |
-| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                  | `ACCEPTED` — mechanics in 006                               |
-| [001 — Our own backend, in Go](001_own_backend_in_go.md)                     | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07    |
+| Plan                                                                         | Status                                                                           |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [016 — Play speed and pitch on Android](016_speed_and_pitch.md)              | `IN PROGRESS` — built and tested on the emulator; server cap in the next release |
+| [015 — Lyrics on Android](015_lyrics.md)                                     | `IN PROGRESS` — built and tested on the emulator                                 |
+| [014 — The sleep timer on Android](014_sleep_timer.md)                       | `IN PROGRESS` — built and tested on the emulator                                 |
+| [013 — Editing playlists on Android](013_playlist_editing.md)                | `IN PROGRESS` — server in `server-v0.1.2`; app not released                      |
+| [012 — Downloads on Android](012_downloads.md)                               | `MERGED` — in 0.2.0 on the owner's phone                                         |
+| [011 — The Android app: look, structure and first build](011_android_app.md) | `MERGED` — on the owner's phone; no GitHub release yet                           |
+| [010 — Special playlists and automatic views](010_special_playlists.md)      | `IN PROGRESS` — server on the NAS; Android not released                          |
+| [009 — Resume long files on every device](009_resume_long_files.md)          | `IN PROGRESS` — server on the NAS; Android not released                          |
+| [008 — Listening history](008_listening_history.md)                          | `IN PROGRESS` — server on the NAS; Android not released                          |
+| [007 — Client architecture and repo layout](007_client_architecture.md)      | `IN PROGRESS` — Android under way (011)                                          |
+| [006 — API and sync](006_api_and_sync.md)                                    | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07                         |
+| [005 — Storage and library model](005_storage_and_library_model.md)          | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07                         |
+| [004 — Dhun owns every change to the collection](004_curation_workflow.md)   | `ACCEPTED` — option C; no code yet                                               |
+| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)         | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07                         |
+| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                  | `ACCEPTED` — mechanics in 006                                                    |
+| [001 — Our own backend, in Go](001_own_backend_in_go.md)                     | `RELEASED` — `server-v0.1.2` on the NAS since 2026-10-07                         |

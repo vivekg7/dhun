@@ -593,9 +593,11 @@ func (a *applier) resume(o op) error {
 }
 
 // Settings are the apps' business; these limits only keep one user from
-// filling the database.
+// filling the database. The count leaves out settings set back to null and
+// is sized for a speed per song (`speed.<id>`, plan 016) besides the few
+// real settings.
 const (
-	maxSettings     = 100
+	maxSettings     = 1000
 	maxSettingBytes = 4 << 10
 )
 
@@ -615,7 +617,7 @@ func (a *applier) setting(o op) error {
 		return err
 	}
 	var n int
-	if err := a.tx.QueryRowContext(a.ctx, `SELECT count(*) FROM settings WHERE user_id = ? AND name != ?`,
+	if err := a.tx.QueryRowContext(a.ctx, `SELECT count(*) FROM settings WHERE user_id = ? AND name != ? AND value != 'null'`,
 		a.sess.UserID, o.Name).Scan(&n); err != nil {
 		return err
 	}

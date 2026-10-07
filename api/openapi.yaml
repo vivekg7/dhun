@@ -551,7 +551,9 @@ components:
             `longFiles.minMinutes` (default 15) and `longFiles.resume`
             ("auto", "ask" or "off"; default "auto"), read by the apps;
             `listenLater.autoRemove` (default true) and
-            `listenLater.finishedPercent` (default 90), read by the server.
+            `listenLater.finishedPercent` (default 90), read by the server;
+            `speed.<song id>` (`{"speed": 1.5, "semitones": 0}`), a song's
+            own play speed and pitch, read by the apps.
           type: object
           additionalProperties: true
         nowPlaying:
@@ -579,7 +581,7 @@ components:
         | favorite.set / favorite.unset | song | later `at` wins |
         | listen_later.add / listen_later.remove | song | later `at` wins |
         | resume.set / resume.unset | song, positionMs | later `at` wins; where a long file was left |
-        | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 100 per user |
+        | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 1000 per user not counting nulls |
         | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started; a `toMs` past 90% removes the song from Listen Later |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
         | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8; "Favorites" and "Listen Later" are reserved |

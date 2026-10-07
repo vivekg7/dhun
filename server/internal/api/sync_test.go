@@ -510,3 +510,26 @@ func TestPlaylistNameCannotAddLines(t *testing.T) {
 		t.Errorf("name leaked into the file:\n%s", b)
 	}
 }
+
+// A speed per song is a setting (plan 016): over the years they add up, so a
+// setting set back to null makes room for a new one instead of filling the cap.
+func TestClearedSettingsDoNotCountTowardTheCap(t *testing.T) {
+	e, phone, _ := syncEnv(t, 1)
+	for b := 0; b < maxSettings; b += maxOpsPerPush {
+		var ops []map[string]any
+		for i := b; i < b+maxOpsPerPush; i++ {
+			ops = append(ops, o("setting.set", map[string]any{"name": fmt.Sprintf("speed.%d", i), "value": map[string]any{"speed": 1.5}}))
+		}
+		e.push(phone, 0, ops...)
+	}
+	extra := o("setting.set", map[string]any{"name": "speed.extra", "value": map[string]any{"speed": 2}})
+	if r := e.push(phone, 0, extra); r.Results[0].Status != "rejected" {
+		t.Fatalf("setting past the cap: %+v", r.Results[0])
+	}
+	r := e.push(phone, 0,
+		o("setting.set", map[string]any{"name": "speed.0", "value": nil}),
+		o("setting.set", map[string]any{"name": "speed.extra", "value": map[string]any{"speed": 2}}))
+	if r.Results[0].Status != "applied" || r.Results[1].Status != "applied" {
+		t.Errorf("after clearing one: %+v", r.Results)
+	}
+}
