@@ -1,6 +1,6 @@
 # 012 — Downloads on Android
 
-**Status:** `IN PROGRESS` — built and tested on the emulator; not yet on the owner's phone
+**Status:** `MERGED` — in 0.2.0 on the owner's phone since 2026-10-07; no GitHub release yet
 **Started:** 2026-10-07
 
 ## Problem
