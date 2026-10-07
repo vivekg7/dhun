@@ -412,6 +412,10 @@ func TestPlaylistOpsRewriteTheM3u8(t *testing.T) {
 			if fmt.Sprint(p.Songs) != "[1 3 2 1]" {
 				t.Errorf("indexed songs = %v, want [1 3 2 1]", p.Songs)
 			}
+			// The app that made it offline matches it by this ref.
+			if p.Ref != "pl-1" {
+				t.Errorf("ref = %q, want pl-1", p.Ref)
+			}
 		}
 	}
 

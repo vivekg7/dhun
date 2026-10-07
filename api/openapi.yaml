@@ -472,6 +472,11 @@ components:
             type: boolean,
             description: Top-level Playlists/ file; only the admin edits it,
           }
+        ref:
+          {
+            type: string,
+            description: "The ref from the playlist.create that made it, so the creating app can match a playlist it made offline",
+          }
         songs:
           type: array
           items: { type: integer }

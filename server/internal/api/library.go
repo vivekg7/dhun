@@ -48,6 +48,9 @@ type playlistJSON struct {
 	Path    string `json:"path,omitempty"`
 	Name    string `json:"name,omitempty"`
 	Shared  bool   `json:"shared,omitempty"`
+	// The client's ref from playlist.create, so the app that made a playlist
+	// offline can tell which server playlist it became.
+	Ref string `json:"ref,omitempty"`
 	// Song IDs in order; 0 marks an entry that resolves to no song (kept,
 	// never dropped, so a fixed file brings it back).
 	Songs []int64 `json:"songs,omitempty"`
@@ -110,7 +113,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 // changedPlaylists returns shared playlists and the caller's own; another
 // user's playlists are private (REQUIREMENTS: per-user data stays private).
 func (s *Server) changedPlaylists(r *http.Request, tx *sql.Tx, since, userID int64) ([]playlistJSON, error) {
-	rows, err := tx.QueryContext(r.Context(), `SELECT id, path, name, owner_id IS NULL, deleted FROM playlists
+	rows, err := tx.QueryContext(r.Context(), `SELECT id, path, name, owner_id IS NULL, COALESCE(client_ref, ''), deleted FROM playlists
 		WHERE version > ? AND (owner_id IS NULL OR owner_id = ?) ORDER BY path`, since, userID)
 	if err != nil {
 		return nil, err
@@ -118,7 +121,7 @@ func (s *Server) changedPlaylists(r *http.Request, tx *sql.Tx, since, userID int
 	out := []playlistJSON{}
 	for rows.Next() {
 		var p playlistJSON
-		if err := rows.Scan(&p.ID, &p.Path, &p.Name, &p.Shared, &p.Deleted); err != nil {
+		if err := rows.Scan(&p.ID, &p.Path, &p.Name, &p.Shared, &p.Ref, &p.Deleted); err != nil {
 			rows.Close()
 			return nil, err
 		}
