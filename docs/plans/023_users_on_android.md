@@ -1,6 +1,6 @@
 # 023 — Managing family members on Android
 
-**Status:** `MERGED` — on `main`, not yet in an Android release
+**Status:** `MERGED` — in 0.8.0 on the owner's phone
 **Started:** 2026-10-08
 
 ## Problem
