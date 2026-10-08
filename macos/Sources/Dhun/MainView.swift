@@ -148,12 +148,6 @@ struct Banners: View {
                     Button("OK") { app.playback.notice = nil }
                 }
             }
-            if app.revoked {
-                Banner(icon: "exclamationmark.triangle") {
-                    Text("This Mac was signed out. Sign in again; nothing you changed is lost.")
-                } actions: {
-                }
-            }
         }
     }
 }

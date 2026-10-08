@@ -92,6 +92,9 @@ public final class AppModel {
                 if ok { self.sync.soon() }
             }
         }
+        // Signing out forgets the user; a refused token keeps it, so after a
+        // relaunch the sign-in still says this Mac's edits were kept.
+        revoked = !signedIn && !prefs.user.isEmpty
         reloadAll()
         Task { await reloadSongs() }
     }
