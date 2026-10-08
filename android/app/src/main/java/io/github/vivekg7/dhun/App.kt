@@ -77,14 +77,17 @@ class App : Application() {
 
     /** Forgets the account, everything synced from it, what was playing, and its downloads. */
     fun signOut() {
-        scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+        scope.launch { forget() }
+    }
+
+    suspend fun forget() =
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
             playback.reset()
             prefs.signOut()
             downloads.deleteAll()
             cache.deleteAll()
             db.clearAllTables()
         }
-    }
 
     companion object {
         lateinit var app: App

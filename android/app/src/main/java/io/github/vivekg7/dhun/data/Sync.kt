@@ -102,8 +102,10 @@ class Sync(
                 _error.value = null
                 true
             } catch (e: ApiException) {
-                // A revoked token (password changed, device removed): sign in again.
-                if (e.code == 401) app.signOut()
+                // A revoked token (password reset, device removed): sign in again, but
+                // keep everything. Signing out would clear the outbox, and with it the
+                // edits made offline (docs/plans/023_users_on_android.md).
+                if (e.code == 401) app.prefs.token = ""
                 _error.value = e.message
                 e.code !in 500..599
             } catch (e: CancellationException) {

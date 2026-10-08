@@ -370,11 +370,13 @@ private fun PaletteSwatch(
     }
 }
 
-/** First start, or after signing out. */
+/** First start, after signing out, or when the server has revoked this phone's token. */
 @Composable
 fun SignInScreen() {
     val app = App.app
     val scope = rememberCoroutineScope()
+    // A revoked token keeps the name and everything synced; Sign out clears both.
+    val revoked = remember { app.prefs.userName.isNotEmpty() }
     var server by remember { mutableStateOf(app.prefs.server) }
     var user by remember { mutableStateOf(app.prefs.userName) }
     var password by remember { mutableStateOf("") }
@@ -388,6 +390,9 @@ fun SignInScreen() {
         scope.launch {
             try {
                 val login = app.api.login(url, user.trim(), password, Build.MODEL)
+                // Someone else's data stays theirs. Only the name is compared: the
+                // same server is reached at its home or its Tailscale address.
+                if (app.prefs.userName.isNotEmpty() && login.user.name != app.prefs.userName) app.forget()
                 app.prefs.server = url
                 app.prefs.userName = login.user.name
                 app.prefs.deviceId = login.deviceId
@@ -436,7 +441,14 @@ fun SignInScreen() {
             )
         }
         Text("Dhun", style = MaterialTheme.typography.displaySmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
-        Text("Sign in to your family's music server.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            if (revoked) {
+                "Your password was changed or this phone was signed out. Sign in again; nothing on this phone is lost."
+            } else {
+                "Sign in to your family's music server."
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             server,

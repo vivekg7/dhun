@@ -1,6 +1,6 @@
 # 023 — Managing family members on Android
 
-**Status:** `ACCEPTED` — moved from the web client to Android; no code yet
+**Status:** `IN PROGRESS` — step 1 (a revoked token keeps the phone's data) done; the screen not started
 **Started:** 2026-10-08
 
 ## Problem
