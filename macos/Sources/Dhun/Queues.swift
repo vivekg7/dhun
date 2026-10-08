@@ -10,6 +10,7 @@ struct QueuesView: View {
     @State private var chosen: String?
 
     var body: some View {
+        let app = self.app
         let queues = app.playback.ordered
         HSplitView {
             List(selection: $chosen) {
@@ -82,10 +83,14 @@ struct QueueMenu: View {
 
 struct QueueSongs: View {
     @Environment(AppModel.self) private var app
+    @Environment(Nav.self) private var nav
     let queue: QueueRow
     @State private var selection = Set<Int>()
 
     var body: some View {
+        // Values, not the environment, for the rows and menus built later (see `Thumb`).
+        let app = self.app
+        let nav = self.nav
         let isActive = queue.id == app.playback.activeId
         let ids = isActive ? app.playback.items : queue.songs
         let songs = ids.compactMap { app.catalog.byId[$0] }
@@ -127,7 +132,7 @@ struct QueueSongs: View {
                         HStack(spacing: 8) {
                             Text("\(i + 1)").monospacedDigit().font(.caption).foregroundStyle(.secondary)
                                 .frame(width: 28, alignment: .trailing)
-                            Thumb(song: s, size: 26)
+                            Thumb(app: app, song: s, size: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(s.title).lineLimit(1).fontWeight(
                                     s.id == currentId ? .semibold : .regular
@@ -150,13 +155,17 @@ struct QueueSongs: View {
                 }
                 .contextMenu(forSelectionType: Int.self) { chosen in
                     let picked = songs.filter { chosen.contains($0.id) }
-                    if isActive, picked.count == 1, let s = picked.first {
-                        Button("Stop After This Song") { app.playback.sleep.afterSong(s.id, s.title) }
+                    Group {
+                        if isActive, picked.count == 1, let s = picked.first {
+                            Button("Stop After This Song") { app.playback.sleep.afterSong(s.id, s.title) }
+                            Divider()
+                        }
+                        SongMenu(songs: picked)
                         Divider()
+                        Button("Remove from Queue") { app.playback.removeFrom(queue.id, chosen) }
                     }
-                    SongMenu(songs: picked)
-                    Divider()
-                    Button("Remove from Queue") { app.playback.removeFrom(queue.id, chosen) }
+                    .environment(app)
+                    .environment(nav)
                 } primaryAction: { chosen in
                     guard let id = chosen.first else { return }
                     if isActive, let i = app.playback.items.firstIndex(of: id) {
@@ -171,6 +180,7 @@ struct QueueSongs: View {
                 }
                 .onDeleteCommand { app.playback.removeFrom(queue.id, selection) }
                 .onAppear { if let currentId { proxy.scrollTo(currentId, anchor: .center) } }
+                .id(queue.id)
             }
         }
     }
@@ -255,6 +265,9 @@ struct PlaylistPage: View {
     @State private var selection = Set<Int>()
 
     var body: some View {
+        // Values, not the environment, for the rows and menus built later (see `Thumb`).
+        let app = self.app
+        let nav = self.nav
         if let p = app.playlists.first(where: { $0.id == id }) {
             let editable = !p.shared || app.admin
             let entries = Array(p.songs.enumerated())
@@ -299,7 +312,7 @@ struct PlaylistPage: View {
                     ForEach(entries, id: \.offset) { i, songId in
                         if let s = app.catalog.byId[songId] {
                             HStack(spacing: 8) {
-                                Thumb(song: s, size: 26)
+                                Thumb(app: app, song: s, size: 26)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(s.title).lineLimit(1)
                                     Text(s.displayArtist).font(.caption).foregroundStyle(.secondary)
@@ -321,11 +334,15 @@ struct PlaylistPage: View {
                 }
                 .contextMenu(forSelectionType: Int.self) { rows in
                     let picked = rows.sorted().compactMap { app.catalog.byId[p.songs[$0]] }
-                    SongMenu(songs: picked, queueName: p.name, source: "playlist:\(p.id)", all: songs)
-                    if editable {
-                        Divider()
-                        Button("Remove from Playlist") { remove(p, rows) }
+                    Group {
+                        SongMenu(songs: picked, queueName: p.name, source: "playlist:\(p.id)", all: songs)
+                        if editable {
+                            Divider()
+                            Button("Remove from Playlist") { remove(p, rows) }
+                        }
                     }
+                    .environment(app)
+                    .environment(nav)
                 } primaryAction: { rows in
                     guard let r = rows.first, let s = app.catalog.byId[p.songs[r]],
                         let i = songs.firstIndex(of: s)
@@ -333,6 +350,7 @@ struct PlaylistPage: View {
                     app.playback.play(name: p.name, source: "playlist:\(p.id)", songs: songs, start: i)
                 }
                 .onDeleteCommand { if editable { remove(p, selection) } }
+                .id(p.id)
             }
             .navigationTitle(p.name)
         } else {

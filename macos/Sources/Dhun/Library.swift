@@ -2,8 +2,13 @@ import DhunKit
 import SwiftUI
 
 /// A list row's cover: the thumbnail every cover has, never waiting (plan 019).
+///
+/// Rows take the app model as a value, not from the environment: when a
+/// table or list is reused for another list's rows, macOS 26 can rebuild a
+/// row before its environment is in place, and an `@Environment` read of the
+/// model then traps.
 struct Thumb: View {
-    @Environment(AppModel.self) private var app
+    let app: AppModel
     let song: Song
     let size: CGFloat
 
@@ -185,12 +190,13 @@ struct GroupsList: View {
     @State private var filter = ""
 
     var body: some View {
+        let app = self.app
         let all = kind == .artist ? app.catalog.artists : app.catalog.genres
         let shown = filter.isEmpty ? all : all.filter { fold($0.name).contains(fold(filter)) }
         List(shown) { g in
             NavigationLink(value: kind == .artist ? Route.artist(g.name) : Route.genre(g.name)) {
                 HStack(spacing: 10) {
-                    Thumb(song: g.songs[0], size: 32)
+                    Thumb(app: app, song: g.songs[0], size: 32)
                     VStack(alignment: .leading) {
                         Text(g.name)
                         Text("\(g.songs.count) songs").font(.caption).foregroundStyle(.secondary)

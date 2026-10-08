@@ -7,6 +7,7 @@ import SwiftUI
 /// the server cannot be reached.
 struct SongTable: View {
     @Environment(AppModel.self) private var app
+    @Environment(Nav.self) private var nav
     let songs: [Song]
     /// The queue's name when played, and the listen's source (plan 008).
     let name: String
@@ -19,6 +20,9 @@ struct SongTable: View {
     @State private var sort: [KeyPathComparator<Song>] = []
 
     var body: some View {
+        // Values, not the environment, for the rows and menus built later (see `Thumb`).
+        let app = self.app
+        let nav = self.nav
         let rows = sort.isEmpty ? songs : songs.sorted(using: sort)
         Table(rows, selection: $selection, sortOrder: $sort) {
             if showTrack {
@@ -29,14 +33,15 @@ struct SongTable: View {
             }
             TableColumn("Title", value: \.title) { s in
                 HStack(spacing: 8) {
-                    Thumb(song: s, size: 22)
+                    Thumb(app: app, song: s, size: 22)
                     Text(s.title).lineLimit(1)
                     if app.playback.current?.id == s.id {
                         Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                             .foregroundStyle(.tint).font(.caption)
                     }
                 }
-                .opacity(playable(s) ? 1 : 0.4)
+                .opacity(
+                    app.reachable || app.downloaded[s.id] != nil || app.cache.songs.contains(s.id) ? 1 : 0.4)
             }
             .width(min: 160, ideal: 300)
             TableColumn("Artist", value: \.displayArtist) { s in Text(s.displayArtist).lineLimit(1) }
@@ -53,20 +58,24 @@ struct SongTable: View {
         }
         .contextMenu(forSelectionType: Int.self) { ids in
             let chosen = rows.filter { ids.contains($0.id) }
-            SongMenu(songs: chosen, queueName: name, source: source, all: rows)
-            if let extraMenu, !ids.isEmpty {
-                Divider()
-                extraMenu(ids)
+            Group {
+                SongMenu(songs: chosen, queueName: name, source: source, all: rows)
+                if let extraMenu, !ids.isEmpty {
+                    Divider()
+                    extraMenu(ids)
+                }
             }
+            .environment(app)
+            .environment(nav)
         } primaryAction: { ids in
             guard let first = ids.first, let i = rows.firstIndex(where: { $0.id == first }) else { return }
             app.playback.play(name: name, source: source, songs: rows, start: i)
         }
         .draggable(selectionText: selection)
-    }
-
-    private func playable(_ s: Song) -> Bool {
-        app.reachable || app.downloaded[s.id] != nil || app.cache.songs.contains(s.id)
+        // A table of its own per list: reusing one for another list's rows is
+        // where the environment went missing, and selection and sort are the
+        // list's own.
+        .id(source + "\u{0}" + name)
     }
 }
 
