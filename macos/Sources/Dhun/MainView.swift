@@ -109,6 +109,12 @@ struct RouteView: View {
                 Missing()
             }
         case .folder(let path): FolderView(path: path)
+        case .queue(let id):
+            if let q = app.queues.first(where: { $0.id == id }) {
+                QueueSongs(queue: q).navigationTitle(q.name)
+            } else {
+                ContentUnavailableView("This queue was removed", systemImage: "list.number")
+            }
         }
     }
 }

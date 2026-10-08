@@ -1,20 +1,22 @@
 import DhunKit
 import SwiftUI
 
-/// The queues (plan 020) in Mac form: the queues on the left, numbered from
-/// 1 in the user's order and dragged to reorder; the chosen queue's songs on
-/// the right, dragged to reorder, with Play or Resume, Sort, Save as
-/// playlist, Rename and Remove.
+/// The queues (plan 020), as on the phone: numbered from 1 in the user's
+/// order and dragged to reorder; a click opens the queue's songs as a page,
+/// with Play or Resume, Sort, Save as playlist, Rename and Remove.
+///
+/// A page, not the queues and their songs side by side: with the inspector
+/// open, two lists side by side in the window's split view looped its size
+/// updates until AppKit aborted the app.
 struct QueuesView: View {
     @Environment(AppModel.self) private var app
-    @State private var chosen: String?
 
     var body: some View {
         let app = self.app
         let queues = app.playback.ordered
-        HSplitView {
-            List(selection: $chosen) {
-                ForEach(Array(queues.enumerated()), id: \.element.id) { i, q in
+        List {
+            ForEach(Array(queues.enumerated()), id: \.element.id) { i, q in
+                NavigationLink(value: Route.queue(q.id)) {
                     HStack {
                         Text("\(i + 1)").monospacedDigit().foregroundStyle(.secondary).frame(
                             width: 20, alignment: .trailing)
@@ -28,18 +30,16 @@ struct QueuesView: View {
                                 .foregroundStyle(.tint)
                         }
                     }
-                    .tag(q.id)
-                    .contextMenu { QueueMenu(queue: q) }
                 }
-                .onMove { from, to in
-                    guard let f = from.first else { return }
-                    app.playback.moveQueue(from: f, to: to > f ? to - 1 : to)
-                }
+                .contextMenu { QueueMenu(queue: q) }
             }
-            .frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
-            if let q = queues.first(where: { $0.id == (chosen ?? app.playback.activeId) }) ?? queues.first {
-                QueueSongs(queue: q)
-            } else {
+            .onMove { from, to in
+                guard let f = from.first else { return }
+                app.playback.moveQueue(from: f, to: to > f ? to - 1 : to)
+            }
+        }
+        .overlay {
+            if queues.isEmpty {
                 ContentUnavailableView(
                     "No queues", systemImage: "list.number",
                     description: Text(
@@ -47,9 +47,6 @@ struct QueuesView: View {
             }
         }
         .navigationTitle("Queues")
-        .onAppear {
-            if chosen == nil { chosen = app.playback.activeId.isEmpty ? nil : app.playback.activeId }
-        }
     }
 }
 

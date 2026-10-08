@@ -17,6 +17,7 @@ enum Route: Hashable {
     case artist(String)
     case genre(String)
     case folder(String)
+    case queue(String)
 }
 
 /// The automatic views and special lists (plan 010).
