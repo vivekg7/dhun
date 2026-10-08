@@ -95,6 +95,8 @@ class Sync(
                 // The server rewrote those playlists: fetch them as written.
                 if (pushedPlaylists) pullLibrary()
                 pullPlays()
+                // Its own run: the first time it is minutes of work, and the sync is not waiting on it.
+                app.scope.launch { Covers.fetchThumbs() }
                 _error.value = null
                 true
             } catch (e: ApiException) {

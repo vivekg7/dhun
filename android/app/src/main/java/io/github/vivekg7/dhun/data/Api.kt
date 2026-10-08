@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -114,6 +115,18 @@ class Api(
         )
     }
 
+    /** Thumbnails by art key, base64; "" for a key with nothing to show. At most [MAX_THUMBS] keys. */
+    suspend fun thumbs(keys: List<String>): Map<String, String> {
+        val body = buildJsonObject { put("keys", kotlinx.serialization.json.JsonArray(keys.map(::JsonPrimitive))) }
+        return call<ThumbsDto>(
+            Request
+                .Builder()
+                .url("${prefs.server}/api/v1/thumbs")
+                .post(body.toString().toRequestBody(JSON))
+                .build(),
+        ).thumbs
+    }
+
     suspend fun lyrics(song: Long): LyricsDto = call(Request.Builder().url("${prefs.server}/api/v1/lyrics/$song").build())
 
     suspend fun me(): Me = call(Request.Builder().url("${prefs.server}/api/v1/me").build())
@@ -136,6 +149,9 @@ class Api(
 
     companion object {
         private val JSON = "application/json".toMediaType()
+
+        /** The server's limit for one thumbnails request. */
+        const val MAX_THUMBS = 50
     }
 }
 
@@ -312,6 +328,10 @@ data class SyncState(
 
 @Serializable data class Plays(
     val plays: List<PlayDto> = emptyList(),
+)
+
+@Serializable data class ThumbsDto(
+    val thumbs: Map<String, String> = emptyMap(),
 )
 
 @Serializable data class LyricsDto(

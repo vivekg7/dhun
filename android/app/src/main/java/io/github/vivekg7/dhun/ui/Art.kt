@@ -35,7 +35,13 @@ fun Art(
 ) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     var image by remember(song?.id) { mutableStateOf<ImageBitmap?>(null) }
-    if (song != null && song.hasArt) LaunchedEffect(song.id, song.art, px) { image = Covers.load(song, px)?.asImageBitmap() }
+    if (song != null && song.hasArt) {
+        LaunchedEffect(song.id, song.art, px) {
+            // A larger view shows the thumbnail at once, then the cover when it comes; offline, the thumbnail stays.
+            if (px > Covers.THUMB) Covers.thumb(song)?.let { image = it.asImageBitmap() }
+            Covers.load(song, px)?.let { image = it.asImageBitmap() }
+        }
+    }
     Box(
         modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,

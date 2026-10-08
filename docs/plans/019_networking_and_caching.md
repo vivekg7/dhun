@@ -114,6 +114,21 @@ The owner chose (2026-10-07):
   while, and fetching the whole library at once is work for covers that
   may never be looked at. Covers of downloaded songs are kept beyond the
   500, so a downloaded album shows its cover offline.
+- **A thumbnail of every cover, from the first sync** (owner, 2026-10-08),
+  so list rows never wait for art, offline included, and scrolling makes
+  no requests. The full covers above are then only for the album grid and
+  Now playing, which show the thumbnail until theirs arrives. The owner
+  proposed 100 px; 128 was chosen, a list row being about 115 px across on
+  the owner's phone, for some 1 KB more a cover. The owner's library has
+  about 1,000–1,200 album folders, so some 1,200–2,000 covers: 5–10 MB
+  once, then only new covers. One thumbnail per cover, not per song, which
+  is four to six times less.
+
+  How they travel was decided while building: not inside the song list,
+  where images (which do not compress) would delay the first sync before
+  any song shows, but asked for by key, 50 at a time, for the keys the
+  phone lacks. That needs no cursor on the server, and a new cover is
+  just another missing key. They are fetched on any network, being small.
 
 And, for how a song is fetched: the fetcher writes the file and the player
 reads it as it grows.
@@ -150,6 +165,15 @@ turn on what a failed load means.
    files. OkHttp's HTTP cache, kept until now only for art, is gone, and
    the phone fetches every song again once to learn the keys. A server
    without the key gets one file per song, as before.
+
+   Thumbnails: `POST /api/v1/thumbs` takes up to 50 art keys and returns
+   each cover at 128 px, base64, from the server's art cache; "" for a key
+   with nothing to show, so the app stops asking. After each sync the app
+   asks for the keys it lacks, a batch at a time, keeps them in a Room
+   table, and drops those no song shows any more. A failed batch ends the
+   run; the next sync goes on from there. List rows draw from the table
+   alone; until a thumbnail is there, a row falls back to a full cover.
+
 4. **The song cache.** A folder of original files next to Downloads, with a
    Room table of size and last play. The fetcher keeps the current song and
    the next two, or the next ten on Wi-Fi, resuming a broken

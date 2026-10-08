@@ -24,12 +24,17 @@ import kotlinx.coroutines.flow.Flow
 @Database(
     entities = [
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
-        Pin::class, Download::class, LyricsRow::class,
+        Pin::class, Download::class, LyricsRow::class, Thumb::class,
     ],
-    version = 5,
+    version = 6,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [
+        AutoMigration(
+            from = 1,
+            to = 2,
+        ), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6),
+    ],
 )
 abstract class Db : RoomDatabase() {
     abstract fun dao(): DbDao
@@ -181,6 +186,17 @@ data class Download(
     val at: Long,
 )
 
+/**
+ * A cover's 128 px thumbnail, by art key ([Covers]): one for every cover in
+ * the library, so list rows never wait for art. Empty [data] means the
+ * server has nothing to show for that key.
+ */
+@Entity(tableName = "thumb")
+class Thumb(
+    @PrimaryKey val key: String,
+    val data: ByteArray,
+)
+
 /** A song's lyrics as the server sent them, kept for offline (docs/plans/015_lyrics.md). */
 @Entity(tableName = "lyrics")
 data class LyricsRow(
@@ -314,4 +330,19 @@ interface DbDao {
 
     @Query("DELETE FROM lyrics WHERE song = :song")
     suspend fun deleteLyrics(song: Long)
+
+    @Query("SELECT data FROM thumb WHERE `key` = :key")
+    suspend fun thumb(key: String): ByteArray?
+
+    @Query("SELECT DISTINCT art FROM song WHERE missing = 0 AND hasArt = 1 AND art != ''")
+    suspend fun artKeys(): List<String>
+
+    @Query("SELECT `key` FROM thumb")
+    suspend fun thumbKeys(): List<String>
+
+    @Upsert
+    suspend fun putThumbs(t: List<Thumb>)
+
+    @Query("DELETE FROM thumb WHERE `key` IN (:keys)")
+    suspend fun deleteThumbs(keys: List<String>)
 }

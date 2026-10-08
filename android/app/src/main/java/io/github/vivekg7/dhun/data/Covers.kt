@@ -4,11 +4,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import io.github.vivekg7.dhun.App
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
@@ -16,6 +18,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.File
 import java.io.IOException
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
@@ -23,13 +26,17 @@ import kotlin.coroutines.resume
  * Cover art (docs/plans/019_networking_and_caching.md), kept as files named
  * by the server's art key: songs showing one cover share it, so an album's
  * cover is fetched and stored once, and a new cover comes with a new key, so
- * a kept one never needs asking about again and shows offline. Each is
- * fetched when first shown; the [KEEP] used most recently stay, and those of
- * downloaded songs always. Decoded bitmaps stay in memory while they fit.
+ * a kept one never needs asking about again and shows offline.
+ *
+ * Every cover in the library has a 128 px thumbnail in the database, fetched
+ * after a sync, so list rows never wait. The full covers, for the album
+ * grid and Now playing, are files fetched when first shown; the [KEEP] used
+ * most recently stay, and those of downloaded songs always. Decoded bitmaps
+ * stay in memory while they fit.
  * The server already resizes, so no image library (docs/plans/011_android_app.md).
  */
 object Covers {
-    /** The owner's figure: enough for everything played in a long while, without fetching the whole library. */
+    /** The owner's figure: with every thumbnail on the phone, enough full covers for everything played in a long while. */
     private const val KEEP = 500
 
     /** The server's sizes (`/art/{id}?size=`). */
@@ -59,6 +66,9 @@ object Covers {
     private val touched = ConcurrentHashMap.newKeySet<String>()
     private var written = 0
 
+    /** A list row's cover: the thumbnails every cover has ([fetchThumbs]). */
+    const val THUMB = 128
+
     /** A server without art keys (before 0.1.4): one cover per song. */
     private fun key(song: Song) = song.art.ifEmpty { "s${song.id}" }
 
@@ -68,6 +78,7 @@ object Covers {
         px: Int,
     ): Bitmap? {
         if (!song.hasArt) return null
+        if (px <= THUMB) thumb(song)?.let { return it }
         val size = SIZES.firstOrNull { it >= px } ?: SIZES.last()
         val key = key(song)
         val mem = "$key/$size"
@@ -76,6 +87,55 @@ object Covers {
             // Offline, a smaller copy beats none.
             val file = kept(key, size) ?: fetch(song.id, key, size) ?: kept(key, 0)
             file?.let { decode(it, px) }?.also { memory.put(mem, it) }
+        }
+    }
+
+    /**
+     * [song]'s thumbnail, from the database: what a list row shows, and a
+     * larger view until its cover arrives. Null until it has been fetched.
+     */
+    suspend fun thumb(song: Song): Bitmap? {
+        if (!song.hasArt || song.art.isEmpty()) return null
+        val mem = "${song.art}/t"
+        memory.get(mem)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            val data =
+                app.db
+                    .dao()
+                    .thumb(song.art)
+                    ?.takeIf { it.isNotEmpty() } ?: return@withContext null
+            BitmapFactory.decodeByteArray(data, 0, data.size)?.also { memory.put(mem, it) }
+        }
+    }
+
+    private val thumbsRunning = Mutex()
+
+    /**
+     * Fetches the thumbnail of every cover in the library not yet on the
+     * phone, after each sync: all of them the first time (some 5–10 MB for
+     * the owner's library), then only new covers. A failure stops the run;
+     * the next sync carries on where it stopped. Thumbnails of covers no
+     * song shows any more are dropped.
+     */
+    suspend fun fetchThumbs() {
+        if (!thumbsRunning.tryLock()) return
+        try {
+            val dao = app.db.dao()
+            // From the database, not the catalogue in memory, which may not yet show what this sync wrote.
+            val keys = dao.artKeys().toSet()
+            if (keys.isEmpty()) return
+            val have = dao.thumbKeys().toSet()
+            (have - keys).chunked(500).forEach { dao.deleteThumbs(it) }
+            for (batch in (keys - have).chunked(Api.MAX_THUMBS)) {
+                val got = app.api.thumbs(batch)
+                dao.putThumbs(got.map { (k, v) -> Thumb(k, if (v.isEmpty()) ByteArray(0) else Base64.getDecoder().decode(v)) })
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Offline, or the server is older than thumbnails: tried again after the next sync.
+        } finally {
+            thumbsRunning.unlock()
         }
     }
 
