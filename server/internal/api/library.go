@@ -37,6 +37,7 @@ type songJSON struct {
 	BitDepth    int             `json:"bitDepth,omitempty"`
 	Size        int64           `json:"size"`
 	HasArt      bool            `json:"hasArt"`
+	Art         string          `json:"art,omitempty"`
 	HasLyrics   bool            `json:"hasLyrics"`
 	AddedAt     string          `json:"addedAt"`
 	Missing     bool            `json:"missing,omitempty"`
@@ -80,7 +81,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 
 	rows, err := tx.QueryContext(ctx, `SELECT id, path, title, artist, artists, album, album_artist, composer,
 		genre, genres, year, track, disc, duration_ms, format, codec, bitrate, sample_rate, bit_depth, size,
-		embedded_art OR folder_art != '', embedded_lyrics OR lrc, added_at, missing_since IS NOT NULL
+		embedded_art OR folder_art != '', art, embedded_lyrics OR lrc, added_at, missing_since IS NOT NULL
 		FROM songs WHERE version > ? ORDER BY id`, since)
 	if err != nil {
 		s.fail(w, r, err)
@@ -92,7 +93,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 		var artists, genres string
 		if err := rows.Scan(&x.ID, &x.Path, &x.Title, &x.Artist, &artists, &x.Album, &x.AlbumArtist, &x.Composer,
 			&x.Genre, &genres, &x.Year, &x.Track, &x.Disc, &x.DurationMS, &x.Format, &x.Codec, &x.Bitrate,
-			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.HasLyrics, &x.AddedAt, &x.Missing); err != nil {
+			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.Art, &x.HasLyrics, &x.AddedAt, &x.Missing); err != nil {
 			rows.Close()
 			s.fail(w, r, err)
 			return

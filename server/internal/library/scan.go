@@ -4,7 +4,9 @@ package library
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"go.senan.xyz/taglib"
 
 	"github.com/vivekg7/dhun/server/internal/store"
 )
@@ -46,6 +50,8 @@ type songRow struct {
 	missing   bool
 	folderArt string
 	lrc       bool
+	art       string
+	embedded  bool // embedded art: its key changes only when the file does
 }
 
 type seenFile struct {
@@ -54,12 +60,14 @@ type seenFile struct {
 	size      int64
 	mtimeNS   int64
 	folderArt string
+	folderKey string // the folder cover's art key, if it has one
 	lrc       bool
 
 	existing *songRow // nil for a path the database has never seen
 	read     bool     // tags and hash were read in this scan
 	tags     tags
 	hash     string
+	art      string // the art key, for a file read in this scan
 	err      error
 }
 
@@ -115,7 +123,9 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 	for _, f := range files {
 		seen[f.rel] = true
 		r := f.existing
-		if r != nil && !r.missing && r.size == f.size && r.mtimeNS == f.mtimeNS {
+		// A song with embedded art scanned before art keys existed is read
+		// once more, to hash its image.
+		if r != nil && !r.missing && r.size == f.size && r.mtimeNS == f.mtimeNS && (r.art != "" || !r.embedded) {
 			continue // unchanged audio; sibling flags are compared in apply
 		}
 		f.read = true
@@ -155,10 +165,14 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 		case !f.read:
 			// Unchanged audio: only the sibling .lrc or cover may have changed.
 			r := f.existing
-			if r.folderArt != f.folderArt || r.lrc != f.lrc {
+			art := f.folderKey
+			if r.embedded {
+				art = r.art
+			}
+			if r.folderArt != f.folderArt || r.lrc != f.lrc || r.art != art {
 				if _, err := tx.ExecContext(ctx,
-					`UPDATE songs SET folder_art = ?, lrc = ?, updated_at = ?, version = ? WHERE id = ?`,
-					f.folderArt, f.lrc, now, version, r.id); err != nil {
+					`UPDATE songs SET folder_art = ?, lrc = ?, art = ?, updated_at = ?, version = ? WHERE id = ?`,
+					f.folderArt, f.lrc, art, now, version, r.id); err != nil {
 					return st, err
 				}
 				st.Updated++
@@ -222,7 +236,7 @@ func takeMatch(cands []*songRow, matched map[int64]bool) *songRow {
 
 func (s *Scanner) loadSongs(ctx context.Context) (map[string]*songRow, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, path, size, mtime_ns, hex(quick_hash), missing_since IS NOT NULL, folder_art, lrc FROM songs`)
+		`SELECT id, path, size, mtime_ns, hex(quick_hash), missing_since IS NOT NULL, folder_art, lrc, art, embedded_art FROM songs`)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +244,7 @@ func (s *Scanner) loadSongs(ctx context.Context) (map[string]*songRow, error) {
 	known := map[string]*songRow{}
 	for rows.Next() {
 		r := &songRow{}
-		if err := rows.Scan(&r.id, &r.path, &r.size, &r.mtimeNS, &r.hash, &r.missing, &r.folderArt, &r.lrc); err != nil {
+		if err := rows.Scan(&r.id, &r.path, &r.size, &r.mtimeNS, &r.hash, &r.missing, &r.folderArt, &r.lrc, &r.art, &r.embedded); err != nil {
 			return nil, err
 		}
 		known[r.path] = r
@@ -256,11 +270,19 @@ func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRo
 	for _, e := range entries {
 		lower[strings.ToLower(e.Name())] = e.Name()
 	}
-	folderArt := ""
+	folderArt, folderKey := "", ""
 	for _, c := range coverNames {
 		if name, ok := lower[c]; ok {
 			folderArt = name
 			break
+		}
+	}
+	for _, e := range entries {
+		if e.Name() == folderArt {
+			// Not the bytes: that would read every cover on every scan.
+			if info, err := e.Info(); err == nil {
+				folderKey = artKey(fmt.Sprintf("%s\x00%d\x00%d", path.Join(rel, folderArt), info.Size(), info.ModTime().UnixNano()))
+			}
 		}
 	}
 	for _, e := range entries {
@@ -288,6 +310,7 @@ func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRo
 			size:      info.Size(),
 			mtimeNS:   info.ModTime().UnixNano(),
 			folderArt: folderArt,
+			folderKey: folderKey,
 			lrc:       hasLrc,
 			existing:  known[childRel],
 		})
@@ -330,7 +353,26 @@ func readOne(f *seenFile) {
 	if f.hash, f.err = hashHex(f.abs, f.size); f.err != nil {
 		return
 	}
-	f.tags, f.err = readTags(f.abs, f.rel)
+	if f.tags, f.err = readTags(f.abs, f.rel); f.err != nil {
+		return
+	}
+	f.art = f.folderKey
+	if f.tags.EmbeddedArt {
+		// Embedded art wins over the folder's, as in Art. An image that
+		// cannot be read still gets a key of its own, so it is not read
+		// again on every scan.
+		img, err := taglib.ReadImage(f.abs)
+		if err != nil || len(img) == 0 {
+			img = []byte(fmt.Sprintf("unreadable\x00%s\x00%d", f.rel, f.mtimeNS))
+		}
+		f.art = artKey(string(img))
+	}
+}
+
+// artKey is a short hash: 64 bits tell apart the covers of one library.
+func artKey(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:8])
 }
 
 func hashHex(abs string, size int64) (string, error) {
@@ -347,7 +389,7 @@ func songArgs(f *seenFile) []any {
 		t.Title, t.Artist, string(artists), t.Album, t.AlbumArtist, t.Composer, t.Genre, string(genres),
 		t.Year, t.Track, t.Disc,
 		t.DurationMS, t.Format, t.Codec, t.Bitrate, t.SampleRate, t.BitDepth, t.Channels,
-		t.EmbeddedArt, t.EmbeddedLyrics, f.folderArt, f.lrc,
+		t.EmbeddedArt, t.EmbeddedLyrics, f.folderArt, f.lrc, f.art,
 	}
 }
 
@@ -355,12 +397,12 @@ const songCols = `path, size, mtime_ns, quick_hash,
 	title, artist, artists, album, album_artist, composer, genre, genres,
 	year, track, disc,
 	duration_ms, format, codec, bitrate, sample_rate, bit_depth, channels,
-	embedded_art, embedded_lyrics, folder_art, lrc`
+	embedded_art, embedded_lyrics, folder_art, lrc, art`
 
 func insertSong(ctx context.Context, tx *sql.Tx, f *seenFile, now string, version int64) error {
 	args := append(songArgs(f), now, now, version)
 	_, err := tx.ExecContext(ctx, `INSERT INTO songs (`+songCols+`, added_at, updated_at, version)
-		VALUES (?, ?, ?, unhex(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+		VALUES (?, ?, ?, unhex(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
@@ -371,7 +413,7 @@ func updateSong(ctx context.Context, tx *sql.Tx, id int64, f *seenFile, now stri
 		title = ?, artist = ?, artists = ?, album = ?, album_artist = ?, composer = ?, genre = ?, genres = ?,
 		year = ?, track = ?, disc = ?,
 		duration_ms = ?, format = ?, codec = ?, bitrate = ?, sample_rate = ?, bit_depth = ?, channels = ?,
-		embedded_art = ?, embedded_lyrics = ?, folder_art = ?, lrc = ?,
+		embedded_art = ?, embedded_lyrics = ?, folder_art = ?, lrc = ?, art = ?,
 		updated_at = ?, version = ?, missing_since = NULL
 		WHERE id = ?`, args...)
 	return err

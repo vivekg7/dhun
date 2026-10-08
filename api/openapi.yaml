@@ -458,6 +458,14 @@ components:
         bitDepth: { type: integer }
         size: { type: integer, description: Bytes; for download quotas }
         hasArt: { type: boolean }
+        art:
+          type: string
+          description: >
+            Which cover the song shows: songs showing the same cover share
+            the key, and a new cover gets a new one, so a client keeps covers
+            by key without asking again (docs/plans/019_networking_and_caching.md).
+            Fetch one through /art/{id} of any song with that key. Omitted
+            without art.
         hasLyrics: { type: boolean }
         addedAt: { type: string, format: date-time }
         missing:

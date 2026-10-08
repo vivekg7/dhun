@@ -293,3 +293,79 @@ func TestPlaylistMatchesDecomposedFileNames(t *testing.T) {
 		t.Error("a composed playlist entry did not match the decomposed file name")
 	}
 }
+
+func artOf(t *testing.T, db *sql.DB, rel string) string {
+	t.Helper()
+	var art string
+	if err := db.QueryRow(`SELECT art FROM songs WHERE path = ?`, rel).Scan(&art); err != nil {
+		t.Fatalf("song %s: %v", rel, err)
+	}
+	return art
+}
+
+// Songs showing one cover share one key, so the apps fetch and keep it once;
+// a changed cover gets a new key, or the apps would keep the old one.
+func TestArtKeysFollowTheCover(t *testing.T) {
+	s, put := setup(t)
+	put("a.mp3", "Library/Album/1.mp3")
+	put("a.mp3", "Library/Album/2.mp3")
+	put("b.m4a", "Library/Other/3.m4a")
+	scan(t, s)
+	if a := artOf(t, s.DB, "Library/Album/1.mp3"); a != "" {
+		t.Fatalf("art %q with no cover", a)
+	}
+
+	cover := filepath.Join(s.Root, "Library/Album/cover.jpg")
+	writeFile(t, cover, []byte("jpeg"))
+	scan(t, s)
+	a1, a2 := artOf(t, s.DB, "Library/Album/1.mp3"), artOf(t, s.DB, "Library/Album/2.mp3")
+	if a1 == "" || a1 != a2 {
+		t.Fatalf("one folder cover gave keys %q and %q", a1, a2)
+	}
+
+	writeFile(t, cover, []byte("a new jpeg"))
+	if st := scan(t, s); st.Updated != 2 {
+		t.Fatalf("after replacing the cover: %s", st)
+	}
+	if a := artOf(t, s.DB, "Library/Album/1.mp3"); a == a1 {
+		t.Error("a replaced cover kept its key")
+	}
+
+	// Embedded art wins over the folder's, and the same image is one key.
+	img := []byte("\xff\xd8\xff\xe0 not really a jpeg")
+	for _, rel := range []string{"Library/Album/1.mp3", "Library/Other/3.m4a"} {
+		abs := filepath.Join(s.Root, rel)
+		if err := taglib.WriteImage(abs, img); err != nil {
+			t.Fatal(err)
+		}
+		future := time.Now().Add(time.Hour)
+		os.Chtimes(abs, future, future)
+	}
+	scan(t, s)
+	e1, e3 := artOf(t, s.DB, "Library/Album/1.mp3"), artOf(t, s.DB, "Library/Other/3.m4a")
+	if e1 == "" || e1 != e3 || e1 == artOf(t, s.DB, "Library/Album/2.mp3") {
+		t.Errorf("embedded keys %q, %q; folder key %q", e1, e3, artOf(t, s.DB, "Library/Album/2.mp3"))
+	}
+}
+
+// A library scanned before art keys existed gets them on the next scan,
+// embedded art included, though no file changed.
+func TestArtKeysAreFilledIn(t *testing.T) {
+	s, put := setup(t)
+	put("a.mp3", "Library/1.mp3")
+	if err := taglib.WriteImage(filepath.Join(s.Root, "Library/1.mp3"), []byte("\xff\xd8\xff\xe0 image")); err != nil {
+		t.Fatal(err)
+	}
+	scan(t, s)
+	want := artOf(t, s.DB, "Library/1.mp3")
+	s.DB.Exec(`UPDATE songs SET art = ''`)
+	if st := scan(t, s); st.Updated != 1 {
+		t.Fatalf("filling in the key: %s", st)
+	}
+	if got := artOf(t, s.DB, "Library/1.mp3"); got == "" || got != want {
+		t.Errorf("key %q, want %q", got, want)
+	}
+	if st := scan(t, s); st.Unchanged != 1 {
+		t.Errorf("a song with its key was read again: %s", st)
+	}
+}
