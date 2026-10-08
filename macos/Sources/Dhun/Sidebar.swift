@@ -49,6 +49,9 @@ struct Sidebar: View {
                 SyncStatus()
             }
             .padding(10)
+            // Its own background, so the list scrolls under it, not through it.
+            .background(.bar)
+            .overlay(alignment: .top) { Divider() }
         }
         .sheet(isPresented: $naming) {
             NameSheet(title: "New playlist", action: "Create") { name in
