@@ -62,8 +62,8 @@ func checkPassword(encoded, password string) bool {
 }
 
 // CreateUser adds a user. The admin is created from the environment on first
-// start (EnsureAdmin); everyone else from the admin panel. A family has three
-// or four users, so there is no sign-up flow.
+// start (EnsureAdmin); everyone else by the admin, from the Android app. A
+// family has three or four users, so there is no sign-up flow.
 func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bool) error {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 64 || strings.ContainsAny(name, `/\:*?"<>|`) || strings.ContainsFunc(name, unicode.IsControl) ||

@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -58,9 +59,11 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.BuildConfig
 import io.github.vivekg7.dhun.data.ApiException
+import io.github.vivekg7.dhun.data.Member
 import io.github.vivekg7.dhun.data.bool
 import io.github.vivekg7.dhun.data.bytes
 import io.github.vivekg7.dhun.data.int
+import io.github.vivekg7.dhun.data.parseTime
 import io.github.vivekg7.dhun.data.string
 import io.github.vivekg7.dhun.ui.theme.Palette
 import io.github.vivekg7.dhun.ui.theme.ThemeMode
@@ -80,6 +83,7 @@ enum class SettingsPage(
     Playback("Playback"),
     Downloads("Downloads"),
     Account("Account"),
+    Family("Family members"),
     About("About"),
 }
 
@@ -100,7 +104,8 @@ fun SettingsScreen(
                 SettingsPage.Appearance -> AppearanceSettings()
                 SettingsPage.Playback -> PlaybackSettings()
                 SettingsPage.Downloads -> DownloadSettings()
-                SettingsPage.Account -> AccountSettings()
+                SettingsPage.Account -> AccountSettings(open)
+                SettingsPage.Family -> FamilySettings()
                 SettingsPage.About -> AboutSettings()
             }
         }
@@ -238,11 +243,12 @@ private fun DownloadSettings() {
 }
 
 @Composable
-private fun AccountSettings() {
+private fun AccountSettings(open: (SettingsPage) -> Unit) {
     val app = App.app
     val error by app.sync.error.collectAsState()
     SettingRow("Signed in as ${app.prefs.userName}", app.prefs.server)
     error?.let { SettingRow("Last sync failed", it) }
+    if (app.prefs.admin) SettingRow("Family members", "Add a member, reset a forgotten password") { open(SettingsPage.Family) }
     var confirm by remember { mutableStateOf(false) }
     SettingRow("Sign out", "This phone's downloads are deleted") { confirm = true }
     if (confirm) {
@@ -259,6 +265,154 @@ private fun AccountSettings() {
             dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+/**
+ * The admin's list of users (docs/plans/023_users_on_android.md). Asked of the
+ * server each time it opens, and online only: these are actions on the
+ * server, not part of anyone's synced data.
+ */
+@Composable
+private fun FamilySettings() {
+    val app = App.app
+    val scope = rememberCoroutineScope()
+    var members by remember { mutableStateOf<List<Member>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    var resetting by remember { mutableStateOf<Member?>(null) }
+
+    fun load() {
+        error = null
+        scope.launch {
+            try {
+                members = app.api.members()
+            } catch (e: ApiException) {
+                error = e.message
+            } catch (e: java.io.IOException) {
+                error = "This needs the server, which cannot be reached now."
+            } catch (e: kotlinx.serialization.SerializationException) {
+                error = "The server's answer could not be read."
+            }
+        }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    error?.let { SettingRow("Could not load family members", "${it.trimEnd('.')}. Tap to try again.") { load() } }
+    members?.forEach { m ->
+        if (m.admin) {
+            // Resetting it here would sign out this phone, and signing out deletes its downloads.
+            SettingRow(m.name, "Admin · its password is changed on the NAS")
+        } else {
+            SettingRow(m.name, memberSummary(m)) { resetting = m }
+        }
+    }
+    if (members != null) SettingRow("Add a member") { adding = true }
+
+    if (adding) {
+        MemberDialog("Add a member", null, "Add", askName = true, onDismiss = { adding = false }) { name, password ->
+            app.api.addMember(name, password)
+            adding = false
+            load()
+        }
+    }
+    resetting?.let { m ->
+        MemberDialog(
+            "Reset ${m.name}'s password",
+            "Every device of theirs is signed out until they sign in with the new one. Nothing on their phone is lost.",
+            "Reset",
+            askName = false,
+            onDismiss = { resetting = null },
+        ) { _, password ->
+            app.api.resetPassword(m.id, password)
+            resetting = null
+            load()
+        }
+    }
+}
+
+private fun memberSummary(m: Member): String {
+    val seen = parseTime(m.lastSeenAt)
+    return when {
+        m.devices == 0 -> {
+            "Not signed in on any device"
+        }
+
+        seen == 0L -> {
+            "Signed in on ${m.devices} device${if (m.devices == 1) "" else "s"}"
+        }
+
+        else -> {
+            val ago =
+                if (System.currentTimeMillis() - seen < 60_000) {
+                    "just now"
+                } else {
+                    android.text.format.DateUtils
+                        .getRelativeTimeSpanString(seen)
+                }
+            "Signed in on ${m.devices} device${if (m.devices == 1) "" else "s"} · seen $ago"
+        }
+    }.let { "$it · tap to reset the password" }
+}
+
+/**
+ * A name (when adding) and a password. The server's rules for both show as
+ * its own error, rather than copied here where they could drift from it.
+ */
+@Composable
+private fun MemberDialog(
+    title: String,
+    note: String?,
+    confirm: String,
+    askName: Boolean,
+    onDismiss: () -> Unit,
+    submit: suspend (name: String, password: String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                note?.let { DialogNote(it) }
+                if (askName) OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
+                // Shown as typed: the admin reads it out to the member, and a typo
+                // in a hidden password would lock them out.
+                OutlinedTextField(
+                    password,
+                    { password = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Password") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton({
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        submit(name.trim(), password)
+                    } catch (e: ApiException) {
+                        error = e.message
+                    } catch (e: java.io.IOException) {
+                        error = "Could not reach the server."
+                    } catch (e: kotlinx.serialization.SerializationException) {
+                        error = "The server's answer could not be read."
+                    } finally {
+                        busy = false
+                    }
+                }
+            }, enabled = !busy && password.isNotEmpty() && (!askName || name.isNotBlank())) { Text(confirm) }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -395,6 +549,7 @@ fun SignInScreen() {
                 if (app.prefs.userName.isNotEmpty() && login.user.name != app.prefs.userName) app.forget()
                 app.prefs.server = url
                 app.prefs.userName = login.user.name
+                app.prefs.admin = login.user.admin
                 app.prefs.deviceId = login.deviceId
                 app.prefs.token = login.token
                 // This screen leaves as soon as the token is set; the first sync outlives it.

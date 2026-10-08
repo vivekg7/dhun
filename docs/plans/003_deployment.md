@@ -154,8 +154,10 @@ the Mac.
 6. **Remove the password from the compose file.** Delete the
    `DHUN_ADMIN_PASSWORD` line, then Project → `dhun` → Stop → Build. The
    account stays; the line is only read while there are no users.
-7. **Add the family** (until the web app's Users screen ships), with the
-   token from step 5:
+7. **Add the family** from the Android app, signed in as the admin:
+   Settings → Account → Family members
+   ([023](023_users_on_android.md)). Without the app, with the token from
+   step 5:
 
    ```sh
    curl -s http://<nas>:8585/api/v1/admin/users -H 'Authorization: Bearer <token>' \

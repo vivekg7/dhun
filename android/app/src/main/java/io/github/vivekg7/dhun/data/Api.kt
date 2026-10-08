@@ -142,6 +142,42 @@ class Api(
 
     suspend fun plays(): Plays = call(Request.Builder().url("${prefs.server}/api/v1/plays").build())
 
+    // Family members, for the admin (docs/plans/023_users_on_android.md).
+
+    suspend fun members(): List<Member> = call<Members>(Request.Builder().url("${prefs.server}/api/v1/admin/users").build()).users
+
+    suspend fun addMember(
+        name: String,
+        password: String,
+    ) {
+        val body =
+            buildJsonObject {
+                put("name", name)
+                put("password", password)
+            }
+        call<JsonObject>(
+            Request
+                .Builder()
+                .url("${prefs.server}/api/v1/admin/users")
+                .post(body.toString().toRequestBody(JSON))
+                .build(),
+        )
+    }
+
+    suspend fun resetPassword(
+        user: Long,
+        password: String,
+    ) {
+        val body = buildJsonObject { put("password", password) }
+        call<Unit>(
+            Request
+                .Builder()
+                .url("${prefs.server}/api/v1/admin/users/$user/password")
+                .put(body.toString().toRequestBody(JSON))
+                .build(),
+        )
+    }
+
     private suspend inline fun <reified T> call(req: Request): T =
         withContext(Dispatchers.IO) {
             http.newCall(req).execute().use { resp ->
@@ -150,7 +186,8 @@ class Api(
                     val msg = runCatching { json.decodeFromString<ApiError>(text).message }.getOrNull()
                     throw ApiException(resp.code, msg ?: "HTTP ${resp.code}")
                 }
-                json.decodeFromString<T>(text)
+                // A 204 has no body to decode.
+                if (T::class == Unit::class) Unit as T else json.decodeFromString<T>(text)
             }
         }
 
@@ -184,6 +221,18 @@ fun formatTime(ms: Long): String =
     val id: Long = 0,
     val name: String = "",
     val admin: Boolean = false,
+)
+
+@Serializable data class Member(
+    val id: Long = 0,
+    val name: String = "",
+    val admin: Boolean = false,
+    val devices: Int = 0,
+    val lastSeenAt: String = "",
+)
+
+@Serializable data class Members(
+    val users: List<Member> = emptyList(),
 )
 
 @Serializable data class Login(

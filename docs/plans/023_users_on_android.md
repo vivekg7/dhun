@@ -1,6 +1,6 @@
 # 023 — Managing family members on Android
 
-**Status:** `IN PROGRESS` — step 1 (a revoked token keeps the phone's data) done; the screen not started
+**Status:** `MERGED` — on `main`, not yet in an Android release
 **Started:** 2026-10-08
 
 ## Problem
@@ -41,7 +41,8 @@ owner may override it:
 - **No API change.** Login and `/api/v1/me` already return `user.admin`,
   and the admin endpoints already refuse anyone else (403). The app keeps
   the flag with the user's name. A phone signed in before this release has
-  no flag stored, so the app asks `/me` once to fill it in.
+  no flag stored, so the app asks `/me` when it next comes to the
+  foreground, as it already does for a missing device id.
 - **Under Settings → Account**, a row "Family members" for the admin only,
   opening a page of its own ([018](018_settings_layout.md)). Not a new
   category: there is one admin, and the first screen stays as everyone
@@ -56,6 +57,9 @@ owner may override it:
 - **Reset a password:** tap a member, then a dialog for the new password.
   It says first that every device of theirs is signed out, since the
   server does that.
+- **Passwords are shown as typed** in both dialogs. The admin reads the
+  password out to the member, and a typo in a hidden one would lock them
+  out.
 - **A signed-out device keeps its unsynced edits.** Today a 401 during
   sync calls the same sign-out as the Sign out button, which clears the
   database, the outbox of unpushed edits with it. A password reset is

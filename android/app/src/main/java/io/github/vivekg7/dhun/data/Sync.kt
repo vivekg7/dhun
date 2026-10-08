@@ -238,8 +238,12 @@ class Sync(
     suspend fun checkHandoff() {
         if (app.prefs.token.isEmpty()) return
         try {
-            // Signed in before the app kept its device id.
-            if (app.prefs.deviceId == 0L) app.prefs.deviceId = app.api.me().deviceId
+            // Signed in before the app kept its device id, or whether it is the admin.
+            if (app.prefs.deviceId == 0L || !app.prefs.adminKnown) {
+                val me = app.api.me()
+                app.prefs.deviceId = me.deviceId
+                app.prefs.admin = me.user.admin
+            }
             app.api.nowPlaying()?.let { nowPlaying.value = it }
         } catch (e: CancellationException) {
             throw e

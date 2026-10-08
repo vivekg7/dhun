@@ -117,7 +117,7 @@ func run(log *slog.Logger, args []string) error {
 		return err
 	}
 	if created {
-		log.Info("admin created; add family members from the admin panel", "admin", os.Getenv("DHUN_ADMIN_USER"))
+		log.Info("admin created; add family members from the Android app", "admin", os.Getenv("DHUN_ADMIN_USER"))
 	}
 
 	interval, err := time.ParseDuration(env("DHUN_RESCAN", "1h"))

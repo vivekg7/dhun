@@ -157,9 +157,14 @@ class Nav(
     /** The settings screen shown over the tabs, or null. */
     var settings by mutableStateOf<SettingsPage?>(null)
 
-    /** Back from a category goes to the list of them, and from there to the tabs. */
+    /** Back from a category goes to the list of them, and from there to the tabs; Family members is inside Account. */
     fun settingsBack() {
-        settings = if (settings == SettingsPage.Main) null else SettingsPage.Main
+        settings =
+            when (settings) {
+                SettingsPage.Main -> null
+                SettingsPage.Family -> SettingsPage.Account
+                else -> SettingsPage.Main
+            }
     }
 
     fun top(t: Tab) = stacks.getValue(t).lastOrNull()

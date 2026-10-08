@@ -109,6 +109,18 @@ class Prefs(
     var token by stored("token", "")
     var userName by stored("user", "")
 
+    /** Whether the user is the admin, who manages family members (docs/plans/023_users_on_android.md). */
+    var admin: Boolean
+        get() = adminState
+        set(v) {
+            adminState = v
+            sp.edit { putBoolean("admin", v) }
+        }
+    private var adminState by mutableStateOf(sp.getBoolean("admin", false))
+
+    /** False on a phone signed in before the flag was kept, until the server is asked. */
+    val adminKnown get() = sp.contains("admin")
+
     /** The server's release, from its Dhun-Version header; empty until the first answer. */
     var serverVersion by stored("serverVersion", "")
     var libraryVersion by storedLong("libraryVersion")
@@ -218,6 +230,8 @@ class Prefs(
     fun signOut() {
         token = ""
         userName = ""
+        adminState = false
+        sp.edit { remove("admin") }
         serverVersion = ""
         activeQueue = ""
         libraryVersion = 0
