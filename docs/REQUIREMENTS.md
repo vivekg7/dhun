@@ -218,7 +218,10 @@ Proposed. Awaiting the owner's confirmation.
 **Android**
 
 - **Looks and works like Musicolet:** its tabs in its order, flat lists
-  with a search box on each, plus a slim mini player. Light, dark and black
+  with a search box on each, plus a mini player: a slim bar, a floating
+  pill dragged anywhere (Previous, the cover as Play/Pause, Next), or
+  none, as Musicolet (a setting; owner, 2026-10-08;
+  [plan 022](plans/022_mini_player_styles.md)). Light, dark and black
   themes (or following the system, or by time of day) and eight colour
   palettes, Dull Orange first —
   [plans/011](plans/011_android_app.md).

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.core.content.edit
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -20,6 +21,7 @@ import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
 import io.github.vivekg7.dhun.play.Playback
 import io.github.vivekg7.dhun.play.Tempo
+import io.github.vivekg7.dhun.ui.MiniPlayerStyle
 import io.github.vivekg7.dhun.ui.theme.Palette
 import io.github.vivekg7.dhun.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -125,6 +127,24 @@ class Prefs(
         private set
     var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.DullOrange))
         private set
+
+    /** Which mini player shows over the tabs (docs/plans/022_mini_player_styles.md). */
+    var miniPlayer by mutableStateOf(enumOr(sp.getString("miniPlayer", null), MiniPlayerStyle.Bar))
+        private set
+
+    fun chooseMiniPlayer(m: MiniPlayerStyle) {
+        miniPlayer = m
+        sp.edit { putString("miniPlayer", m.name) }
+    }
+
+    /**
+     * Where the floating mini player was left, as fractions of the room it
+     * has. At first on the right, a little up: at the very bottom it would
+     * cover every tab's search box.
+     */
+    var floatingAt: Offset
+        get() = Offset(sp.getFloat("floatingX", 1f), sp.getFloat("floatingY", 0.8f))
+        set(o) = sp.edit { putFloat("floatingX", o.x).putFloat("floatingY", o.y) }
 
     /** Downloads (docs/plans/012_downloads.md): this phone's storage and network, so not synced. 0 is no limit. */
     var downloadLimitGb by mutableIntStateOf(sp.getInt("downloadLimitGb", 10))

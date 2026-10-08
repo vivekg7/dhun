@@ -123,6 +123,13 @@ private fun MainSettings(open: (SettingsPage) -> Unit) {
 private fun AppearanceSettings() {
     val prefs = App.app.prefs
     ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }) { prefs.chooseTheme(it) }
+    ChoiceRow(
+        "Mini player",
+        MiniPlayerStyle.entries,
+        prefs.miniPlayer,
+        { it.label },
+        note = "Shown on every tab but Now playing. Floating is dragged anywhere; its cover plays and pauses, and a long press opens Now playing.",
+    ) { prefs.chooseMiniPlayer(it) }
     var palette by remember { mutableStateOf(false) }
     SettingRow("Accent colour", prefs.palette.label) { palette = true }
     if (palette) {

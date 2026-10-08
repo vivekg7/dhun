@@ -3,7 +3,10 @@ package io.github.vivekg7.dhun.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
@@ -44,12 +49,25 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Musicolet's tabs, in its order (docs/plans/011_android_app.md). */
 enum class Tab(
@@ -220,19 +238,23 @@ fun Shell() {
     }
     saved.SaveableStateProvider("tabs") {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            HorizontalPager(pager, Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars), key = { it }) { page ->
-                val tab = Tab.entries[page]
-                Box(Modifier.fillMaxSize()) {
-                    saved.SaveableStateProvider(nav.key(tab)) {
-                        when (val top = nav.top(tab)) {
-                            null -> TabRoot(tab, nav)
-                            else -> PageContent(tab, top, nav)
+            val mini = App.app.prefs.miniPlayer
+            Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
+                HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
+                    val tab = Tab.entries[page]
+                    Box(Modifier.fillMaxSize()) {
+                        saved.SaveableStateProvider(nav.key(tab)) {
+                            when (val top = nav.top(tab)) {
+                                null -> TabRoot(tab, nav)
+                                else -> PageContent(tab, top, nav)
+                            }
                         }
                     }
                 }
+                if (mini == MiniPlayerStyle.Floating && nav.tab != Tab.Now) FloatingPlayer { nav.tab = Tab.Now }
             }
             HandoffBar()
-            if (nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
+            if (mini == MiniPlayerStyle.Bar && nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
             TabBar(nav.tab, onSelect = { t ->
                 // Tapping the tab you are on goes back to its own list.
                 if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
@@ -381,6 +403,108 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                 }
             }
             Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
+        }
+    }
+}
+
+/**
+ * Which mini player shows (docs/plans/022_mini_player_styles.md). None is
+ * Musicolet's way: Now playing is a tab, and the notification pauses.
+ */
+enum class MiniPlayerStyle(
+    val label: String,
+) {
+    None("None"),
+    Bar("Bar at the bottom"),
+    Floating("Floating"),
+}
+
+/**
+ * Previous, the cover and next on a pill dragged anywhere over the tabs
+ * (docs/plans/022_mini_player_styles.md). The cover is Play/Pause: dimmed
+ * under a play icon while paused, ringed by the song's progress while it
+ * plays. A long press on it opens Now playing. Where the pill is left is
+ * kept as fractions of the room it has, so it stays in its corner on
+ * rotation and can never end up off the screen.
+ */
+@Composable
+private fun FloatingPlayer(onOpen: () -> Unit) {
+    val app = App.app
+    val song by app.playback.current.collectAsState()
+    val playing by app.playback.playing.collectAsState()
+    val waiting by app.playback.waiting.collectAsState()
+    val s = song ?: return
+    // Waiting counts as playing, as in the bar.
+    val going = playing || waiting
+    val player = app.playback.player
+    val c = MaterialTheme.colorScheme
+    var progress by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(s.id, playing) {
+        while (true) {
+            val d = player.duration
+            progress = if (d > 0) player.currentPosition.toFloat() / d else 0f
+            if (!playing) break
+            delay(500)
+        }
+    }
+    var at by remember { mutableStateOf(app.prefs.floatingAt) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
+        val roomX = (constraints.maxWidth - size.width).coerceAtLeast(1)
+        val roomY = (constraints.maxHeight - size.height).coerceAtLeast(1)
+        Row(
+            Modifier
+                .offset { IntOffset((at.x * roomX).roundToInt(), (at.y * roomY).roundToInt()) }
+                .onSizeChanged { size = it }
+                .shadow(6.dp, CircleShape)
+                .background(c.surfaceContainerHighest, CircleShape)
+                // A drag that starts on a button moves the pill instead of pressing it.
+                .pointerInput(roomX, roomY) {
+                    detectDragGestures(onDragEnd = { app.prefs.floatingAt = at }) { change, d ->
+                        change.consume()
+                        at = Offset((at.x + d.x / roomX).coerceIn(0f, 1f), (at.y + d.y / roomY).coerceIn(0f, 1f))
+                    }
+                }.padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Tip("Previous") { IconButton({ player.seekToPrevious() }) { Icon(Icons.Previous, "Previous") } }
+            // No tooltip: a long press here opens Now playing. The labels are for TalkBack.
+            Box(
+                Modifier
+                    .padding(horizontal = 4.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        onClickLabel = if (going) "Pause" else "Play",
+                        onLongClickLabel = "Open Now playing",
+                        onLongClick = onOpen,
+                    ) { if (going) player.pause() else player.play() }
+                    .drawWithContent {
+                        drawContent()
+                        if (going) {
+                            val w = 3.dp.toPx()
+                            drawCircle(c.outline, radius = (this.size.minDimension - w) / 2, style = Stroke(w))
+                            drawArc(
+                                c.primary,
+                                -90f,
+                                360f * progress.coerceIn(0f, 1f),
+                                false,
+                                Offset(w / 2, w / 2),
+                                Size(this.size.width - w, this.size.height - w),
+                                style = Stroke(w, cap = StrokeCap.Round),
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                // Inside the ring while playing, so the ring does not cover it.
+                Art(s, if (going) 40.dp else 48.dp, CircleShape)
+                if (!going) {
+                    Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.45f)))
+                    Icon(Icons.Play, null, Modifier.size(26.dp), tint = Color.White)
+                }
+            }
+            Tip("Next") { IconButton({ player.seekToNext() }) { Icon(Icons.Next, "Next") } }
         }
     }
 }

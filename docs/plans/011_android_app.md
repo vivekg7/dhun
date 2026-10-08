@@ -41,7 +41,9 @@ Where Dhun departs from Musicolet, by the owner's choice:
 
 - **A slim mini player** above the tab row on every tab except Now playing:
   art, title, play/pause and next. Tapping it opens Now playing. Musicolet
-  has none, and makes you switch tabs just to pause.
+  has none, and makes you switch tabs just to pause. Since
+  [022](022_mini_player_styles.md) a setting also offers none, or a
+  floating pill.
 - **Favorites and Listen Later** are two cards pinned at the top of the
   Playlists tab. Below them come the five automatic views
   ([010](010_special_playlists.md)), then the playlists. This is where
