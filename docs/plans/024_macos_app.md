@@ -1,6 +1,6 @@
 # 024 — The macOS app, at the Android app's level
 
-**Status:** `ACCEPTED` — no code yet; the playback spike comes first
+**Status:** `IN PROGRESS` — the playback spike (step 0) passed; the skeleton is next
 **Started:** 2026-10-08
 
 ## Problem
@@ -106,29 +106,70 @@ card's `Sound/` folder) opens natively.
 - **B. `AVAudioEngine`: `AVAudioPlayerNode` → `AVAudioUnitTimePitch` →
   output, fed by our own decoder.** Chosen. The time-pitch unit gives speed
   and pitch independently, which is what Media3 gives the phone.
-  - **Decoding.** `AudioFileStream` parses the bytes as they arrive, from
-    a downloaded file, a cached or still-arriving `.part` file, or the HTTP
-    stream, and `AVAudioConverter` decodes them to PCM. The same path
-    serves all four sources.
+  - **Decoding.** Every file is opened through **our own read
+    callbacks** (`AudioFileOpenWithCallbacks`, then `ExtAudioFile`). The
+    callbacks read from a downloaded file, a cached file, or a cache file
+    still arriving (`SparseFile`). A read past what has arrived waits for
+    it, and tells the fetcher where it waits. The fetcher (`Fetch`) fills
+    the file from the stream endpoint with `Range` requests. It jumps when
+    a reader waits behind it or more than 1 MB ahead, as the phone does
+    (019). So one path serves all four sources.
+  - **Rejected during the spike: `AudioFileStream`.** It was planned
+    here. It parses bytes only in order, so an MP4 whose index (`moov`)
+    comes after the audio cannot play until the whole file has arrived.
+    Many of the library's `.m4a` files are like that, including a whole
+    album. With callbacks, Core Audio reads the index at the end through a
+    `Range` jump. It also seeks by itself and applies each format's encoder
+    delay and padding.
   - **Gapless.** The next song's buffers are scheduled straight after the
-    current song's. The encoder delay and padding that MP3 (LAME header)
-    and AAC report are trimmed.
-  - **Seeking.** `AudioFileStreamSeek` maps a time to a byte offset, and
-    reading restarts there: from the file, or with a new `Range` request.
-  - **Ogg Opus.** macOS reads it. The spike checks whether
-    `AudioFileStream` parses it too, as `AudioFile` does. If it does not, a
-    small Ogg page reader of our own feeds the packets to the decoder.
+    current song's on one player node. `ExtAudioFile` trims what MP3 (LAME
+    header), AAC, FLAC and Ogg Opus declare.
+  - **Ogg Opus** needs nothing of ours: Core Audio reads it.
   - **WebM Opus.** Nothing in macOS reads WebM, so a small WebM reader of
-    our own does. It reads the EBML header, the codec's private data
-    (`OpusHead`) and the `SimpleBlock`s of the one audio track, and feeds
-    the Opus packets to Apple's Opus decoder. It decides by the file's
-    first bytes, never by its name.
+    our own does (`WebM.swift`, about 300 lines). It reads the EBML header,
+    the codec's private data (`OpusHead`), the blocks of the one audio
+    track, `DiscardPadding` and the `Cues`. It feeds the Opus packets to
+    Apple's Opus decoder. It decides by the file's first bytes, never by
+    its name. **Apple's Opus decoder trims part of the pre-skip itself**:
+    120 samples on macOS 27, whatever `primeMethod` says. The reader
+    therefore measures the first packet's shortfall against the length its
+    header gives, and drops only the rest.
   - **Ogg Vorbis.** Apple has no Vorbis decoder. None was found. If some
     turn up, the owner decides what happens to them.
+
+**What the spike showed** (2026-10-08, macOS 27, `macos/` and its
+`dhun-play` harness):
+
+- **Exact length in every format.** MP3, AAC (with the index at either
+  end), FLAC, Ogg Opus and WebM Opus decode to exactly the length the
+  file declares.
+- **Gapless, sample-exact.** One tone was cut at a sample no codec frame
+  lines up with, and each half was encoded on its own. Decoded back to
+  back, the halves join without a jump in AAC, FLAC (unit tests), MP3,
+  Ogg Opus and WebM Opus. Cross-correlation with the source puts every
+  format at offset 0.
+- **Speed and pitch.** At 2×, two seconds of song pass per second, and
+  pitch moves separately.
+- **Starting and seeking.** Playback starts in about 30 ms from a file or
+  a local server's stream. A seek lands where asked.
+- **Slow arrival.** A 30 MB WebM jukebox arriving at 64 KB/s seeks to
+  15:00, and an M4A with its index at the end starts in 1.5 s at
+  200 KB/s.
+
+**What step 2 must respect.** Opening and seeking can wait on the
+network, so `Engine.play` and `seek` must never be called on the main
+thread. `Playback` calls them from its own queue, as the phone's player
+runs off the UI thread.
+
+**What the spike found on the server.** It indexes WebM `.opus` files
+with no format and a duration of 0, because its tag reader goes by the
+extension. Every client needs the duration: for the seek bar, long-file
+resume (009) and the half-heard rule for play counts (008). That is a
+server fix of its own, separate from this plan.
+
 - **C. Play only finished files with `AVAudioFile`, and wait for the cache
-  to fill.** Kept as a fallback, if B's streaming decoder proves to be more
-  code than it is worth. A normal song arrives in about a second at home.
-  An audiobook would wait much longer, which is why it is not the choice.
+  to fill.** Rejected once B worked. A normal song arrives in about a second
+  at home, but an audiobook would wait much longer.
 
 ### Project and build
 
@@ -201,22 +242,15 @@ built as described above. Technical defaults, which the owner can override:
 Each step ends usable and is installed on the owner's Mac. The status line
 moves with it.
 
-0. **Playback spike.** This is the part that can fail, so it goes first.
-   It plays MP3, AAC/M4A, FLAC, Ogg Opus and WebM Opus, from a file and from
-   the stream, and must show four things:
-   - gapless playback between consecutive tracks of an album, in MP3 and
-     in AAC;
-   - speed and pitch changed independently while playing;
-   - seeking into a range that has not arrived yet;
-   - a still-arriving `.part` file playing as it grows.
+0. **Playback spike. Done (2026-10-08).** It tested MP3, AAC/M4A, FLAC,
+   Ogg Opus and WebM Opus, from a file, a still-arriving file and the
+   stream, and option B held (results above). The engine it built is the
+   app's: `macos/Sources/DhunKit/Play/`. The `dhun-play` harness stays as
+   the test bench for engine changes, and goes once the app plays music.
+   The test music is in `~/Music` on the owner's Mac.
 
-   The test files are in `~/Music` on the owner's Mac: a film-score album
-   in MP3 for gapless playback, long files, FLAC, and Opus in both
-   containers.
-   No AAC album is among them yet. If B fails here, the plan takes C and
-   says so.
-
-1. **Skeleton.** The package, `make mac`, the Makefile targets and CI.
+1. **Skeleton.** `make mac` and CI (the Makefile's `lint-macos` and
+   `test-macos` came with step 0).
    Sign-in, the Keychain, the SQLite schema, the library pull, the catalogue
    (albums, artists, genres, the folder tree, search and natural sort), and
    browsing with covers. Ported tests: `CatalogTest`.

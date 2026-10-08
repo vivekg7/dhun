@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `ACCEPTED` — no code yet; playback spike first                                          |
+| [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `IN PROGRESS` — playback spike passed; skeleton next                                    |
 | [023 — Managing family members on Android](023_users_on_android.md)               | `MERGED` — in 0.8.0 on the owner's phone                                                |
 | [022 — A choice of mini player on Android](022_mini_player_styles.md)             | `MERGED` — in 0.7.0 on the owner's phone                                                |
 | [021 — Playing audio files opened from other apps](021_open_from_other_apps.md)   | `MERGED` — in 0.7.0 on the owner's phone                                                |

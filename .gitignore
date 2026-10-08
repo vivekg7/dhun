@@ -25,3 +25,6 @@ local/
 .idea/
 .vscode/
 node_modules/
+
+# SwiftPM build output.
+macos/.build/

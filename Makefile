@@ -8,14 +8,17 @@ PRETTIER ?= npx --yes --prefer-offline prettier@latest
 STUDIO_JBR := /Applications/Android Studio.app/Contents/jbr/Contents/Home
 export JAVA_HOME ?= $(shell [ -d "$(STUDIO_JBR)" ] && echo "$(STUDIO_JBR)")
 GRADLE = cd android && ./gradlew -q
+# swift-format ships with Xcode, so the Mac app adds no tool of its own.
+SWIFT_SRC = macos/Package.swift macos/Sources macos/Tests
+SWIFT_FORMAT = xcrun swift-format
 
-.PHONY: help init fmt lint test check image apk lint-server lint-android test-server test-android
+.PHONY: help init fmt lint test check image apk lint-server lint-android lint-macos test-server test-android test-macos
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
 	@echo 'fmt    rewrite files -- the only target that edits anything'
-	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint'
-	@echo 'test   the server suite (race detector) and the Android unit tests'
+	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint, swift-format'
+	@echo 'test   the server suite (race detector), the Android and the macOS unit tests'
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
 	@echo 'apk    build the signed release APK and archive it in local/'
@@ -44,8 +47,9 @@ fmt:
 	$(PRETTIER) --write .
 	gofmt -w server
 	$(GRADLE) ktlintFormat
+	$(SWIFT_FORMAT) format -i -r $(SWIFT_SRC)
 
-lint: lint-server lint-android
+lint: lint-server lint-android lint-macos
 
 # The docs are linted here too: the server's CI job is the one that runs on every push.
 lint-server:
@@ -56,13 +60,19 @@ lint-server:
 lint-android:
 	$(GRADLE) ktlintCheck :app:lintDebug
 
-test: test-server test-android
+lint-macos:
+	$(SWIFT_FORMAT) lint --strict -r $(SWIFT_SRC)
+
+test: test-server test-android test-macos
 
 test-server:
 	cd server && go test -race -count=1 ./...
 
 test-android:
 	$(GRADLE) :app:testDebugUnitTest
+
+test-macos:
+	cd macos && swift test
 
 check: lint test
 

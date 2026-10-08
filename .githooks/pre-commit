@@ -18,6 +18,12 @@ if [ -n "$go" ]; then
   [ -z "$unformatted" ] || die "staged Go is not gofmt-ed" $unformatted "Run: make fmt"
 fi
 
+swift=$(staged '\.swift$')
+if [ -n "$swift" ]; then
+  run_on "$swift" xcrun swift-format lint --strict >/dev/null 2>&1 \
+    || die "staged Swift is not swift-format-ted" "Run: make fmt"
+fi
+
 docs=$(staged '\.(md|ya?ml|json)$' | while IFS= read -r f; do [ ! -L "$f" ] && echo "$f"; done || true)
 if [ -n "$docs" ]; then
   run_on "$docs" npx --yes --prefer-offline prettier@latest --check >/dev/null 2>&1 \
