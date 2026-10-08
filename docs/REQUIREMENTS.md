@@ -169,9 +169,9 @@ user (example: Downloads 10 GB, Cache 3 GB).
 - **A network drop never skips a song.** The player says it is waiting
   for the network, keeps trying, and carries on from the same place when
   the network is back (owner, 2026-10-07).
-- **Every cover of the library is kept on the phone**, fetched in the
-  background on Wi-Fi, so browsing never waits for art and covers show
-  offline (owner, 2026-10-07).
+- **The 500 covers used most recently are kept on the phone**, each
+  fetched when first shown, and those of downloaded songs always. A kept
+  cover never expires and shows offline (owner, 2026-10-08).
 - A downloaded playlist, album, folder, artist, genre, Favorites or Listen
   Later **stays in step** with the server: songs added later are fetched,
   songs removed are deleted unless something else downloaded has them. The

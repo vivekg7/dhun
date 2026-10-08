@@ -1,7 +1,5 @@
 package io.github.vivekg7.dhun.ui
 
-import android.graphics.BitmapFactory
-import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,45 +23,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Song
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-
-/**
- * Cover art: the server already resizes it (/art/{id}?size=), OkHttp keeps it
- * on disk, and decoded bitmaps stay in memory while they fit. That is all a
- * list of covers needs, so no image library (docs/plans/011_android_app.md).
- */
-private object ArtCache {
-    val memory =
-        object : LruCache<String, ImageBitmap>(32 shl 20) {
-            override fun sizeOf(
-                key: String,
-                value: ImageBitmap,
-            ) = value.width * value.height * 4
-        }
-
-    suspend fun load(
-        song: Long,
-        px: Int,
-    ): ImageBitmap? {
-        // The server's sizes; asking for one of them lets the disk cache hit.
-        val size = listOf(128, 256, 512, 1024).firstOrNull { it >= px } ?: 1024
-        val key = "$song/$size"
-        memory.get(key)?.let { return it }
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val app = App.app
-                app.api.http.newCall(Request.Builder().url(app.api.artUrl(song, size)).build()).execute().use { resp ->
-                    if (!resp.isSuccessful) return@use null
-                    BitmapFactory.decodeStream(resp.body.byteStream())?.asImageBitmap()
-                }
-            }.getOrNull()?.also { memory.put(key, it) }
-        }
-    }
-}
 
 @Composable
 fun Art(
@@ -74,7 +35,7 @@ fun Art(
 ) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     var image by remember(song?.id) { mutableStateOf<ImageBitmap?>(null) }
-    if (song != null && song.hasArt) LaunchedEffect(song.id, px) { image = ArtCache.load(song.id, px) }
+    if (song != null && song.hasArt) LaunchedEffect(song.id, song.art, px) { image = Covers.load(song, px)?.asImageBitmap() }
     Box(
         modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,

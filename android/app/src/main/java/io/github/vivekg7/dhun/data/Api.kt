@@ -1,6 +1,5 @@
 package io.github.vivekg7.dhun.data
 
-import android.content.Context
 import io.github.vivekg7.dhun.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,13 +10,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import okhttp3.Cache
-import okhttp3.CacheControl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 import java.io.IOException
 import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
@@ -27,7 +23,6 @@ import java.util.concurrent.TimeUnit
  * stream and the art, so the token is added in one place.
  */
 class Api(
-    context: Context,
     private val prefs: Prefs,
 ) {
     val json =
@@ -39,8 +34,6 @@ class Api(
     val http: OkHttpClient =
         OkHttpClient
             .Builder()
-            // Art is fetched again and again while scrolling; the server sends ETags.
-            .cache(Cache(File(context.cacheDir, "http"), 64L shl 20))
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .addInterceptor { chain ->
@@ -143,12 +136,6 @@ class Api(
 
     companion object {
         private val JSON = "application/json".toMediaType()
-
-        /**
-         * For songs: the server sends Last-Modified and no Cache-Control,
-         * which OkHttp would cache, pushing the art out of its 64 MB cache.
-         */
-        val NO_STORE: CacheControl = CacheControl.Builder().noStore().build()
     }
 }
 
@@ -203,6 +190,7 @@ data class SongDto(
     val bitDepth: Int = 0,
     val size: Long = 0,
     val hasArt: Boolean = false,
+    val art: String = "",
     val hasLyrics: Boolean = false,
     val addedAt: String = "",
     val missing: Boolean = false,
@@ -231,6 +219,7 @@ data class SongDto(
             hasLyrics,
             parseTime(addedAt),
             missing,
+            art,
         )
 }
 

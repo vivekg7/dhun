@@ -187,7 +187,6 @@ class Downloads(
                 Request
                     .Builder()
                     .url(app.api.streamUrl(s.id))
-                    .cacheControl(Api.NO_STORE)
                     .build()
             app.api.http.newCall(req).execute().use { res ->
                 if (res.code == 404 || res.code == 410) return@withContext null

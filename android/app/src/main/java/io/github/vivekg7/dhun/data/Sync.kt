@@ -84,7 +84,11 @@ class Sync(
         mutex.withLock {
             if (app.prefs.token.isEmpty()) return true
             try {
+                // A field added to songs comes only with the songs the server
+                // sends again, and it would send none that had not changed.
+                if (app.prefs.libraryFormat < LIBRARY_FORMAT) app.prefs.libraryVersion = 0
                 pullLibrary()
+                app.prefs.libraryFormat = LIBRARY_FORMAT
                 // More than 500 ops (a long offline stretch) take several rounds.
                 pushedPlaylists = false
                 while (pushAndPull() > 0 && dao.outboxSize() > 0) Unit
@@ -252,5 +256,9 @@ class Sync(
 
 // A blip is over in seconds; the 15 minutes this once grew to left the app
 // offline long after the network was back (docs/plans/019_networking_and_caching.md).
+
+/** Raised when songs gain a field: 1 is the art key (docs/plans/019_networking_and_caching.md). */
+const val LIBRARY_FORMAT = 1L
+
 private const val RETRY_MIN = 5_000L
 private const val RETRY_MAX = 2 * 60_000L

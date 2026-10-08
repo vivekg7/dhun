@@ -2,20 +2,26 @@ package io.github.vivekg7.dhun.play
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.FlagSet
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
+import io.github.vivekg7.dhun.data.Covers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /**
  * The media session around [Playback]'s player: the notification, the lock
@@ -50,8 +57,7 @@ class PlaybackService : MediaSessionService() {
             MediaSession
                 .Builder(this, SleepAware(app.playback.player, app.playback.sleep))
                 .setSessionActivity(open)
-                // Cover art needs the device token, so it goes through our client.
-                .setBitmapLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build())
+                .setBitmapLoader(CoverLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build()))
                 .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_stat) })
     }
@@ -124,4 +130,30 @@ private class SleepAware(
 
     /** Stops the refresh; the player itself lives on with the process ([Playback]). */
     fun close() = scope.cancel()
+}
+
+/**
+ * The notification's and lock screen's cover comes from [Covers], so it is
+ * fetched once with the app's and shows offline. Anything else (none yet)
+ * goes to [other], through our client for the device token.
+ */
+@OptIn(UnstableApi::class)
+private class CoverLoader(
+    private val other: BitmapLoader,
+) : BitmapLoader by other {
+    override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
+        val app = App.app
+        val song =
+            uri.lastPathSegment
+                ?.toLongOrNull()
+                ?.takeIf { uri.toString() == app.api.artUrl(it, Playback.COVER_PX) }
+                ?.let { app.catalog.value.byId[it] }
+                ?: return other.loadBitmap(uri)
+        val result = SettableFuture.create<Bitmap>()
+        app.scope.launch {
+            val bitmap = Covers.load(song, Playback.COVER_PX)
+            if (bitmap != null) result.set(bitmap) else result.setException(IOException("No cover for ${song.id}"))
+        }
+        return result
+    }
 }

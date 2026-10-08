@@ -26,10 +26,10 @@ import kotlinx.coroutines.flow.Flow
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
         Pin::class, Download::class, LyricsRow::class,
     ],
-    version = 4,
+    version = 5,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 abstract class Db : RoomDatabase() {
     abstract fun dao(): DbDao
@@ -74,6 +74,8 @@ data class Song(
     val hasLyrics: Boolean,
     val addedAt: Long,
     val missing: Boolean,
+    /** Which cover it shows, shared by songs showing the same one ([Covers]); empty from a server without it. */
+    @ColumnInfo(defaultValue = "") val art: String = "",
 ) {
     val artistList get() = if (artists.isEmpty()) emptyList() else artists.split(SEP)
     val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)

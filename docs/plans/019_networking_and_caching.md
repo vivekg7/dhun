@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `IN PROGRESS` — steps 1 and 2 on `main`; covers next
+**Status:** `IN PROGRESS` — steps 1 to 3 on `main`; the song cache next
 **Started:** 2026-10-07
 
 ## Problem
@@ -51,7 +51,7 @@ From what is publicly described of them:
 They are bounded by catalogues of a hundred million songs and by licences.
 Dhun's library is finite and the owner's own, so it can do more:
 
-- **every cover** of the library can live on the phone;
+- a cover is kept for good, not for a week, and shows offline;
 - the next ten songs of the queue can be fetched ahead on Wi-Fi;
 - the cache holds the original files, so a cached song becomes a download
   by renaming it ([007](007_client_architecture.md));
@@ -82,6 +82,7 @@ away from Wi-Fi, without filling the cache with songs that may never play.
 
 - Every cover of the library, fetched in the background on Wi-Fi.
 - Only covers seen, kept without expiry.
+- The covers used most recently, up to a number, fetched when shown.
 
 **How a song is fetched and played at once**
 
@@ -107,7 +108,12 @@ The owner chose (2026-10-07):
   song played is kept.
 - **A 3 GB cache by default**, set in Settings → Downloads. Full, it drops
   the songs played longest ago, never one in the queue ahead.
-- **Every cover on the phone,** fetched in the background on Wi-Fi.
+- **The 500 covers used most recently**, each fetched when first shown.
+  The owner first chose every cover, fetched in the background, then
+  changed it (2026-10-08): 500 covers hold everything played in a long
+  while, and fetching the whole library at once is work for covers that
+  may never be looked at. Covers of downloaded songs are kept beyond the
+  500, so a downloaded album shows its cover offline.
 
 And, for how a song is fetched: the fetcher writes the file and the player
 reads it as it grows.
@@ -127,16 +133,23 @@ turn on what a failed load means.
    failed sync is tried again after 5 s, doubling up to 2 minutes rather
    than 15, and any successful request (a song's bytes included) brings the
    app back at once: the API client's interceptor, which every request to
-   the server passes, keeps the flag. A lost network counts only when no other one takes its
-   place within a few seconds.
-3. **Covers by content.** The server gives each song an `art` key, a hash
-   of its cover's bytes, filled in by the scan; songs sharing a cover share
-   the key. The app keeps covers in a folder of its own, by key, without
-   expiry, and fetches every missing one at 512 px on Wi-Fi in the
-   background. A list row decodes it at a quarter of the size. Now playing
-   fetches the 1024 px copy when shown. A request for a cover no longer on
-   screen is cancelled. A server without the key falls back to the per-song
-   art as in 0.4.0.
+   the server passes, keeps the flag. A lost network counts only when no
+   other one takes its place within a few seconds.
+3. **Covers by key.** The server gives each song an `art` key, filled in
+   by the scan: for embedded art, a hash of the image, so an album's songs
+   share it; for a folder's cover file, a hash of its path, size and
+   modification time, which spares reading every cover on every scan. A
+   new cover gets a new key. Songs scanned before the key existed get it
+   on the first scan after the upgrade, embedded art by reading the file
+   once more. The app keeps one file per key, in its own folder, without
+   expiry: the largest size asked for so far, which a smaller view decodes
+   at a fraction (a list row reads a grid tile's copy at a quarter). One
+   request per cover however many rows show it, cancelled when none does
+   any more. Past 500, the covers used longest ago go, never a downloaded
+   song's. The notification and lock screen take their cover from the same
+   files. OkHttp's HTTP cache, kept until now only for art, is gone, and
+   the phone fetches every song again once to learn the keys. A server
+   without the key gets one file per song, as before.
 4. **The song cache.** A folder of original files next to Downloads, with a
    Room table of size and last play. The fetcher keeps the current song and
    the next two, or the next ten on Wi-Fi, resuming a broken

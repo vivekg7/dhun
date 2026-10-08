@@ -34,7 +34,7 @@ class App : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val prefs by lazy { Prefs(this) }
     val db by lazy { Db.open(this) }
-    val api by lazy { Api(this, prefs) }
+    val api by lazy { Api(prefs) }
     val store by lazy { Store(this) }
     val sync by lazy { Sync(this) }
     val playback by lazy { Playback(this) }
@@ -53,6 +53,8 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
+        // Until 0.4.0, covers were kept in an HTTP cache; they are files now (Covers).
+        scope.launch(Dispatchers.IO) { java.io.File(cacheDir, "http").deleteRecursively() }
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
@@ -102,6 +104,9 @@ class Prefs(
     /** The server's release, from its Dhun-Version header; empty until the first answer. */
     var serverVersion by stored("serverVersion", "")
     var libraryVersion by storedLong("libraryVersion")
+
+    /** The song fields this phone has, so a new one ([LIBRARY_FORMAT]) fetches every song once. */
+    var libraryFormat by storedLong("libraryFormat")
     var syncVersion by storedLong("syncVersion")
 
     /** This device as the server knows it, to tell its own playback from another device's (docs/plans/017_handoff.md). */
@@ -181,6 +186,7 @@ class Prefs(
         serverVersion = ""
         activeQueue = ""
         libraryVersion = 0
+        libraryFormat = 0
         syncVersion = 0
         openListen = ""
         deviceId = 0

@@ -23,7 +23,6 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import io.github.vivekg7.dhun.App
-import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Listen
 import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.QueueRow
@@ -99,7 +98,7 @@ class Playback(
                 .newBuilder()
                 .readTimeout(10, TimeUnit.SECONDS)
                 .build()
-        val stream = OkHttpDataSource.Factory(http).setCacheControl(Api.NO_STORE)
+        val stream = OkHttpDataSource.Factory(http)
         return ResolvingDataSource.Factory(DefaultDataSource.Factory(app, stream)) { spec ->
             val id = spec.uri.lastPathSegment?.toLongOrNull()
             val file = if (id != null && spec.uri.toString() == app.api.streamUrl(id)) app.downloads.file(id) else null
@@ -519,7 +518,7 @@ class Playback(
                     .setTitle(s.title)
                     .setArtist(s.displayArtist)
                     .setAlbumTitle(s.album)
-                    .apply { if (s.hasArt) setArtworkUri(app.api.artUrl(s.id, 512).toUri()) }
+                    .apply { if (s.hasArt) setArtworkUri(app.api.artUrl(s.id, COVER_PX).toUri()) }
                     .build(),
             ).build()
 
@@ -797,6 +796,9 @@ class Playback(
 
     companion object {
         const val MAX_QUEUES = 20
+
+        /** The notification's and lock screen's cover. */
+        const val COVER_PX = 512
 
         /** A hand-off never starts closer than this to the song's end: the other device may have been closed mid-song. */
         private const val END_MARGIN_MS = 5_000L
