@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `MERGED` — app in 0.5.0 on the owner's phone; covers by key await the next server release
+**Status:** `MERGED` — app in 0.5.0 on the owner's phone; server side in `server-v0.1.4` on the NAS
 **Started:** 2026-10-07
 
 ## Problem

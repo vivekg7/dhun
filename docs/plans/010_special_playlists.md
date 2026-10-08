@@ -1,6 +1,6 @@
 # 010 — Special playlists and automatic views
 
-**Status:** `MERGED` — server side running on the NAS (`server-v0.1.3`); Android on the owner's phone ([011](011_android_app.md)), no GitHub release yet
+**Status:** `MERGED` — server side running on the NAS (`server-v0.1.4`); Android on the owner's phone ([011](011_android_app.md)), no GitHub release yet
 **Started:** 2026-10-07
 
 ## Problem
