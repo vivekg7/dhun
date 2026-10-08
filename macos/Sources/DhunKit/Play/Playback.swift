@@ -383,8 +383,9 @@ public final class Playback {
         setOrder(ordered.map(\.id).filter { $0 != id })
         if id == activeId {
             close("stopped")
-            stopAll()
+            // Gone before stopAll(), so the active id is cleared when no queue is left.
             app.store.deleteQueue(id)
+            stopAll()
             // The one used most recently takes its place, paused.
             if let q = app.queues.first(where: { $0.id != id }) { load(q, play: false) }
         } else {
