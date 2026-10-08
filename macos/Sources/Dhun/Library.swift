@@ -79,7 +79,10 @@ struct AlbumsGrid: View {
                     NavigationLink(value: Route.album(a.id)) {
                         VStack(alignment: .leading, spacing: 5) {
                             Cover(song: a.songs.first, size: 150)
-                            Text(a.name).font(.callout.weight(.medium)).lineLimit(1)
+                            HStack(spacing: 4) {
+                                Text(a.name).font(.callout.weight(.medium)).lineLimit(1)
+                                PinnedMark(app: app, kind: Downloads.album, ref: a.id)
+                            }
                             Text(a.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .frame(width: 150)
@@ -134,7 +137,7 @@ struct AlbumPage: View {
             ListHeader(
                 title: album.name,
                 subtitle: [album.artist, album.year > 0 ? String(album.year) : ""].filter { !$0.isEmpty }
-                    .joined(separator: " · ") + " · \(album.songs.count) songs",
+                    .joined(separator: " · ") + " · " + summary(album.songs),
                 songs: album.songs, source: "album:\(album.id)", song: album.songs.first,
                 pin: (Downloads.album, album.id))
             SongTable(
@@ -153,11 +156,12 @@ struct ArtistPage: View {
         let albums = app.catalog.albums.filter { a in
             a.songs.contains { s in group.songs.contains { $0.id == s.id } }
         }
+        let songs = albumOrder(group.songs)
         VStack(spacing: 0) {
             ListHeader(
-                title: group.name, subtitle: "\(albums.count) albums · \(group.songs.count) songs",
-                songs: group.songs,
-                source: "artist:\(group.name)", song: group.songs.first, pin: (Downloads.artist, group.name))
+                title: group.name, subtitle: "\(albums.count) albums · " + summary(songs),
+                songs: songs,
+                source: "artist:\(group.name)", song: songs.first, pin: (Downloads.artist, group.name))
             if albums.count > 1 {
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 14) {
@@ -176,9 +180,34 @@ struct ArtistPage: View {
                 }
                 .frame(height: 130)
             }
-            SongTable(songs: group.songs, name: group.name, source: "artist:\(group.name)")
+            SongTable(songs: songs, name: group.name, source: "artist:\(group.name)")
         }
         .navigationTitle(group.name)
+    }
+}
+
+/// An artist's or genre's songs by album, then disc and track: how they were released, as on the phone.
+func albumOrder(_ songs: [Song]) -> [Song] { QueueSort.album.apply(songs) }
+
+/// "12 songs · 48:10"
+func summary(_ songs: [Song]) -> String {
+    "\(count(songs.count)) · \(clock(Double(songs.reduce(0) { $0 + $1.durationMs }) / 1000))"
+}
+
+/// "1 song", "12 songs"
+func count(_ n: Int) -> String { n == 1 ? "1 song" : "\(n) songs" }
+
+/// A download's mark on an album, folder, artist or genre, as the phone shows.
+struct PinnedMark: View {
+    let app: AppModel
+    let kind: String
+    let ref: String
+
+    var body: some View {
+        if app.downloads.pinned(kind, ref) {
+            Image(systemName: "arrow.down.circle.fill").font(.caption2).foregroundStyle(.secondary)
+                .help("Downloaded")
+        }
     }
 }
 
@@ -198,8 +227,13 @@ struct GroupsList: View {
                 HStack(spacing: 10) {
                     Thumb(app: app, song: g.songs[0], size: 32)
                     VStack(alignment: .leading) {
-                        Text(g.name)
-                        Text("\(g.songs.count) songs").font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text(g.name)
+                            PinnedMark(
+                                app: app, kind: kind == .artist ? Downloads.artist : Downloads.genre,
+                                ref: g.name)
+                        }
+                        Text(count(g.songs.count)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -227,12 +261,23 @@ struct FolderView: View {
 
     var body: some View {
         if let f = app.catalog.folders[path] {
+            let app = self.app
             let name = f.path.isEmpty ? "Folders" : f.name
             VStack(spacing: 0) {
+                // A folder's header, even one holding only folders: it plays and downloads them all.
+                if !f.path.isEmpty {
+                    ListHeader(
+                        title: name, subtitle: summary(f.allSongs()), songs: f.allSongs(),
+                        source: "folder:\(f.path)",
+                        pin: (Downloads.folder, f.path))
+                }
                 if !f.children.isEmpty {
                     List(f.children) { c in
                         NavigationLink(value: Route.folder(c.path)) {
-                            Label(c.name, systemImage: "folder")
+                            HStack(spacing: 4) {
+                                Label(c.name, systemImage: "folder")
+                                PinnedMark(app: app, kind: Downloads.folder, ref: c.path)
+                            }
                         }
                         .contextMenu {
                             Button("Play") {
@@ -247,12 +292,6 @@ struct FolderView: View {
                 }
                 if !f.songs.isEmpty {
                     if !f.children.isEmpty { Divider() }
-                    if !f.path.isEmpty {
-                        ListHeader(
-                            title: name, subtitle: "\(f.allSongs().count) songs", songs: f.allSongs(),
-                            source: "folder:\(f.path)",
-                            pin: (Downloads.folder, f.path))
-                    }
                     SongTable(songs: f.songs, name: name, source: "folder:\(f.path)")
                 }
             }
@@ -272,7 +311,7 @@ struct ListPage: View {
         let songs = kind.songs(app)
         VStack(spacing: 0) {
             ListHeader(
-                title: kind.title, subtitle: "\(songs.count) songs", songs: songs, source: kind.source,
+                title: kind.title, subtitle: summary(songs), songs: songs, source: kind.source,
                 pin: kind.mark.map { (Downloads.list, $0) })
             SongTable(
                 songs: songs, name: kind.title, source: kind.source,
@@ -294,6 +333,9 @@ struct DownloadsView: View {
 
     var body: some View {
         let st = app.downloads.status
+        let songs = app.catalog.songsOf(Array(app.downloaded.keys)).sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Downloads").font(.title2.weight(.semibold))
@@ -326,10 +368,13 @@ struct DownloadsView: View {
                         Text(p.kind.capitalized).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Remove", systemImage: "xmark.circle") { app.downloads.unpin(p.key) }
-                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                    Button("Remove Download", systemImage: "xmark.circle") {
+                        if confirmUnpin(p.name) { app.downloads.unpin(p.key) }
+                    }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).help("Remove the download")
                 }
             }
+            .frame(maxHeight: songs.isEmpty ? .infinity : 220)
             .overlay {
                 if app.pins.isEmpty {
                     ContentUnavailableView(
@@ -337,6 +382,13 @@ struct DownloadsView: View {
                         description: Text(
                             "Download an album, a playlist or Favorites to play them without the server."))
                 }
+            }
+            // The songs themselves, to play without the server, as on the phone.
+            if !songs.isEmpty {
+                Divider()
+                ListHeader(
+                    title: "Songs on this Mac", subtitle: summary(songs), songs: songs, source: "downloads")
+                SongTable(songs: songs, name: "Downloads", source: "downloads")
             }
         }
         .navigationTitle("Downloads")

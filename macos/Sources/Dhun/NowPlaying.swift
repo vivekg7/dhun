@@ -14,22 +14,29 @@ struct NowPlayingBar: View {
                 Cover(song: p.current, size: 46)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.current?.title ?? "Nothing playing").fontWeight(.medium).lineLimit(1)
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    // Redrawn on a clock too: "Sleep in 12 min" counts down on its own.
+                    TimelineView(.periodic(from: .now, by: 15)) { _ in
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
             }
             .frame(width: 250, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { if let s = p.current { nav.goToAlbum(s, app) } }
             .contextMenu { if let s = p.current { SongMenu(songs: [s]) } }
+            // The song on the left, the extras on the right, however wide the window.
+            Spacer(minLength: 0)
 
             VStack(spacing: 4) {
                 Transport()
                 Seeker()
             }
             .frame(maxWidth: 560)
+            Spacer(minLength: 0)
 
             HStack(spacing: 4) {
                 FavoriteButton()
+                LaterButton()
                 SpeedButton()
                 SleepButton()
                 Button {
@@ -40,6 +47,7 @@ struct NowPlayingBar: View {
                     Image(systemName: "quote.bubble")
                 }
                 .help("Lyrics")
+                .accessibilityLabel("Lyrics")
                 Button {
                     let showing = nav.inspector && nav.inspectorTab == .queue
                     nav.inspectorTab = .queue
@@ -48,9 +56,10 @@ struct NowPlayingBar: View {
                     Image(systemName: "list.bullet")
                 }
                 .help("Playing queue")
+                .accessibilityLabel("Playing queue")
             }
             .buttonStyle(.borderless)
-            .frame(width: 200, alignment: .trailing)
+            .frame(width: 230, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -84,12 +93,14 @@ struct Transport: View {
                         p.shuffle ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
                 .help(p.shuffle ? "Shuffle is on" : "Shuffle")
+                .accessibilityLabel("Shuffle")
+                .accessibilityValue(p.shuffle ? "On" : "Off")
             }
             Button {
                 p.previous()
             } label: {
                 Image(systemName: "backward.fill")
-            }.help("Previous")
+            }.help("Previous").accessibilityLabel("Previous")
             Button {
                 p.toggle()
             } label: {
@@ -99,11 +110,12 @@ struct Transport: View {
                 .foregroundStyle(.tint)
             }
             .help(p.isPlaying ? "Pause" : "Play")
+            .accessibilityLabel(p.isPlaying ? "Pause" : "Play")
             Button {
                 p.next()
             } label: {
                 Image(systemName: "forward.fill")
-            }.help("Next")
+            }.help("Next").accessibilityLabel("Next")
             if !compact {
                 Button {
                     p.cycleRepeat()
@@ -114,7 +126,11 @@ struct Transport: View {
                 }
                 .help(
                     ["off": "Repeat", "queue": "Repeating the queue", "song": "Repeating this song"][
-                        p.repeatMode] ?? "")
+                        p.repeatMode] ?? ""
+                )
+                .accessibilityLabel("Repeat")
+                .accessibilityValue(
+                    ["off": "Off", "queue": "The queue", "song": "This song"][p.repeatMode] ?? "")
             }
         }
         .buttonStyle(.borderless)
@@ -162,6 +178,25 @@ struct FavoriteButton: View {
                 on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
         }
         .help(on ? "Remove from Favorites" : "Add to Favorites")
+        .accessibilityLabel(on ? "Remove from Favorites" : "Add to Favorites")
+        .disabled(s == nil)
+    }
+}
+
+/// Listen Later for the song playing, as the phone's Now playing has.
+struct LaterButton: View {
+    @Environment(AppModel.self) private var app
+    var body: some View {
+        let s = app.playback.current
+        let on = s.map { id in app.listenLater.contains { $0.song == id.id } } ?? false
+        Button {
+            if let s { app.store.mark(Store.later, s.id, !on) }
+        } label: {
+            Image(systemName: on ? "clock.fill" : "clock").foregroundStyle(
+                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        }
+        .help(on ? "Remove from Listen Later" : "Listen Later")
+        .accessibilityLabel(on ? "Remove from Listen Later" : "Listen Later")
         .disabled(s == nil)
     }
 }
@@ -182,6 +217,7 @@ struct SpeedButton: View {
             }
         }
         .help("Speed and pitch")
+        .accessibilityLabel("Speed and pitch")
         .popover(isPresented: $open, arrowEdge: .top) { SpeedPanel().padding(16).frame(width: 300) }
     }
 }
@@ -189,17 +225,23 @@ struct SpeedButton: View {
 struct SpeedPanel: View {
     @Environment(AppModel.self) private var app
     @State private var onlyThisSong = false
+    /// The speed under the finger: applied, and synced, once on release, as on the phone.
+    @State private var dragging: Double?
 
     var body: some View {
         let p = app.playback
         let t = p.tempo
         VStack(alignment: .leading, spacing: 12) {
-            Text("Speed \(Tempo.format(t.speed))×").font(.headline)
+            Text("Speed \(Tempo.format(dragging ?? t.speed))×").font(.headline)
             Slider(
-                value: Binding(
-                    get: { t.speed },
-                    set: { set(Tempo(speed: ($0 * 20).rounded() / 20, semitones: t.semitones)) }),
-                in: Tempo.minSpeed...Tempo.maxSpeed)
+                value: Binding(get: { dragging ?? t.speed }, set: { dragging = ($0 * 20).rounded() / 20 }),
+                in: Tempo.minSpeed...Tempo.maxSpeed
+            ) { editing in
+                if !editing, let d = dragging {
+                    set(Tempo(speed: d, semitones: t.semitones))
+                    dragging = nil
+                }
+            }
             HStack {
                 ForEach([0.75, 1, 1.25, 1.5, 2], id: \.self) { v in
                     Button("\(Tempo.format(v))×") { set(Tempo(speed: v, semitones: t.semitones)) }
@@ -210,11 +252,17 @@ struct SpeedPanel: View {
                 "Pitch \(t.semitones > 0 ? "+" : t.semitones < 0 ? "−" : "")\(abs(t.semitones)) semitones",
                 value: Binding(get: { t.semitones }, set: { set(Tempo(speed: t.speed, semitones: $0)) }),
                 in: -Tempo.maxSemitones...Tempo.maxSemitones)
-            Toggle("Only for this song", isOn: $onlyThisSong)
-                .disabled(p.current == nil)
-                .onChange(of: onlyThisSong) { _, on in
-                    if on { p.setTempo(t, onlyThisSong: true) } else { p.clearSongTempo() }
-                }
+            // A binding, not onChange: setting the toggle on appear must not write the setting again.
+            Toggle(
+                "Only for this song",
+                isOn: Binding(
+                    get: { onlyThisSong },
+                    set: { on in
+                        onlyThisSong = on
+                        if on { p.setTempo(t, onlyThisSong: true) } else { p.clearSongTempo() }
+                    })
+            )
+            .disabled(p.current == nil)
             Text(
                 onlyThisSong
                     ? "This song keeps its own, on all your devices."
@@ -243,6 +291,7 @@ struct SleepButton: View {
                     app.playback.sleep.mode == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
         }
         .help(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
+        .accessibilityLabel(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
         .popover(isPresented: $open, arrowEdge: .top) {
             SleepPanel { open = false }.padding(16).frame(width: 260)
         }
@@ -330,6 +379,10 @@ struct Inspector: View {
 struct LyricsView: View {
     @Environment(AppModel.self) private var app
     @State private var state = Lyrics.State.loading
+    /// A scroll by hand holds the lines where they are for a few seconds, as on the phone.
+    @State private var heldUntil = Date.distantPast
+    /// While lyrics are shown and playing the display stays awake, as the phone's screen does.
+    @State private var awake: NSObjectProtocol?
 
     var body: some View {
         let p = app.playback
@@ -357,7 +410,13 @@ struct LyricsView: View {
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .onChange(of: at) { _, i in withAnimation { proxy.scrollTo(max(0, i), anchor: .center) } }
+                    .onScrollPhaseChange { _, phase in
+                        if phase != .idle && phase != .animating { heldUntil = Date().addingTimeInterval(4) }
+                    }
+                    .onChange(of: at) { _, i in
+                        guard Date() >= heldUntil else { return }
+                        withAnimation { proxy.scrollTo(max(0, i), anchor: .center) }
+                    }
                 }
             }
         }
@@ -365,6 +424,18 @@ struct LyricsView: View {
         .task(id: p.current?.id) {
             guard let s = p.current else { return state = .none }
             await app.lyrics.load(s) { state = $0 }
+        }
+        .onChange(of: p.isPlaying, initial: true) { _, playing in keepAwake(playing) }
+        .onDisappear { keepAwake(false) }
+    }
+
+    private func keepAwake(_ on: Bool) {
+        if on, awake == nil {
+            awake = ProcessInfo.processInfo.beginActivity(
+                options: .idleDisplaySleepDisabled, reason: "Showing lyrics")
+        } else if !on, let a = awake {
+            ProcessInfo.processInfo.endActivity(a)
+            awake = nil
         }
     }
 }

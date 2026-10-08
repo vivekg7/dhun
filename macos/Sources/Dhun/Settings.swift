@@ -254,7 +254,7 @@ struct FamilyMembers: View {
                 HStack {
                     VStack(alignment: .leading) {
                         Text(m.name + (m.admin ? " (admin)" : ""))
-                        Text(m.devices == 0 ? "No device signed in" : "\(m.devices) devices").font(.caption)
+                        Text(m.admin ? "Its password is changed on the NAS" : seen(m)).font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -281,8 +281,22 @@ struct FamilyMembers: View {
         .sheet(item: $editing) { m in
             MemberForm(title: "New password for \(m.name)", askName: false) { _, pw in
                 try await app.api.resetPassword(user: m.id, password: pw)
+                await load()
             }
         }
+    }
+
+    /// "Signed in on 2 devices · seen 3 hours ago", as on the phone.
+    private func seen(_ m: Member) -> String {
+        guard m.devices > 0 else { return "No device signed in" }
+        let at = parseTime(m.lastSeenAt)
+        let on = "Signed in on \(m.devices) device\(m.devices == 1 ? "" : "s")"
+        guard at > 0 else { return on }
+        let date = Date(timeIntervalSince1970: Double(at) / 1000)
+        let ago =
+            -date.timeIntervalSinceNow < 60
+            ? "just now" : RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+        return "\(on) · seen \(ago)"
     }
 
     private func load() async {
@@ -295,6 +309,8 @@ struct FamilyMembers: View {
     }
 }
 
+/// A name (when adding) and a password. The server's rules for both come
+/// back as its own error, rather than copied here where they could drift.
 struct MemberForm: View {
     let title: String
     let askName: Bool
@@ -308,7 +324,9 @@ struct MemberForm: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.headline)
             if askName { TextField("Name", text: $name) }
-            SecureField("Password, at least 8 characters", text: $password)
+            // Shown as typed: the admin reads it out to the member, and a typo
+            // in a hidden password would lock them out.
+            TextField("Password", text: $password)
             if let error { Text(error).foregroundStyle(.red).font(.caption) }
             HStack {
                 Spacer()
@@ -324,8 +342,7 @@ struct MemberForm: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(
-                    password.count < 8 || (askName && name.trimmingCharacters(in: .whitespaces).isEmpty))
+                .disabled(password.isEmpty || (askName && name.trimmingCharacters(in: .whitespaces).isEmpty))
             }
         }
         .padding(20)

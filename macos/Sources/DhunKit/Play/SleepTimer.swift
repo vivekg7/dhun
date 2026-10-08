@@ -86,6 +86,7 @@ public final class SleepTimer {
         default: stop = false
         }
         playback.pauseAfter(stop ? current : nil)
+        playback.mediaChanged()
     }
 
     /// "in 23 min", "after this song", …, or nil with no timer.

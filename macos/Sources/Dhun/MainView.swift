@@ -102,7 +102,7 @@ struct RouteView: View {
         case .genre(let name):
             if let g = app.catalog.genres.first(where: { $0.name.lowercased() == name.lowercased() }) {
                 SongsPage(
-                    title: g.name, subtitle: "\(g.songs.count) songs", songs: g.songs,
+                    title: g.name, subtitle: summary(g.songs), songs: albumOrder(g.songs),
                     source: "genre:\(g.name)",
                     pin: (Downloads.genre, g.name))
             } else {

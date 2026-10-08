@@ -31,7 +31,7 @@ struct Sidebar: View {
                     Label(p.name, systemImage: p.shared ? "music.note.house" : "music.note.list")
                         .tag(Section.playlist(p.id))
                         .dropDestination(for: String.self) { items, _ in
-                            guard editable(p) else { return false }
+                            guard p.editable else { return false }
                             app.store.addToPlaylist(p, songIds(items))
                             return true
                         }
@@ -60,8 +60,6 @@ struct Sidebar: View {
             }
         }
     }
-
-    private func editable(_ p: Playlist) -> Bool { !p.shared || app.admin }
 }
 
 /// Songs dragged between views travel as their ids.
@@ -102,7 +100,9 @@ struct NameSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(action, action: submit).keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(
+                        name.trimmingCharacters(in: .whitespaces).isEmpty
+                            || Prompt.isReserved(name.trimmingCharacters(in: .whitespaces)))
             }
         }
         .padding(20)
@@ -111,7 +111,7 @@ struct NameSheet: View {
 
     private func submit() {
         let n = name.trimmingCharacters(in: .whitespaces)
-        guard !n.isEmpty else { return }
+        guard !n.isEmpty, !Prompt.isReserved(n) else { return }
         done(n)
         dismiss()
     }

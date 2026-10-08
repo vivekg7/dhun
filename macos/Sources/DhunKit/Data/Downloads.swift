@@ -85,6 +85,14 @@ public final class Downloads {
         status = Status()
     }
 
+    /// The songs one download covers, for its button's "3/12".
+    public func songs(_ kind: String, _ ref: String) -> [Song] {
+        let key = Downloads.key(kind, ref)
+        return covered(
+            app.pins.filter { $0.key == key }, app.catalog, app.playlists, app.favorites, app.listenLater)
+            ?? []
+    }
+
     /// The songs the pins cover now.
     public var wanted: [Song]? {
         covered(app.pins, app.catalog, app.playlists, app.favorites, app.listenLater)

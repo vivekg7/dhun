@@ -1,6 +1,6 @@
 # 024 — The macOS app, at the Android app's level
 
-**Status:** `IN PROGRESS` — every step built (2026-10-08); not yet installed for daily use
+**Status:** `IN PROGRESS` — every step built and installed on the owner's Mac (2026-10-08); in daily use, not yet released
 **Started:** 2026-10-08
 
 ## Problem
@@ -299,8 +299,48 @@ install at a time.
   and seeked, marked a favourite, and the outbox emptied on the next sync.
 - The window, signed in, showing the albums with their covers.
 
-**Not yet checked by hand:** downloads, hand-off, the sleep timer, the
-menu bar control, the mini window and Open With.
+**Checked by hand afterwards** (2026-10-08), in the installed app signed in
+to the owner's NAS: every sidebar section and all 22 playlists; play,
+pause, skip, seek; speed (2× plays two seconds a second); the sleep timer
+at the end of a song; search; synced lyrics; hand-off from the phone, in
+the window and the menu bar control; an album downloaded and removed; the
+menu bar control; the mini window, whose place survives a relaunch; Open
+With from Finder; Settings.
+
+That pass, and a read of the phone's code against the Mac's, found these,
+all fixed:
+
+- **Crashes.** Switching between lists, and opening Queues with the
+  inspector open, aborted the app. The first is SwiftUI on macOS 26
+  rebuilding a reused row before its environment is there, so rows take
+  the model as a value. The second is a layout loop in AppKit with two
+  lists side by side in the window's split view, so Queues is now a list
+  of queues and each queue opens as a page, as on the phone.
+- **Album downloads never started.** An album's id holds a NUL; the SQLite
+  layer bound text as a C string and cut it there. Text is now bound by
+  length.
+- **Paused showed 0:00**, and saved it as the queue's place: a paused
+  player node has no time, so the engine keeps the last one.
+- **Play did nothing** after a relaunch when the sleep timer had stopped
+  the last song at its very end; such a song now starts over.
+- **Keys.** Space did nothing while a list had the focus, and ⌘F did not
+  reach the search field. Space and ⌘← ⌘→ are now caught before the
+  focused view, except while typing.
+- **Where the Mac differed from the phone:** shared playlists were
+  editable by the admin (plan 013 keeps them read-only for everyone); a
+  search queue was named with the bare query and could refill an album's
+  queue of that name; several Finder files played at once; the speed
+  slider wrote a synced op on every step of a drag.
+- **What the phone has that the Mac lacked:** the downloaded mark on songs
+  and on downloaded albums, folders, artists and genres; the Downloads
+  page's songs; a download's progress ("3/5") and a question before one
+  is removed; the note after adding to a playlist; reserved names; a
+  question before a queue is removed; a filter in a queue and its place
+  ("3 / 40 · 1:02 left of 2:30"); "Don't stop after this song"; Listen
+  Later in Now playing; artists and genres in album order; a header for a
+  folder holding only folders; the lyrics holding still after a scroll and
+  keeping the display awake; the sleep timer in Control Center; a family
+  member's password shown as typed, and when they were last seen.
 
 **Changes from the plan above:**
 

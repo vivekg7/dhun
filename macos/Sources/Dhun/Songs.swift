@@ -24,7 +24,7 @@ struct SongTable: View {
         let app = self.app
         let nav = self.nav
         let rows = sort.isEmpty ? songs : songs.sorted(using: sort)
-        Table(rows, selection: $selection, sortOrder: $sort) {
+        Table(of: Song.self, selection: $selection, sortOrder: $sort) {
             if showTrack {
                 TableColumn("#", value: \.track) { s in
                     Text(s.track > 0 ? "\(s.track)" : "").foregroundStyle(.secondary).monospacedDigit()
@@ -35,13 +35,13 @@ struct SongTable: View {
                 HStack(spacing: 8) {
                     Thumb(app: app, song: s, size: 22)
                     Text(s.title).lineLimit(1)
+                    DownloadedMark(app: app, song: s)
                     if app.playback.current?.id == s.id {
                         Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                             .foregroundStyle(.tint).font(.caption)
                     }
                 }
-                .opacity(
-                    app.reachable || app.downloaded[s.id] != nil || app.cache.songs.contains(s.id) ? 1 : 0.4)
+                .opacity(playable(app, s) ? 1 : 0.4)
             }
             .width(min: 160, ideal: 300)
             TableColumn("Artist", value: \.displayArtist) { s in Text(s.displayArtist).lineLimit(1) }
@@ -55,6 +55,14 @@ struct SongTable: View {
                     .foregroundStyle(.secondary)
             }
             .width(52)
+        } rows: {
+            ForEach(rows) { s in
+                // A drag carries the row, or the whole selection when the row is in it.
+                TableRow(s).itemProvider {
+                    let ids = selection.contains(s.id) ? rows.map(\.id).filter(selection.contains) : [s.id]
+                    return NSItemProvider(object: ids.map(String.init).joined(separator: ",") as NSString)
+                }
+            }
         }
         .contextMenu(forSelectionType: Int.self) { ids in
             let chosen = rows.filter { ids.contains($0.id) }
@@ -68,10 +76,10 @@ struct SongTable: View {
             .environment(app)
             .environment(nav)
         } primaryAction: { ids in
-            guard let first = ids.first, let i = rows.firstIndex(where: { $0.id == first }) else { return }
+            // The top one in the list: a set has no order.
+            guard let i = rows.firstIndex(where: { ids.contains($0.id) }) else { return }
             app.playback.play(name: name, source: source, songs: rows, start: i)
         }
-        .draggable(selectionText: selection)
         // A table of its own per list: reusing one for another list's rows is
         // where the environment went missing, and selection and sort are the
         // list's own.
@@ -79,13 +87,22 @@ struct SongTable: View {
     }
 }
 
-extension View {
-    /// Selected rows drag as their ids, onto a playlist or a list in the sidebar.
-    func draggable(selectionText ids: Set<Int>) -> some View {
-        self.onDrag {
-            NSItemProvider(object: ids.map(String.init).joined(separator: ",") as NSString)
+/// A small mark on a song kept on this Mac (plan 012), as the phone shows.
+struct DownloadedMark: View {
+    let app: AppModel
+    let song: Song
+
+    var body: some View {
+        if app.downloaded[song.id] != nil {
+            Image(systemName: "arrow.down.circle.fill").font(.caption2).foregroundStyle(.secondary)
+                .help("Downloaded")
         }
     }
+}
+
+/// Whether a song can play now: the server is there, or the song is on this Mac.
+@MainActor func playable(_ app: AppModel, _ s: Song) -> Bool {
+    app.reachable || app.downloaded[s.id] != nil || app.cache.songs.contains(s.id)
 }
 
 /// The phone's song menu (plan 011): play next, add to the playing queue or
@@ -119,8 +136,8 @@ struct SongMenu: View {
                 }
             }
             Menu("Add to Playlist") {
-                ForEach(app.playlists.filter { !$0.shared || app.admin }) { p in
-                    Button(p.name) { app.store.addToPlaylist(p, songs.map(\.id)) }
+                ForEach(app.playlists.filter { $0.editable }) { p in
+                    Button(p.name) { added(to: p) }
                 }
                 Divider()
                 Button("New Playlist…") {
@@ -142,8 +159,10 @@ struct SongMenu: View {
             if songs.count == 1 {
                 let s = songs[0]
                 if app.downloads.pinned(Downloads.song, String(s.id)) {
-                    Button("Remove Download") {
-                        app.downloads.unpin(Downloads.key(Downloads.song, String(s.id)))
+                    Button("Remove Download…") {
+                        if confirmUnpin(s.title) {
+                            app.downloads.unpin(Downloads.key(Downloads.song, String(s.id)))
+                        }
                     }
                 } else if app.downloaded[s.id] == nil {
                     Button("Download") { app.downloads.pin(Downloads.song, String(s.id), s.title) }
@@ -158,6 +177,32 @@ struct SongMenu: View {
             }
         }
     }
+
+    /// Adds the songs and says what happened, as the phone does: songs already there are skipped.
+    private func added(to p: Playlist) {
+        let ids = songs.map(\.id)
+        let skipped = app.store.addToPlaylist(p, ids)
+        let adding = Set(ids).count - skipped
+        app.playback.notice =
+            adding == 0
+            ? (skipped == 1 ? "Already in “\(p.name)”" : "All \(skipped) already in “\(p.name)”")
+            : skipped > 0
+                ? "Added \(adding) to “\(p.name)” · \(skipped) already there"
+                : "Added \(count(adding)) to “\(p.name)”"
+    }
+}
+
+/// Asks before a download goes, as the phone does.
+@MainActor func confirmUnpin(_ name: String) -> Bool {
+    Prompt.confirm(
+        "Remove download?",
+        "“\(name)” stays in the library. Its songs are deleted from this Mac, unless something else you downloaded has them too.",
+        action: "Remove")
+}
+
+extension Playlist {
+    /// Shared playlists stay read-only in the app, for every user (plan 013).
+    var editable: Bool { !shared }
 }
 
 /// A list's own header: its name, a line under it, Play and Shuffle, Download.
@@ -217,8 +262,13 @@ struct PinButton: View {
 
     var body: some View {
         if app.downloads.pinned(kind, ref) {
-            Button("Downloaded", systemImage: "checkmark.circle") {
-                app.downloads.unpin(Downloads.key(kind, ref))
+            let songs = app.downloads.songs(kind, ref)
+            let done = songs.count { app.downloaded[$0.id] != nil }
+            Button(
+                done < songs.count ? "\(done)/\(songs.count)" : "Downloaded",
+                systemImage: done < songs.count ? "arrow.down.circle.dotted" : "checkmark.circle"
+            ) {
+                if confirmUnpin(name) { app.downloads.unpin(Downloads.key(kind, ref)) }
             }
             .help("Remove the download")
         } else {
@@ -254,8 +304,11 @@ struct SearchResults: View {
         if hits.isEmpty {
             ContentUnavailableView.search(text: query)
         } else {
-            SongTable(songs: hits, name: query, source: "search")
-                .navigationTitle("Search")
+            // "Search: …", as on the phone: a bare query could name, and refill, an album's queue.
+            SongTable(
+                songs: hits, name: "Search: \(query.trimmingCharacters(in: .whitespaces))", source: "search"
+            )
+            .navigationTitle("Search")
         }
     }
 }
@@ -272,10 +325,20 @@ enum Prompt {
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
-        if alert.runModal() == .alertFirstButtonReturn {
+        while alert.runModal() == .alertFirstButtonReturn {
             let n = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if isReserved(n) {
+                alert.informativeText = "“\(n)” is the name of one of your lists."
+                continue
+            }
             if !n.isEmpty { done(n) }
+            return
         }
+    }
+
+    /// The two lists' names cannot name a queue or playlist, as on the phone.
+    static func isReserved(_ name: String) -> Bool {
+        ["favorites", "listen later"].contains(name.lowercased())
     }
 
     static func confirm(_ title: String, _ detail: String = "", action: String) -> Bool {

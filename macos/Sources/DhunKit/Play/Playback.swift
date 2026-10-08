@@ -443,6 +443,7 @@ public final class Playback {
         heardSpeed = t.speed
         engine.speed = Float(t.speed)
         engine.semitones = Float(t.semitones)
+        media?.update()  // Control Center's clock runs at the new rate
     }
 
     // MARK: Hand-off (plan 017)
@@ -684,6 +685,9 @@ public final class Playback {
     }
 
     func pauseAfter(_ song: Int?) { upcomingState.setPauseAfter(song) }
+
+    /// The sleep timer changed: Control Center shows it.
+    func mediaChanged() { media?.update() }
 
     // MARK: Following the engine
 

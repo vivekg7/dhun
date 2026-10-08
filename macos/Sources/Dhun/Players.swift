@@ -24,17 +24,33 @@ struct MenuBarPlayer: View {
                 }
                 Spacer(minLength: 0)
             }
+            // Hand-off here too: with the window closed, this is where the Mac is used.
+            if let np = p.handoff, let s = app.catalog.byId[np.song] {
+                Button {
+                    p.continueFrom(np)
+                } label: {
+                    Label(
+                        "Continue from \(np.deviceName.isEmpty ? "another device" : np.deviceName): \(s.title)",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
             Transport()
             Seeker()
             HStack {
-                Menu("Queue: \(p.active?.name ?? "none")") {
+                // Truncated, not at its full width: a long queue name pushed the buttons out of the panel.
+                Menu {
                     ForEach(Array(p.ordered.enumerated()), id: \.element.id) { i, q in
                         Button("\(i + 1). \(q.name)") { p.switchTo(q.id) }
                     }
+                } label: {
+                    Text("Queue: \(p.active?.name ?? "none")").lineLimit(1).truncationMode(.tail)
                 }
                 .menuStyle(.borderlessButton)
-                .fixedSize()
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 FavoriteButton().buttonStyle(.borderless)
                 Button("Mini Player", systemImage: "pip") { openWindow(id: "mini") }
                     .labelStyle(.iconOnly).buttonStyle(.borderless).help("Mini player")

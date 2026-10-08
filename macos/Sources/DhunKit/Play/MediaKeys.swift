@@ -39,7 +39,9 @@ final class MediaKeys {
         }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: s.title,
-            MPMediaItemPropertyArtist: s.displayArtist,
+            // The sleep timer rides on the artist line, as on the phone's notification.
+            MPMediaItemPropertyArtist: playback.sleep.label.map { "\(s.displayArtist) · Sleep \($0)" }
+                ?? s.displayArtist,
             MPMediaItemPropertyAlbumTitle: s.album,
             MPMediaItemPropertyPlaybackDuration: playback.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playback.position,
