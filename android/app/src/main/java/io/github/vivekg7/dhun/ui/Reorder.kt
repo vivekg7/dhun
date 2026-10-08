@@ -19,13 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
 /**
- * Drag a row by its handle to move it, in a list of 64 dp song rows: the
- * queue and a playlist. The row follows the finger; the move happens on
+ * Drag a row by its handle to move it, in a list of rows of one height
+ * (64 dp song rows in the queue and a playlist; the queue picker's). The row follows the finger; the move happens on
  * release, from the row's index to where it was dropped.
  */
 class Reorder internal constructor(
@@ -79,8 +80,11 @@ class Reorder internal constructor(
 }
 
 @Composable
-fun rememberReorder(onMove: (from: Int, to: Int) -> Unit): Reorder {
-    val rowPx = with(LocalDensity.current) { 64.dp.toPx() }
+fun rememberReorder(
+    rowHeight: Dp = 64.dp,
+    onMove: (from: Int, to: Int) -> Unit,
+): Reorder {
+    val rowPx = with(LocalDensity.current) { rowHeight.toPx() }
     val latest by rememberUpdatedState(onMove)
     return remember(rowPx) { Reorder(rowPx) { latest } }
 }

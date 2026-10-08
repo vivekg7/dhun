@@ -1,6 +1,7 @@
 package io.github.vivekg7.dhun.play
 
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
@@ -43,7 +44,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import java.io.IOException
 import java.util.TimeZone
 import java.util.UUID
@@ -123,6 +128,16 @@ class Playback(
     val offerResume = MutableStateFlow<Pair<Song, Long>?>(null)
 
     private val settings = app.store.settings.stateIn(scope, SharingStarted.Eagerly, emptyMap())
+
+    /**
+     * The queues in the user's order, numbered from 1 as in Musicolet
+     * (docs/plans/020_queue_screen.md): a new queue goes last, and dragging
+     * in the queue picker moves one. The order is the synced setting
+     * [ORDER]; a queue it does not name yet (made on another device whose
+     * order has not arrived) follows, the one used longest ago first.
+     */
+    val ordered: StateFlow<List<QueueRow>> =
+        combine(queues, settings) { qs, s -> orderOf(qs, s[ORDER]) }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     /** Speed and pitch (docs/plans/016_speed_and_pitch.md): this device's everyday one. */
     val everyday = MutableStateFlow(app.prefs.tempo)
@@ -315,13 +330,73 @@ class Playback(
                     store.setCurrent(it)
                 }
             } else {
-                // At most 20 queues: the least recently used one goes, as on the server.
-                queues.value.drop(MAX_QUEUES - 1).forEach { store.deleteQueue(it.id) }
-                QueueRow(UUID.randomUUID().toString(), name, ids, first.id, 0, false, "off", now).also { store.createQueue(it) }
+                create(name, ids, first.id, now)
             }
         app.prefs.setQueueSource(q.id, source)
         load(q, play = true)
     }
+
+    /**
+     * A new queue, last in the order. At most [MAX_QUEUES]: as in Musicolet,
+     * the first queue goes to make room, and a note says so.
+     */
+    private suspend fun create(
+        name: String,
+        ids: String,
+        current: Long,
+        now: Long,
+    ): QueueRow {
+        val order = ordered.value
+        val over = (order.size - (MAX_QUEUES - 1)).coerceAtLeast(0)
+        order.take(over).forEach { store.deleteQueue(it.id) }
+        if (over > 0) Toast.makeText(app, "At most $MAX_QUEUES queues: “${order[0].name}” was removed", Toast.LENGTH_SHORT).show()
+        val q = QueueRow(UUID.randomUUID().toString(), name, ids, current, 0, false, "off", now)
+        store.createQueue(q)
+        setOrder(order.drop(over).map { it.id } + q.id)
+        return q
+    }
+
+    /**
+     * A queue of [songs] that does not start playing ("New queue" when
+     * adding songs to a queue). The name is made unique the way the server
+     * does it, so the two agree.
+     */
+    fun newQueue(
+        name: String,
+        songs: List<Song>,
+    ) = scope.launch {
+        val taken = queues.value.map { it.name.lowercase() }.toSet()
+        var unique = name
+        var n = 2
+        while (unique.lowercase() in taken) unique = "$name (${n++})"
+        val adding =
+            songs
+                .filter {
+                    app.catalog.value.byId
+                        .containsKey(it.id)
+                }.distinctBy { it.id }
+        create(unique, adding.map { it.id }.joinIds(), adding.firstOrNull()?.id ?: 0, System.currentTimeMillis())
+    }
+
+    private suspend fun setOrder(ids: List<String>) = store.setting(ORDER, JsonArray(ids.map(::JsonPrimitive)))
+
+    /** Drag in the queue picker: queue [from] goes to [to], counting from 0. */
+    fun moveQueue(
+        from: Int,
+        to: Int,
+    ) = scope.launch {
+        val ids = ordered.value.map { it.id }.toMutableList()
+        if (from !in ids.indices || to !in ids.indices || from == to) return@launch
+        ids.add(to, ids.removeAt(from))
+        setOrder(ids)
+    }
+
+    /** Every queue but [keep] (Musicolet's "Remove all other queues"). */
+    fun deleteOthers(keep: String) =
+        scope.launch {
+            for (q in queues.value) if (q.id != keep) store.deleteQueue(q.id)
+            setOrder(listOf(keep))
+        }
 
     fun switchTo(id: String) =
         scope.launch {
@@ -377,26 +452,111 @@ class Playback(
         store.insertIntoQueue(q.copy(songs = ids.joinIds()), adding.map { it.id }, if (at == 0) 0 else ids[at - 1])
     }
 
-    fun removeAt(index: Int) =
-        scope.launch {
-            val q = active.value ?: return@launch
-            if (index !in 0 until player.mediaItemCount) return@launch
-            val id = player.getMediaItemAt(index).mediaId.toLong()
-            player.removeMediaItem(index)
-            store.removeFromQueue(q.copy(songs = playerIds().joinIds()), listOf(id))
-        }
+    /*
+     * Edits to any queue, as in Musicolet: the playing one through the
+     * player, which then holds its order; another one in the database, its
+     * current song kept where it was or on the song after it.
+     */
 
-    fun move(
+    /** Adds [songs] to the end of queue [id]; songs already in it move there. */
+    fun addTo(
+        id: String,
+        songs: List<Song>,
+    ) {
+        if (id == activeId.value) {
+            addToQueue(songs)
+            return
+        }
+        scope.launch {
+            val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+            val adding =
+                songs
+                    .filter {
+                        app.catalog.value.byId
+                            .containsKey(it.id)
+                    }.map { it.id }
+                    .distinct()
+            if (adding.isEmpty()) return@launch
+            val ids = songIds(q.songs).filter { it !in adding } + adding
+            store.insertIntoQueue(q.copy(songs = ids.joinIds(), currentSong = q.currentSong.takeIf { it != 0L } ?: ids[0]), adding, null)
+        }
+    }
+
+    fun removeFrom(
+        id: String,
+        songs: Set<Long>,
+    ) = scope.launch {
+        if (songs.isEmpty()) return@launch
+        if (id == activeId.value) {
+            val q = active.value ?: return@launch
+            for (i in player.mediaItemCount - 1 downTo 0) if (player.getMediaItemAt(i).mediaId.toLong() in songs) player.removeMediaItem(i)
+            store.removeFromQueue(q.copy(songs = playerIds().joinIds()), songs.toList())
+            return@launch
+        }
+        val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+        val old = songIds(q.songs)
+        val ids = old.filter { it !in songs }
+        val removed = q.copy(songs = ids.joinIds())
+        store.removeFromQueue(removed, songs.toList())
+        if (q.currentSong in songs) {
+            val next = old.drop(old.indexOf(q.currentSong) + 1).firstOrNull { it !in songs } ?: ids.firstOrNull() ?: 0
+            store.setCurrent(removed.copy(currentSong = next, positionMs = 0))
+        }
+    }
+
+    /** Moves song [from] of queue [id] to [to], counting from 0 in the queue's order. */
+    fun moveIn(
+        id: String,
         from: Int,
         to: Int,
     ) = scope.launch {
+        if (from == to) return@launch
+        if (id == activeId.value) {
+            val q = active.value ?: return@launch
+            val n = player.mediaItemCount
+            if (from !in 0 until n || to !in 0 until n) return@launch
+            val song = player.getMediaItemAt(from).mediaId.toLong()
+            player.moveMediaItem(from, to)
+            val ids = playerIds()
+            store.moveInQueue(q.copy(songs = ids.joinIds()), song, if (to == 0) 0 else ids[to - 1])
+            return@launch
+        }
+        val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+        val ids = songIds(q.songs).toMutableList()
+        if (from !in ids.indices || to !in ids.indices) return@launch
+        val song = ids.removeAt(from)
+        ids.add(to, song)
+        store.moveInQueue(q.copy(songs = ids.joinIds()), song, if (to == 0) 0 else ids[to - 1])
+    }
+
+    /**
+     * Queue [id] in a new order of the same songs (a sort, Randomize,
+     * Reverse). The playing song plays on: the songs around it are taken
+     * out and put back in the new order, rather than moved one by one.
+     */
+    fun reorder(
+        id: String,
+        order: List<Long>,
+    ) = scope.launch {
+        if (id != activeId.value) {
+            val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+            store.replaceQueue(q.copy(songs = order.joinIds()))
+            return@launch
+        }
         val q = active.value ?: return@launch
-        val n = player.mediaItemCount
-        if (from !in 0 until n || to !in 0 until n || from == to) return@launch
-        val id = player.getMediaItemAt(from).mediaId.toLong()
-        player.moveMediaItem(from, to)
-        val ids = playerIds()
-        store.moveInQueue(q.copy(songs = ids.joinIds()), id, if (to == 0) 0 else ids[to - 1])
+        if (player.mediaItemCount == 0) return@launch
+        val byId = app.catalog.value.byId
+        val now = player.currentMediaItem?.mediaId?.toLong()
+        val loaded = playerIds().toSet()
+        val songs = order.filter { it in loaded }
+        val at = songs.indexOf(now)
+        if (at < 0) return@launch
+        val cur = player.currentMediaItemIndex
+        player.removeMediaItems(cur + 1, player.mediaItemCount)
+        player.removeMediaItems(0, cur)
+        player.addMediaItems(0, songs.take(at).mapNotNull { byId[it] }.map(::item))
+        player.addMediaItems(songs.drop(at + 1).mapNotNull { byId[it] }.map(::item))
+        store.replaceQueue(q.copy(songs = playerIds().joinIds()))
     }
 
     fun rename(
@@ -409,12 +569,14 @@ class Playback(
 
     fun delete(id: String) =
         scope.launch {
+            setOrder(ordered.value.map { it.id }.filter { it != id })
             if (id == activeId.value) {
                 close("stopped")
                 player.clearMediaItems()
                 current.value = null
                 setActive("")
                 store.deleteQueue(id)
+                // The one used most recently takes its place, paused.
                 queues.value.firstOrNull { it.id != id }?.let { load(it, play = false) }
             } else {
                 store.deleteQueue(id)
@@ -797,6 +959,20 @@ class Playback(
 
     companion object {
         const val MAX_QUEUES = 20
+
+        /** The synced setting with the queues' order: their ids, as a JSON array. */
+        const val ORDER = "queues.order"
+
+        fun orderOf(
+            queues: List<QueueRow>,
+            order: JsonElement?,
+        ): List<QueueRow> {
+            val ids = (order as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
+            val byId = queues.associateBy { it.id }
+            val named = ids.distinct().mapNotNull { byId[it] }
+            val rest = queues.filter { it !in named }.sortedBy { it.usedAt }
+            return named + rest
+        }
 
         /** The notification's and lock screen's cover. */
         const val COVER_PX = 512

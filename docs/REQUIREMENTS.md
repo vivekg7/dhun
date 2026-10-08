@@ -132,6 +132,14 @@ and anything undecided is under [Open questions](#open-questions).
 - **Queues are separate from playlists**, and this is the most important
   feature. A queue is a temporary playlist that is being played right now.
   At most **20**, which is Musicolet's limit, confirmed from its APK.
+- **The Queues tab is Musicolet's** (owner, 2026-10-08;
+  [plan 020](plans/020_queue_screen.md)): queues are **numbered in a fixed
+  order**, a new one last, reordered by dragging; a 21st removes the first.
+  The queue shown is picked from a box at the top; tapping a song of
+  another queue starts that queue from it. Every queue can be edited, sorted
+  (Randomize, Reverse, by tags), searched, and its songs selected several
+  at a time; any song in the playing queue can be the one to **stop
+  after**. Song rows keep two lines.
 
 ### Phone-local songs
 

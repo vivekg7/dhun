@@ -29,6 +29,11 @@ The dialog offers three, one picked by its radio button and set with
 - **At the end of this queue:** stop after its last song instead of
   repeating.
 
+A fifth, **after a song picked in the queue** ("Stop after this song" in
+its menu, as in Musicolet), came with [020](020_queue_screen.md). It is set
+from the Queues tab, not this dialog, and stops the same way as the others
+by songs.
+
 Rejected, both tried first: presets (15 to 90 minutes, 2 to 10 songs) as
 chips, which wrapped into clutter, and the same presets as a list of rows
 with "Other…" for the rest, twelve rows long. Two steppers hold every value

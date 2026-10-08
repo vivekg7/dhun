@@ -47,11 +47,13 @@ Where Dhun departs from Musicolet, by the owner's choice:
   ([010](010_special_playlists.md)), then the playlists. This is where
   Musicolet keeps its built-in smart playlists. A separate Home tab with
   shelves was rejected as less Musicolet-like.
-- **Queues are chips** across the top of the Queues tab, so all of them
-  are one tap away. Musicolet uses a drop-down menu for this. A queue picked
-  there stays shown when you leave the tab and come back, by the owner's
-  choice (2026-10-07): you may have been reordering it. When another queue
-  starts playing, the tab shows that one instead.
+- **Queues were chips** across the top of the Queues tab until 0.6.0,
+  most recently used first. Since [020](020_queue_screen.md) the tab is
+  Musicolet's again: numbered queues in a fixed order, picked from a box
+  that opens a dialog. A queue picked there stays shown when you leave the
+  tab and come back, by the owner's choice (2026-10-07): you may have been
+  reordering it. When another queue starts playing, the tab shows that one
+  instead.
 
 The designs are in the Paper file "Dhun — Android app design" (the Logo and
 Screens pages).

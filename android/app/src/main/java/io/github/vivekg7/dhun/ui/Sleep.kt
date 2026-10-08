@@ -85,6 +85,7 @@ fun sleepState(): String? {
         SleepTimer.Mode.EndOfSong -> "this song"
         is SleepTimer.Mode.Songs -> "${m.left} songs"
         SleepTimer.Mode.EndOfQueue -> "end of queue"
+        is SleepTimer.Mode.AfterSong -> m.title
     }
 }
 

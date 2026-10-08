@@ -2,6 +2,7 @@ package io.github.vivekg7.dhun.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,8 +38,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,15 +80,17 @@ fun SectionLabel(
     )
 }
 
-/** Musicolet's per-tab quick search box. */
+/** Musicolet's per-tab quick search box; at the [bottom] of the queue, as there. */
 @Composable
 fun SearchField(
     value: String,
     onChange: (String) -> Unit,
     hint: String,
+    bottom: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
     Column {
+        if (bottom) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(12.dp))
@@ -99,7 +108,7 @@ fun SearchField(
             if (value.isNotEmpty()) Tip("Clear") { IconButton({ onChange("") }) { Icon(Icons.Close, "Clear", Modifier.size(20.dp)) } }
             trailing()
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (!bottom) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -194,14 +203,19 @@ fun NameRow(
 }
 
 /**
- * One song. The current song of the queue is marked with the accent, as in
- * Musicolet; nothing else uses colour.
+ * One song. The current song of a queue is outlined, as in Musicolet: in
+ * the accent in the playing queue, the only colour in a list; in grey and
+ * italics in a queue not playing, where it is where that queue will
+ * resume. A [selected] row is shaded.
  */
 @Composable
 fun SongRow(
     song: Song,
     onClick: () -> Unit,
     current: Boolean = false,
+    live: Boolean = true,
+    selected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     menu: SongMenu = SongMenu(),
 ) {
@@ -212,18 +226,34 @@ fun SongRow(
     val cached by app.cache.songs.collectAsState()
     val downloaded = song.id in files
     val onPhone = downloaded || song.id in cached
+    val outline = if (live) c.primary else c.outline
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (current) c.primaryContainer.copy(alpha = 0.55f) else c.surface)
-            .clickable(onClick = onClick)
+            .background(if (selected) c.secondaryContainer else c.surface)
+            // Drawn inside the row, so its content lines up with the rows around it.
+            .then(
+                if (current) {
+                    Modifier.drawBehind {
+                        val inset = Offset(4.dp.toPx(), 2.dp.toPx())
+                        drawRoundRect(
+                            outline,
+                            inset,
+                            Size(size.width - 2 * inset.x, size.height - 2 * inset.y),
+                            CornerRadius(10.dp.toPx()),
+                            style = Stroke(1.dp.toPx()),
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            ).combinedClickable(onLongClick = onLongClick, onClick = onClick)
             .height(64.dp)
             // Offline, what is not on the phone cannot play (docs/plans/012_downloads.md).
             .alpha(if (reachable || onPhone) 1f else 0.38f)
             .padding(start = if (leading == null) 16.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (current) Box(Modifier.width(4.dp).height(64.dp).background(c.primary))
         leading?.invoke()
         Art(song, SmallArt, RoundedCornerShape(6.dp))
         Column(Modifier.weight(1f).padding(start = 14.dp)) {
@@ -232,7 +262,8 @@ fun SongRow(
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (current) c.onPrimaryContainer else c.onSurface,
+                color = if (current && live) c.primary else c.onSurface,
+                fontStyle = if (current && !live) FontStyle.Italic else null,
             )
             Text(
                 song.displayArtist,
@@ -270,6 +301,8 @@ fun SongMenuButton(
     var open by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     if (adding) AddToPlaylistDialog(listOf(song)) { adding = false }
+    var queueing by remember { mutableStateOf(false) }
+    if (queueing) AddToQueueDialog(listOf(song)) { queueing = false }
     val pin = rememberPinner()
     Box {
         Tip("Song options") {
@@ -283,7 +316,8 @@ fun SongMenuButton(
             val isLater = later.any { it.song == song.id }
             val close = { open = false }
             MenuItem("Play next", close) { app.playback.playNext(listOf(song)) }
-            MenuItem("Add to queue", close) { app.playback.addToQueue(listOf(song)) }
+            MenuItem("Add to playing queue", close) { app.playback.addToQueue(listOf(song)) }
+            MenuItem("Add to a queue…", close) { queueing = true }
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
             MenuItem("Add to playlist…", close) { adding = true }

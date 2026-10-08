@@ -15,8 +15,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Stops playback later (docs/plans/014_sleep_timer.md): after some minutes,
- * at the end of this song, after a number of songs, or at the end of the
- * queue. A timer by the clock fades out over its last seconds and pauses on
+ * at the end of this song, after a number of songs, at the end of the
+ * queue, or after a song picked in the queue (docs/plans/020_queue_screen.md). A timer by the clock fades out over its last seconds and pauses on
  * time; the others pause where a song ends, which needs no fade.
  */
 @OptIn(UnstableApi::class)
@@ -38,6 +38,12 @@ class SleepTimer(
         ) : Mode
 
         data object EndOfQueue : Mode
+
+        /** Musicolet's "Stop after this song", for a song further down the queue. */
+        data class AfterSong(
+            val song: Long,
+            val title: String,
+        ) : Mode
     }
 
     private val _mode = MutableStateFlow<Mode?>(null)
@@ -66,6 +72,11 @@ class SleepTimer(
     fun songs(n: Int) = set(if (n <= 1) Mode.EndOfSong else Mode.Songs(n))
 
     fun endOfQueue() = set(Mode.EndOfQueue)
+
+    fun afterSong(
+        song: Long,
+        title: String,
+    ) = set(Mode.AfterSong(song, title))
 
     fun cancel() {
         fading?.cancel()
@@ -96,7 +107,11 @@ class SleepTimer(
     /** Asks the player to pause where the playing song ends, when it is the last one. */
     fun update() {
         player.pauseAtEndOfMediaItems =
-            when (_mode.value) {
+            when (val m = _mode.value) {
+                is Mode.AfterSong -> {
+                    player.currentMediaItem?.mediaId == m.song.toString()
+                }
+
                 Mode.EndOfSong -> {
                     true
                 }
@@ -120,6 +135,7 @@ class SleepTimer(
             Mode.EndOfSong -> "after this song"
             is Mode.Songs -> "after ${m.left} songs"
             Mode.EndOfQueue -> "at the end of the queue"
+            is Mode.AfterSong -> "after “${m.title}”"
         }
 
     companion object {

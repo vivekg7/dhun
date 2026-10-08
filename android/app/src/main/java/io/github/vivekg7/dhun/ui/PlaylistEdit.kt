@@ -100,10 +100,14 @@ private suspend fun note(
     text: String,
 ) = kotlinx.coroutines.withContext(Dispatchers.Main) { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
 
-/** Add [songs] to one of your playlists, or to a new one. Songs already in it are skipped. */
+/**
+ * Add [songs] to one of your playlists, or to a new one ([newName] is
+ * offered for it). Songs already in it are skipped.
+ */
 @Composable
 fun AddToPlaylistDialog(
     songs: List<Song>,
+    newName: String = "",
     onDismiss: () -> Unit,
 ) {
     val app = App.app
@@ -111,7 +115,7 @@ fun AddToPlaylistDialog(
     val playlists by app.store.playlists.collectAsState(emptyList())
     var naming by remember { mutableStateOf(false) }
     if (naming) {
-        NameDialog("New playlist", "", "Create") { name ->
+        NameDialog("New playlist", newName, "Create") { name ->
             if (name != null) savePlaylist(context, name, songs)
             onDismiss()
         }
