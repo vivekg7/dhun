@@ -40,7 +40,7 @@ The owner chose (2026-10-07):
 
 - **Categories, then screens:** Appearance, Playback, Downloads, Account and
   About. Each row on the first screen shows what is set where that is
-  short ("Dark · Teal", "10 GB · Wi-Fi only", "vivek on gargantua"), so
+  short ("Dark · Teal", "10 GB · Wi-Fi only", "alex on my-nas"), so
   most questions are answered without opening anything. Icons appear on
   this list only; inside a category, rows are text, so titles line up.
 - **A row and a dialog** for every choice. Picking a value applies it and

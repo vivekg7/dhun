@@ -1,12 +1,12 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `RELEASED` — `server-v0.1.3` running on the owner's DS1525+ since 2026-10-07
+**Status:** `RELEASED` — `server-v0.1.3` running on the owner's NAS since 2026-10-07
 **Started:** 2026-10-06 · **Revised:** 2026-10-07 (safety review before the first install)
 
 ## Problem
 
-The backend ([001](001_own_backend_in_go.md)) runs on a Synology DS1525+ next
-to Jellyfin, Immich and Vaultwarden. The `Music` folder is a collection built
+The backend ([001](001_own_backend_in_go.md)) runs on a Synology NAS next
+to the household's other self-hosted apps. The `Music` folder is a collection built
 over years and must not be put at risk: Dhun has to use it in place, be
 unable to damage it, and be reachable only by the family.
 
@@ -43,7 +43,7 @@ project folder.**
   Mac mounts over SMB), deleting the Container Manager project keeps it, and
   the music folder holds only music.
 - **Port `8585` on the home network, plain HTTP, like DSM (5001) and
-  Jellyfin (8096) on this NAS.** At home the apps connect directly; away,
+  other apps on a NAS.** At home the apps connect directly; away,
   over Tailscale to the same port. The owner's decision (2026-10-07): the
   home network is trusted. What protects the server on it is its own login
   (argon2 passwords, guessing slowed per name, device tokens) rather than
@@ -53,7 +53,7 @@ project folder.**
 
   ```sh
   tailscale serve --bg --https=8586 http://127.0.0.1:8585
-  # → https://gargantua.<tailnet>.ts.net:8586; the cookie becomes Secure
+  # → https://<nas>.<tailnet>.ts.net:8586; the cookie becomes Secure
   ```
 
 - **Hardened container.** The image is one static binary on `scratch` (no
@@ -115,8 +115,8 @@ the Mac.
    The share's ACL grants write access through the `administrators`
    group. The container runs with your user and the `users` group only, so
    it is refused (`data folder /data is not writable` in the log, and the
-   container restarts in a loop). Jellyfin's working folders on the owner's
-   NAS have plain permissions too. `ls -lnd` should show
+   container restarts in a loop). Other apps' working folders
+   have plain permissions too. `ls -lnd` should show
    `drwxr-xr-x … 1026 100`, with no `+`. (`sudo` on Synology needs full
    paths: `/usr/local/bin/docker`, `/usr/syno/bin/synoacltool`.)
 
@@ -185,8 +185,8 @@ off.
 - **Separate mounts for each top-level folder, with paths in `.env`
   (Immich's style).** More to configure, and the read-only parent mount
   already gives the protection.
-- **Mounting only `Library/` and `Playlists/`.** 122 playlist entries point
-  into `Apple Music/`, `Spotify/` and `Collection/`.
+- **Mounting only `Library/` and `Playlists/`.** Some playlist entries point
+  into other top-level folders.
 - **Publishing on `127.0.0.1` only, reached through `tailscale serve`**
   (proposed in the safety review). HTTPS everywhere and nothing on the LAN,
   but every family device would need Tailscale running even at home, unlike

@@ -78,8 +78,8 @@ class CatalogTest {
 
     @Test
     fun serverAddressGetsSchemeAndDefaultPort() {
-        assertEquals("http://gargantua:8585", serverUrl(" gargantua "))
-        assertEquals("http://192.168.1.101:8585", serverUrl("192.168.1.101:8585/"))
+        assertEquals("http://my-nas:8585", serverUrl(" my-nas "))
+        assertEquals("http://192.168.1.50:8585", serverUrl("192.168.1.50:8585/"))
         assertEquals("https://nas.example.ts.net", serverUrl("https://nas.example.ts.net"))
     }
 }

@@ -7,33 +7,29 @@ and anything undecided is under [Open questions](#open-questions).
 
 ## Context
 
-- About 6,800 songs (~53 GB, mostly MP3, M4A and Opus) that no longer fit
+- About 7,000 songs (~50 GB, mostly MP3, M4A and Opus) that no longer fit
   comfortably on the phone. Today they sit on the phone's SD card, organised
-  in folders (`Music/Hindi`, `Music/English`, `Music/Bhojpuri`, …). The full
-  collection has been copied to the NAS.
+  in folders by language. The full collection has been copied to the NAS.
 - Musicolet has been the daily player for 10+ years. No existing streaming
   client matches it, which is why this project exists. See
   [research/musicolet-feature-inventory.md](research/musicolet-feature-inventory.md)
   and [research/existing-options.md](research/existing-options.md).
-- **NAS:** Synology DS1525+ — AMD Ryzen V1500B (x86-64, 4 cores / 8 threads,
-  2.2 GHz, no integrated GPU), 8 GB DDR4 ECC (max 32 GB), 2 × 2.5 GbE. It
-  already runs **Jellyfin** (movies and TV) and **Immich**.
-- **Music on the NAS:** the SMB share `home` on the NAS (`Gargantua`),
-  folder `Media/Music` (`/Volumes/home/Media/Music` when mounted on the Mac).
-  Surveyed 2026-10-06:
+- **NAS:** a recent x86-64 Synology (4 cores, 8 GB RAM, no integrated GPU)
+  that already runs other self-hosted apps, video included.
+- **Music on the NAS:** an SMB share, folder `Media/Music`. Surveyed
+  2026-10-06:
   - `Library/<Artist>/<Album (Year)>/D-TT - Title.ext`, with a `Singles/`
     folder per artist. Each album has a `cover.jpg` and a `.lrc` lyrics file
     next to each song.
-  - `Playlists/` holds 19 `.m3u8` playlists, using paths relative to the
-    playlist file. Of their 851 entries, 729 point into `Library/`; the rest
-    point into `Apple Music/` (108), `Spotify/` (11) and `Collection/` (3).
-  - Other top-level folders: `Album`, `Apple Music`, `Collection`, `Genre`,
-    `Language`, `New`, `Source`, `Spotify`.
+  - `Playlists/` holds `.m3u8` playlists, using paths relative to the
+    playlist file. Most entries point into `Library/`; the rest point into
+    other top-level folders.
+  - Other top-level folders hold older or differently organised copies.
   - `_inbox/`, `_meta/` and `_trash/` belong to an existing curation workflow.
     It imports from downloaders into `_inbox`, deduplicates and upgrades
     files, fetches lyrics, and logs each action to `_meta/*.jsonl`.
-- Remote access is over **Tailscale**, which already works reliably for Immich.
-- **Users:** the owner and close family (spouse, children). All fully trusted.
+- Remote access is over **Tailscale**, which already works reliably for the NAS's other apps.
+- **Users:** the owner and close family, 3–4 people. All fully trusted.
 - Named **Dhun** (धुन, "tune"). Open source under **GPL-3.0**, hosted at
   GitHub `vivekg7/dhun`. Distributed through **GitHub Releases** only. The Play Store
   is considered only if other people ask for it.
@@ -119,12 +115,12 @@ and anything undecided is under [Open questions](#open-questions).
 
 ### Platforms
 
-| Platform                                                | Scope                                                                     |
-| ------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Android 12 and newer (owner's: Samsung A35, Android 16) | **Full feature set, no compromise.** Primary target.                      |
-| macOS                                                   | Minimal features are fine. **Online-only** (no offline mode).             |
-| Web                                                     | Minimal features are fine. **Online-only**; served by the backend itself. |
-| Linux                                                   | Optional.                                                                 |
+| Platform             | Scope                                                                     |
+| -------------------- | ------------------------------------------------------------------------- |
+| Android 12 and newer | **Full feature set, no compromise.** Primary target.                      |
+| macOS                | Minimal features are fine. **Online-only** (no offline mode).             |
+| Web                  | Minimal features are fine. **Online-only**; served by the backend itself. |
+| Linux                | Optional.                                                                 |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native

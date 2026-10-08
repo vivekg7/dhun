@@ -41,7 +41,7 @@ container, the project folder on the NAS; [003](003_deployment.md)).
   All user data references it, never a path.
 - A song row records its current `path`, plus `size`, `mtime` and a
   **quick hash**: SHA-256 of the size, the first 64 KB and the last 64 KB.
-  Hashing every 53 GB file on each scan would be slow on HDDs; the quick hash
+  Hashing every file (~50 GB) on each scan would be slow on HDDs; the quick hash
   identifies the same file at a new path with no meaningful collision risk at
   this scale.
 - **Changes made through Dhun** (admin moves and upgrades, after v1) update
@@ -147,7 +147,7 @@ fallback is `dhowden/tag` for tags plus our own duration parsing.
 - **Postgres:** a second container to run and back up, for no gain at this
   scale.
 - **Path as identity:** every move or upgrade would orphan play counts.
-- **Full content hash:** reading 53 GB on every scan of an HDD array, to beat a
+- **Full content hash:** reading ~50 GB on every scan of an HDD array, to beat a
   collision risk that the quick hash already makes negligible.
 - **Artist and album tables:** they duplicate what grouping already gives us.
   Revisit if we ever need per-artist metadata, such as images or bios.

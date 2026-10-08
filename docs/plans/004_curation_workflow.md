@@ -8,8 +8,7 @@
 An existing workflow maintains the collection. Its footprint on the NAS (seen
 on 2026-10-06):
 
-- `_inbox/<source>-<date>/` holds new files from downloaders (Apple Music,
-  JioSaavn, YouTube Music) and from recovery and merge runs.
+- `_inbox/<source>-<date>/` holds new files from downloaders and from recovery and merge runs.
 - `_meta/*.jsonl` is an append-only action log: per-source imports and
   rejects, `upgrades.jsonl`, `lyrics.jsonl` (lyrics lookups per file), and
   `library-merges.jsonl` (`delete` / `move` / `rmdir` entries).

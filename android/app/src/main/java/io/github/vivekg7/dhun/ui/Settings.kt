@@ -436,7 +436,7 @@ fun SignInScreen() {
             { server = it },
             Modifier.fillMaxWidth(),
             label = { Text("Server") },
-            placeholder = { Text("gargantua:8585") },
+            placeholder = { Text("my-nas:8585") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
         )
@@ -460,7 +460,7 @@ fun SignInScreen() {
 }
 
 /**
- * What people type is "gargantua" or "192.168.1.101:8585": add the scheme
+ * What people type is "my-nas" or "192.168.1.50:8585": add the scheme
  * and the default port (docs/plans/003_deployment.md) when they are missing.
  */
 fun serverUrl(input: String): String {

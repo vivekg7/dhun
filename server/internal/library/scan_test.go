@@ -70,7 +70,7 @@ func TestInitialScanReadsTagsAndSkipsNonCollectionFolders(t *testing.T) {
 	put("a.mp3", "Library/Adele/25 (2015)/1-01 - Hello.mp3")
 	put("b.m4a", "Library/A.R. Rahman/Jab Tak Hai Jaan (2012)/1-09 - Saans.m4a")
 	put("c.opus", "Collection/Motivation/1-02 - Do Not Go Gentle.opus")
-	put("a.mp3", "_inbox/jiosaavn-2026-10-05/x.mp3")             // curation inbox
+	put("a.mp3", "_inbox/downloads-2026-10-05/x.mp3")            // curation inbox
 	put("a.mp3", "_trash/dedupe-2026-10-06/y.mp3")               // curation trash
 	put("a.mp3", "Library/Adele/@eaDir/Hello.mp3/z.mp3")         // Synology thumbnails
 	put("a.mp3", "Library/Adele/.hidden/w.mp3")                  // hidden folder

@@ -41,7 +41,7 @@ are used at home or the office over Tailscale, where the server is reachable.
 | Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads run in a `dataSync` foreground service ([012](012_downloads.md)).                                                   |
 | DI           | Manual: one `AppGraph` object. Hilt is not worth it for a single-module app.                                                                                                                                                                                  |
 | Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                |
-| `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest. The owner's A35 runs Android 16.                                                                                                                                      |
+| `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest.                                                                                                                                                                       |
 
 **Multiple queues on one player.** Media3's player holds one playlist. The
 app's `QueueManager` owns all 20 queues (in Room, mirrored from the server),

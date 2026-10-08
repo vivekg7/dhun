@@ -4,7 +4,7 @@ Reference list of everything Musicolet does, so we can decide feature-by-feature
 what our app needs. Musicolet is the benchmark the Android client is measured
 against.
 
-**Source:** Musicolet **6.14.1 (build 540)**, pulled from the Samsung A35 on
+**Source:** Musicolet **6.14.1 (build 540)**, pulled from the owner's phone on
 2026-10-06 and decompiled with jadx. Features were read from the settings
 screen definition, option dialogs, layouts and the string table — not guessed
 from screenshots. Raw dumps live in the git-ignored `tmp/` folder

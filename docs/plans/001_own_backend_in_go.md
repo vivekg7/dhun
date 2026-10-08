@@ -5,7 +5,7 @@
 
 ## Problem
 
-The clients need a server on the NAS to index about 6,800 songs, stream them,
+The clients need a server on the NAS to index about 7,000 songs, stream them,
 and hold each user's queues, playlists, favorites and play counts. The
 project's core features are not supported by any existing server API:
 
@@ -29,7 +29,7 @@ have to be faked on top of an API that cannot express them — named queues
 stored as hidden playlists, positions in a side store. Every client would carry
 those workarounds, and the server could never validate them.
 
-**B. Jellyfin.** Already running on the NAS for video. Rejected: its API is
+**B. Jellyfin.** A common choice for video on a NAS. Rejected: its API is
 built for video, it is the heaviest option, it still has a single play queue,
 and tying music to it couples two unrelated upgrade cycles.
 
@@ -46,7 +46,7 @@ Language, if C:
   from or reuse, and both are GPL-3.0 like this project.
 - **Kotlin (JVM, Ktor).** Would let the server share data models with an
   Android/KMP client. Rejected: a JVM idles at roughly 150 MB or more on a NAS
-  that also runs Jellyfin and Immich, and sharing models only saves a little
+  that also runs other apps, and sharing models only saves a little
   work, because the API contract is the boundary anyway.
 - **Rust.** The lowest resource use, but slower to iterate on, and the NAS has
   no shortage of CPU for this workload.
@@ -54,8 +54,8 @@ Language, if C:
 ## Decision
 
 Write our own backend in Go. Ship it as a `linux/amd64` Docker image for
-Synology Container Manager. The DS1525+ is a Ryzen V1500B with 8 GB of RAM and
-no integrated GPU. That is fine, because we stream original files and never
+Synology Container Manager. The target NAS is a recent x86-64 Synology with no
+integrated GPU. That is fine, because we stream original files and never
 transcode.
 
 ## Plan
