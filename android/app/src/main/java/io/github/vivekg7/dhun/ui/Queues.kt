@@ -374,6 +374,12 @@ private fun QueuePicker(
     val keep = activeId.takeIf { id -> queues.any { it.id == id } } ?: shownId
     var clearing by remember { mutableStateOf(false) }
     val reorder = rememberReorder(PICKER_ROW) { from, to -> app.playback.moveQueue(from, to) }
+    // Opens on the queue playing (else the one shown), in the middle of the
+    // list, so with many queues it need not be looked for.
+    val list =
+        rememberLazyListState(
+            (queues.indexOfFirst { it.id == activeId }.takeIf { it >= 0 } ?: queues.indexOfFirst { it.id == shownId }).minus(4).coerceAtLeast(0),
+        )
     AlertDialog(
         onDismissRequest = onDismiss,
         // Wide, as Musicolet's: the names are what you choose by.
@@ -388,7 +394,7 @@ private fun QueuePicker(
         },
         text = {
             // Eight and a half rows: the half shows there are more.
-            LazyColumn(Modifier.heightIn(max = PICKER_ROW * 8.5f)) {
+            LazyColumn(Modifier.heightIn(max = PICKER_ROW * 8.5f), state = list) {
                 itemsIndexed(queues, key = { _, q -> q.id }) { i, q ->
                     Row(
                         reorder

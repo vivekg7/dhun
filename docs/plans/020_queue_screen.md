@@ -41,6 +41,8 @@ layout follows Musicolet.
   the box opens **the queue picker**: every queue by number, a radio button
   on the one shown, ▶ on the one playing, and per row a drag handle, rename
   and remove; below, **Remove all others**, which keeps the playing queue.
+  It opens scrolled to the playing queue, in the middle of its list, so
+  among twenty it need not be looked for (the owner's request, 2026-10-08).
 - Picking a queue only shows it; playback carries on. **Tapping a song of a
   queue that is not playing starts that queue from that song**, and the tab
   stays where it is. **Resume** (▶ in the second row) starts it where it
