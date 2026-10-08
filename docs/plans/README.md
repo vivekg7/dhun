@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `ACCEPTED` — no code yet; playback spike first                                          |
 | [023 — Managing family members on Android](023_users_on_android.md)               | `MERGED` — in 0.8.0 on the owner's phone                                                |
 | [022 — A choice of mini player on Android](022_mini_player_styles.md)             | `MERGED` — in 0.7.0 on the owner's phone                                                |
 | [021 — Playing audio files opened from other apps](021_open_from_other_apps.md)   | `MERGED` — in 0.7.0 on the owner's phone                                                |
@@ -100,7 +101,7 @@ wrong.
 | [010 — Special playlists and automatic views](010_special_playlists.md)           | `MERGED` — server on the NAS; Android on the owner's phone                              |
 | [009 — Resume long files on every device](009_resume_long_files.md)               | `MERGED` — server on the NAS; Android on the owner's phone                              |
 | [008 — Listening history](008_listening_history.md)                               | `MERGED` — server on the NAS; Android on the owner's phone                              |
-| [007 — Client architecture and repo layout](007_client_architecture.md)           | `IN PROGRESS` — Android under way (011)                                                 |
+| [007 — Client architecture and repo layout](007_client_architecture.md)           | `IN PROGRESS` — Android built (011); macOS replaced by 024                              |
 | [006 — API and sync](006_api_and_sync.md)                                         | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
 | [005 — Storage and library model](005_storage_and_library_model.md)               | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
 | [004 — Dhun owns every change to the collection](004_curation_workflow.md)        | `ACCEPTED` — option C; no code yet                                                      |

@@ -1,6 +1,6 @@
 # 007 — Client architecture and repo layout
 
-**Status:** `IN PROGRESS` — the Android app is being built ([011](011_android_app.md)); macOS and web not started
+**Status:** `IN PROGRESS` — Android built ([011](011_android_app.md)); macOS replaced by [024](024_macos_app.md); web not started
 **Started:** 2026-10-06
 
 ## Problem
@@ -29,6 +29,8 @@ wanted.
 
 **Online-only macOS and web** was confirmed by the owner (2026-10-06). Both
 are used at home or the office over Tailscale, where the server is reachable.
+The owner later asked for a full offline macOS app (2026-10-08); option B was
+revisited in [024](024_macos_app.md) and still stands.
 
 ## Android
 
@@ -87,10 +89,11 @@ parser of our own. Synced lines are highlighted from the player's position.
 
 ## macOS
 
-SwiftUI, with AVFoundation (`AVQueuePlayer`) for playback and `URLSession` for
-the API. A media-key and Now Playing integration through
-`MPRemoteCommandCenter`. Online-only, no database: it fetches the catalogue
-into memory at launch (about 2 MB). No third-party dependencies.
+**Replaced by [024](024_macos_app.md)** (2026-10-08). The owner wants the
+Mac at the Android app's level, offline included. The macOS app is
+therefore no longer the "online-only, no database" client described here,
+and it uses neither `AVQueuePlayer` nor an Xcode project. Option B (no
+shared core) still stands, for the reasons in 024.
 
 ## Web
 
@@ -109,7 +112,7 @@ and a form need no large screen, and it should not wait on this client.
 server/          Go module: the backend
 server/web/      the web client (inside the Go module, so `embed` can reach it)
 android/         Gradle project
-macos/           Xcode project
+macos/           Swift package (024)
 api/openapi.yaml the contract
 deploy/          docker-compose.yml, Dockerfile
 docs/

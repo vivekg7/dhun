@@ -116,12 +116,12 @@ and anything undecided is under [Open questions](#open-questions).
 
 ### Platforms
 
-| Platform             | Scope                                                                     |
-| -------------------- | ------------------------------------------------------------------------- |
-| Android 12 and newer | **Full feature set, no compromise.** Primary target.                      |
-| macOS                | Minimal features are fine. **Online-only** (no offline mode).             |
-| Web                  | Minimal features are fine. **Online-only**; served by the backend itself. |
-| Linux                | Optional.                                                                 |
+| Platform             | Scope                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| Android 12 and newer | **Full feature set, no compromise.** Primary target.                                           |
+| macOS 14 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)). |
+| Web                  | Minimal features are fine. **Online-only**; served by the backend itself.                      |
+| Linux                | Optional.                                                                                      |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native
@@ -293,7 +293,14 @@ Proposed. Awaiting the owner's confirmation.
   the same queue, song and place (owner, 2026-10-07;
   [plan 017](plans/017_handoff.md)).
 
-**macOS and Web (minimal)**
+**macOS** — everything the Android app has, offline included, in a Mac
+window with a sidebar (owner, 2026-10-08; it was "minimal, online-only"
+until then). Plus a menu bar control and a floating mini window, and
+Open With from Finder. No Mac-local library: the Mac plays NAS songs. A
+plan for an Android feature also says what the Mac does —
+[plan 024](plans/024_macos_app.md).
+
+**Web (minimal)**
 
 - Sign in, browse, search, play, switch between queues, and play playlists.
 - Hand-off (resume), so a session started on the phone continues here, and
