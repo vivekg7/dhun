@@ -3,6 +3,7 @@ package io.github.vivekg7.dhun.data
 import android.content.Context
 import io.github.vivekg7.dhun.Prefs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -49,12 +50,28 @@ class Api(
                 if (token.isEmpty() || !req.url.toString().startsWith(prefs.server)) {
                     chain.proceed(req)
                 } else {
-                    chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build()).also { res ->
-                        // The server's release, for Settings; sent only to a signed-in device.
-                        res.header("Dhun-Version")?.let { if (it != prefs.serverVersion) prefs.serverVersion = it }
-                    }
+                    val res =
+                        try {
+                            chain.proceed(req.newBuilder().header("Authorization", "Bearer $token").build())
+                        } catch (e: IOException) {
+                            if (!chain.call().isCanceled()) reachable.value = false
+                            throw e
+                        }
+                    reachable.value = true
+                    // The server's release, for Settings; sent only to a signed-in device.
+                    res.header("Dhun-Version")?.let { if (it != prefs.serverVersion) prefs.serverVersion = it }
+                    res
                 }
             }.build()
+
+    /**
+     * False while the server cannot be reached: the last request to it failed
+     * and none has worked since, or the phone has no network ([Sync]). Songs
+     * not on the phone are dimmed then (docs/plans/012_downloads.md). Every
+     * request counts, a song's bytes included, so one that works brings the
+     * app back at once (docs/plans/019_networking_and_caching.md).
+     */
+    val reachable = MutableStateFlow(true)
 
     fun streamUrl(song: Long) = "${prefs.server}/api/v1/stream/$song"
 

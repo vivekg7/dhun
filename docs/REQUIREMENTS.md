@@ -163,6 +163,15 @@ user (example: Downloads 10 GB, Cache 3 GB).
   is played, pre-fetch the next songs of the current queue, pre-fetch the rest
   of the current queue, and predict from listening history.
 - **Downloads are in v1. Smart cache comes later.**
+- The cache is **3 GB by default**. It keeps every song played, plus the
+  next two songs of the queue on any network and the next ten on Wi-Fi. Full, it drops the songs played longest ago, never one in the
+  queue ahead (owner, 2026-10-07; [plan 019](plans/019_networking_and_caching.md)).
+- **A network drop never skips a song.** The player says it is waiting
+  for the network, keeps trying, and carries on from the same place when
+  the network is back (owner, 2026-10-07).
+- **Every cover of the library is kept on the phone**, fetched in the
+  background on Wi-Fi, so browsing never waits for art and covers show
+  offline (owner, 2026-10-07).
 - A downloaded playlist, album, folder, artist, genre, Favorites or Listen
   Later **stays in step** with the server: songs added later are fetched,
   songs removed are deleted unless something else downloaded has them. The
@@ -172,8 +181,8 @@ user (example: Downloads 10 GB, Cache 3 GB).
   data. At the storage limit (10 GB by default) they **stop and say so**;
   nothing downloaded is deleted to make room.
 - Downloaded songs carry a mark, and a **Downloads** card sits in the
-  Playlists tab. **Offline**, songs that are not downloaded are dimmed and
-  the player skips them.
+  Playlists tab. **Offline**, songs that are not downloaded are dimmed; the
+  player waits for the network rather than skip them (see the cache above).
 
 ### Delivery
 

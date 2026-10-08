@@ -339,6 +339,9 @@ private fun MiniPlayer(onOpen: () -> Unit) {
     val app = App.app
     val song by app.playback.current.collectAsState()
     val playing by app.playback.playing.collectAsState()
+    val waiting by app.playback.waiting.collectAsState()
+    // Waiting counts as playing: the button pauses, rather than offering a play that is already wanted.
+    val going = playing || waiting
     val s = song ?: return
     val c = MaterialTheme.colorScheme
     var progress by remember { mutableFloatStateOf(0f) }
@@ -364,11 +367,17 @@ private fun MiniPlayer(onOpen: () -> Unit) {
             Art(s, 40.dp, RoundedCornerShape(6.dp))
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(s.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(s.displayArtist, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (waiting) WAITING else s.displayArtist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (waiting) c.primary else c.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Tip(if (playing) "Pause" else "Play") {
-                IconButton({ if (playing) app.playback.player.pause() else app.playback.player.play() }) {
-                    Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(28.dp))
+            Tip(if (going) "Pause" else "Play") {
+                IconButton({ if (going) app.playback.player.pause() else app.playback.player.play() }) {
+                    Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
                 }
             }
             Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }

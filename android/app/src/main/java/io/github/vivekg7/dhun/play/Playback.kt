@@ -12,10 +12,16 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Listen
@@ -40,8 +46,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNull
+import java.io.IOException
 import java.util.TimeZone
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /**
  * The player and the queues around it (docs/plans/007_client_architecture.md).
@@ -66,7 +74,7 @@ class Playback(
     val player: ExoPlayer =
         ExoPlayer
             .Builder(app)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource()))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource()).setLoadErrorHandlingPolicy(WaitForNetwork))
             // Pause for calls and other apps, and when headphones are unplugged.
             .setAudioAttributes(
                 AudioAttributes
@@ -85,7 +93,13 @@ class Playback(
      * means a download that finishes while the queue is loaded is used too.
      */
     private fun dataSource(): ResolvingDataSource.Factory {
-        val stream = OkHttpDataSource.Factory(app.api.http).setCacheControl(Api.NO_STORE)
+        // A stalled stream is retried after 10 s, not OkHttp's 30: the next try may well work.
+        val http =
+            app.api.http
+                .newBuilder()
+                .readTimeout(10, TimeUnit.SECONDS)
+                .build()
+        val stream = OkHttpDataSource.Factory(http).setCacheControl(Api.NO_STORE)
         return ResolvingDataSource.Factory(DefaultDataSource.Factory(app, stream)) { spec ->
             val id = spec.uri.lastPathSegment?.toLongOrNull()
             val file = if (id != null && spec.uri.toString() == app.api.streamUrl(id)) app.downloads.file(id) else null
@@ -106,6 +120,18 @@ class Playback(
     /** The current song, or null with nothing loaded. */
     val current = MutableStateFlow<Song?>(null)
     val playing = MutableStateFlow(false)
+
+    /**
+     * Held up because the song cannot be fetched: the player keeps trying
+     * (docs/plans/019_networking_and_caching.md), and Now playing says so.
+     */
+    val waiting = MutableStateFlow(false)
+
+    /** A load failed since the player last had what it needed. */
+    private var loadFailed = false
+
+    /** Songs in a row that could not be played at all, so a queue of them is not tried forever. */
+    private var failures = 0
 
     /** The sleep timer (docs/plans/014_sleep_timer.md). */
     val sleep = SleepTimer(player, scope)
@@ -155,6 +181,20 @@ class Playback(
 
     init {
         player.addListener(Events())
+        player.addAnalyticsListener(
+            object : AnalyticsListener {
+                override fun onLoadError(
+                    eventTime: AnalyticsListener.EventTime,
+                    loadEventInfo: LoadEventInfo,
+                    mediaLoadData: MediaLoadData,
+                    error: IOException,
+                    wasCanceled: Boolean,
+                ) {
+                    loadFailed = true
+                    updateWaiting()
+                }
+            },
+        )
         scope.launch {
             tempo.collect {
                 // Time heard so far counts at the old speed.
@@ -625,6 +665,7 @@ class Playback(
     private inner class Events : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             playing.value = isPlaying
+            if (isPlaying) failures = 0
             val o = open
             if (o != null) {
                 if (isPlaying) {
@@ -711,24 +752,23 @@ class Playback(
         }
 
         /**
-         * A song that could not be fetched (offline, the NAS asleep): the
-         * server is marked unreachable, so the lists dim what is not
-         * downloaded, and the player goes on to the next song that is.
+         * A network error never gets here: [WaitForNetwork] tries again until
+         * it works. What does is final (the server no longer has the song, a
+         * download's file is gone), so the player goes on to the next song.
          */
         override fun onPlayerError(error: PlaybackException) {
-            if (error.errorCode !in NETWORK_ERRORS) return
-            app.sync.reachable.value = false
-            app.sync.soon()
-            val t = player.currentTimeline
-            var i = player.currentMediaItemIndex
-            while (true) {
-                i = t.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-                if (i == C.INDEX_UNSET) return
-                if (app.downloads.file(player.getMediaItemAt(i).mediaId.toLong()) != null) break
-            }
-            player.seekTo(i, 0)
+            if (error.errorCode !in IO_ERRORS || !player.hasNextMediaItem() || ++failures >= player.mediaItemCount) return
+            player.seekToNextMediaItem()
             player.prepare()
             player.play()
+        }
+
+        override fun onPlayWhenReadyChanged(
+            playWhenReady: Boolean,
+            reason: Int,
+        ) {
+            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.onPausedAtEnd()
+            updateWaiting()
         }
 
         // The queue changed, or its order: is the playing song still the last one?
@@ -739,14 +779,9 @@ class Playback(
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = sleep.update()
 
-        override fun onPlayWhenReadyChanged(
-            playWhenReady: Boolean,
-            reason: Int,
-        ) {
-            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.onPausedAtEnd()
-        }
-
         override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY) loadFailed = false
+            updateWaiting()
             if (state != Player.STATE_ENDED) return
             val s = current.value
             scope.launch {
@@ -756,6 +791,10 @@ class Playback(
         }
     }
 
+    private fun updateWaiting() {
+        waiting.value = loadFailed && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING
+    }
+
     companion object {
         const val MAX_QUEUES = 20
 
@@ -763,7 +802,7 @@ class Playback(
         private const val END_MARGIN_MS = 5_000L
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
-        private val NETWORK_ERRORS = 2000..2999
+        private val IO_ERRORS = 2000..2999
 
         fun repeatMode(r: String) =
             when (r) {
@@ -772,4 +811,22 @@ class Playback(
                 else -> Player.REPEAT_MODE_OFF
             }
     }
+}
+
+/**
+ * Always wait (docs/plans/019_networking_and_caching.md): Media3 gives up on
+ * a song after four failed tries in about six seconds; this tries again
+ * without limit, every few seconds at most, so a tunnel or a weak signal
+ * holds the song up instead of losing it. An answer that cannot change by
+ * trying again (no such song, not signed in) still fails at once.
+ */
+@OptIn(UnstableApi::class)
+private object WaitForNetwork : DefaultLoadErrorHandlingPolicy() {
+    override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+        val code = (info.exception as? HttpDataSource.InvalidResponseCodeException)?.responseCode
+        if (code != null && code in 400..499 && code != 408 && code != 429) return C.TIME_UNSET
+        return super.getRetryDelayMsFor(info)
+    }
+
+    override fun getMinimumLoadableRetryCount(dataType: Int) = Int.MAX_VALUE
 }

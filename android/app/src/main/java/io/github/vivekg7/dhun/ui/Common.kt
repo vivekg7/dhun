@@ -208,7 +208,7 @@ fun SongRow(
     val c = MaterialTheme.colorScheme
     val app = App.app
     val files by app.downloads.files.collectAsState()
-    val reachable by app.sync.reachable.collectAsState()
+    val reachable by app.api.reachable.collectAsState()
     val downloaded = song.id in files
     Row(
         Modifier

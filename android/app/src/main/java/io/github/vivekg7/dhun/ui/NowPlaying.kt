@@ -56,6 +56,9 @@ fun NowPlayingScreen(nav: Nav) {
     val pb = app.playback
     val song by pb.current.collectAsState()
     val playing by pb.playing.collectAsState()
+    val waiting by pb.waiting.collectAsState()
+    // Waiting counts as playing: the button pauses, rather than offering a play that is already wanted.
+    val going = playing || waiting
     val queue by pb.active.collectAsState()
     val queues by pb.queues.collectAsState()
     val offer by pb.offerResume.collectAsState()
@@ -111,9 +114,9 @@ fun NowPlayingScreen(nav: Nav) {
             Text(s.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val facts = listOf(s.displayArtist, s.album, s.year.takeIf { it > 0 }?.toString() ?: "").filter { it.isNotEmpty() }
             Text(
-                facts.joinToString(" · "),
+                if (waiting) WAITING else facts.joinToString(" · "),
                 style = MaterialTheme.typography.bodyLarge,
-                color = c.onSurfaceVariant,
+                color = if (waiting) c.primary else c.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -198,15 +201,15 @@ fun NowPlayingScreen(nav: Nav) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Tip("Previous") { IconButton({ pb.player.seekToPrevious() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
-            Tip(if (playing) "Pause" else "Play") {
+            Tip(if (going) "Pause" else "Play") {
                 Box(
                     Modifier
                         .size(76.dp)
                         .clip(CircleShape)
                         .background(c.primary)
-                        .clickable { if (playing) pb.player.pause() else pb.player.play() },
+                        .clickable { if (going) pb.player.pause() else pb.player.play() },
                     contentAlignment = Alignment.Center,
-                ) { Icon(if (playing) Icons.Pause else Icons.Play, if (playing) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
+                ) { Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
             }
             Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
         }
@@ -299,3 +302,6 @@ private fun Seek(
         drawCircle(c.primary, 6.dp.toPx(), Offset(x, y))
     }
 }
+
+/** In place of the artist while the song cannot be fetched (docs/plans/019_networking_and_caching.md). */
+const val WAITING = "Waiting for the network…"

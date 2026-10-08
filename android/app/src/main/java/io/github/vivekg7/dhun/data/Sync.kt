@@ -2,6 +2,7 @@ package io.github.vivekg7.dhun.data
 
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -30,13 +31,6 @@ class Sync(
     /** The last error, for the menu; null when the last sync worked. */
     val error: StateFlow<String?> = _error
 
-    /**
-     * False while the server cannot be reached: the last sync failed to
-     * connect, or there is no network. Songs not downloaded are dimmed then
-     * (docs/plans/012_downloads.md).
-     */
-    val reachable = MutableStateFlow(true)
-
     /** Another device's playback, for hand-off (plan 002). */
     val nowPlaying = MutableStateFlow<NowPlaying?>(null)
 
@@ -52,8 +46,13 @@ class Sync(
                     app.downloads.poke()
                 }
 
+                // A hand-over from Wi-Fi to mobile data loses one network as
+                // the next arrives: offline only if none has taken its place.
                 override fun onLost(network: Network) {
-                    reachable.value = false
+                    app.scope.launch {
+                        delay(3_000)
+                        if (!hasNetwork()) app.api.reachable.value = false
+                    }
                 }
             },
         )
@@ -93,11 +92,8 @@ class Sync(
                 if (pushedPlaylists) pullLibrary()
                 pullPlays()
                 _error.value = null
-                reachable.value = true
                 true
             } catch (e: ApiException) {
-                // The server answered, so it is reachable.
-                reachable.value = true
                 // A revoked token (password changed, device removed): sign in again.
                 if (e.code == 401) app.signOut()
                 _error.value = e.message
@@ -105,7 +101,6 @@ class Sync(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: java.io.IOException) {
-                reachable.value = false
                 _error.value = e.message ?: e.toString()
                 false
             } catch (e: Exception) {
@@ -243,6 +238,11 @@ class Sync(
         }
     }
 
+    private fun hasNetwork(): Boolean {
+        val cm = app.getSystemService(ConnectivityManager::class.java)
+        return cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
+
     private suspend fun pullPlays() {
         val plays = app.api.plays().plays
         dao.clearPlayStats()
@@ -250,5 +250,7 @@ class Sync(
     }
 }
 
-private const val RETRY_MIN = 15_000L
-private const val RETRY_MAX = 15 * 60_000L
+// A blip is over in seconds; the 15 minutes this once grew to left the app
+// offline long after the network was back (docs/plans/019_networking_and_caching.md).
+private const val RETRY_MIN = 5_000L
+private const val RETRY_MAX = 2 * 60_000L

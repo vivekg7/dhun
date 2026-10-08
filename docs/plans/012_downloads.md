@@ -97,10 +97,11 @@ queue is loaded is used the next time that song plays.
 - A **Downloads card** in the Playlists tab, under Favorites and Listen
   Later: the space used, what is happening (downloading, waiting for Wi-Fi,
   full), the pins, and every downloaded song.
-- **Offline**, songs that are not downloaded are **dimmed**, and the player
-  skips them: when a song fails to load for lack of a network, it moves to
-  the next downloaded one. "Offline" means the last sync could not reach
-  the server, or there is no network at all.
+- **Offline**, songs that are not downloaded are **dimmed**. "Offline"
+  means the last request could not reach the server, or there is no
+  network at all. Until 0.4.0 the player also skipped them, moving to the
+  next downloaded song when one failed to load; since
+  [019](019_networking_and_caching.md) it waits for the network instead.
 
 ### On the way: the stream stays out of the art cache
 
