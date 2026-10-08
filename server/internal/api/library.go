@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -219,14 +220,7 @@ func (s *Server) art(w http.ResponseWriter, r *http.Request, _ session) {
 		return
 	}
 
-	cacheDir := filepath.Join(s.DataDir, "cache", "art")
-	cache := filepath.Join(cacheDir, fmt.Sprintf("%s-%d-%d", id, version, size))
-	if data, err := os.ReadFile(cache); err == nil {
-		w.Header().Set("Content-Type", library.SniffImage(data))
-		w.Write(data)
-		return
-	}
-	data, mime, err := library.Art(s.Root, f, size)
+	data, mime, err := s.scaledArt(id, f, version, size)
 	if errors.Is(err, library.ErrNone) {
 		s.fail(w, r, errNotFound("art"))
 		return
@@ -235,9 +229,96 @@ func (s *Server) art(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, err)
 		return
 	}
-	cacheArt(cacheDir, cache, id, version, data)
 	w.Header().Set("Content-Type", mime)
 	w.Write(data)
+}
+
+// scaledArt returns a song's cover at size from the disk cache, making it
+// on a miss.
+func (s *Server) scaledArt(id string, f library.SongFile, version int64, size int) ([]byte, string, error) {
+	cacheDir := filepath.Join(s.DataDir, "cache", "art")
+	cache := filepath.Join(cacheDir, fmt.Sprintf("%s-%d-%d", id, version, size))
+	if data, err := os.ReadFile(cache); err == nil {
+		return data, library.SniffImage(data), nil
+	}
+	data, mime, err := library.Art(s.Root, f, size)
+	if err != nil {
+		return nil, "", err
+	}
+	cacheArt(cacheDir, cache, id, version, data)
+	return data, mime, nil
+}
+
+// thumbSize is a list row's cover: about a row's width on a phone.
+const thumbSize = 128
+
+// maxThumbs keeps one request short: the first time, each thumbnail may
+// mean decoding a large cover on the NAS.
+const maxThumbs = 50
+
+// thumbs returns small covers by art key, so a client can keep one for
+// every cover in the library and list rows never wait for art
+// (docs/plans/019_networking_and_caching.md). A key with nothing to show
+// maps to "", so the client stops asking; one that failed for another
+// reason is left out, to be asked for again.
+func (s *Server) thumbs(w http.ResponseWriter, r *http.Request, _ session) {
+	var req struct {
+		Keys []string `json:"keys"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if len(req.Keys) == 0 || len(req.Keys) > maxThumbs {
+		s.fail(w, r, errBadRequest(fmt.Sprintf("send 1 to %d keys", maxThumbs)))
+		return
+	}
+	args := make([]any, len(req.Keys))
+	out := make(map[string]string, len(req.Keys))
+	for i, k := range req.Keys {
+		args[i] = k
+		out[k] = ""
+	}
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT art, id, path, embedded_art, embedded_lyrics, folder_art, lrc, version
+		FROM songs WHERE missing_since IS NULL AND art IN (?`+strings.Repeat(", ?", len(args)-1)+`) ORDER BY id`, args...)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	type song struct {
+		id      int64
+		f       library.SongFile
+		version int64
+	}
+	found := map[string]song{}
+	for rows.Next() {
+		var key string
+		var x song
+		if err := rows.Scan(&key, &x.id, &x.f.Path, &x.f.EmbeddedArt, &x.f.EmbeddedLyrics, &x.f.FolderArt, &x.f.Lrc, &x.version); err != nil {
+			rows.Close()
+			s.fail(w, r, err)
+			return
+		}
+		if _, ok := found[key]; !ok {
+			found[key] = x // any song showing the cover will do
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for key, x := range found {
+		data, _, err := s.scaledArt(strconv.FormatInt(x.id, 10), x.f, x.version, thumbSize)
+		switch {
+		case err == nil:
+			out[key] = base64.StdEncoding.EncodeToString(data)
+		case !errors.Is(err, library.ErrNone):
+			s.Log.Warn("thumbnail", "song", x.id, "err", err)
+			delete(out, key)
+		}
+	}
+	writeJSON(w, r, map[string]any{"thumbs": out})
 }
 
 // artSize rounds a requested size up to one of a few, so the cache holds at

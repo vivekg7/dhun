@@ -188,6 +188,41 @@ paths:
         "304": { description: Not modified }
         "404": { $ref: "#/components/responses/Error" }
 
+  /api/v1/thumbs:
+    post:
+      summary: Small covers by art key
+      description: |
+        128 px covers (JPEG, longest side), base64, for the art keys a client
+        does not have yet: it keeps one for every cover in the library, so
+        list rows never wait for art (docs/plans/019_networking_and_caching.md).
+        A key with nothing to show maps to "", so the client stops asking;
+        one that failed for another reason is left out, to be asked again.
+        At most 50 keys a request: the first time, each may mean decoding a
+        large cover.
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keys]
+              properties:
+                keys:
+                  { type: array, items: { type: string }, minItems: 1, maxItems: 50 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thumbs:
+                    type: object
+                    additionalProperties: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+
   /api/v1/lyrics/{id}:
     get:
       summary: A song's lyrics, as stored

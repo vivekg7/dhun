@@ -53,6 +53,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/stream/{id}", s.media(s.stream)},
 		{"GET /api/v1/art/{id}", s.media(s.art)},
 		{"GET /api/v1/lyrics/{id}", s.media(s.lyrics)},
+		{"POST /api/v1/thumbs", s.authed(s.thumbs)},
 
 		{"GET /api/v1/sync", s.authed(s.pullSync)},
 		{"POST /api/v1/sync", s.authed(s.pushSync)},

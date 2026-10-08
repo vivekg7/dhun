@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"hash/crc32"
@@ -420,4 +421,44 @@ func TestVersionHeaderOnlyForSignedInClients(t *testing.T) {
 	if v := e.do("GET", "/api/v1/me", "", nil, 401, nil).Header.Get("Dhun-Version"); v != "" {
 		t.Errorf("signed out: Dhun-Version = %q, want none", v)
 	}
+}
+
+// Thumbnails come by art key: one per cover however many songs show it, ""
+// for a key with nothing to show (so the app stops asking), and a bounded
+// batch, since each may mean decoding a large cover.
+func TestThumbsByArtKey(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", false)
+	e.file("Library/A/1.m4a", fixture(t, "b.m4a"))
+	e.file("Library/A/2.m4a", fixture(t, "b.m4a"))
+	e.file("Library/B/3.m4a", fixture(t, "b.m4a"))
+	var buf bytes.Buffer
+	png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1000, 800)))
+	e.file("Library/A/cover.png", buf.Bytes())
+	e.scan()
+	tok := e.login("vivek")
+
+	var key string
+	e.s.DB.QueryRow(`SELECT art FROM songs WHERE path = 'Library/A/1.m4a'`).Scan(&key)
+	var out struct {
+		Thumbs map[string]string `json:"thumbs"`
+	}
+	e.do("POST", "/api/v1/thumbs", tok, map[string]any{"keys": []string{key, "0123456789abcdef"}}, 200, &out)
+	if len(out.Thumbs) != 2 || out.Thumbs["0123456789abcdef"] != "" {
+		t.Fatalf("thumbs = %v", out.Thumbs)
+	}
+	data, err := base64.StdEncoding.DecodeString(out.Thumbs[key])
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := img.Bounds(); b.Dx() != 128 || b.Dy() != 102 {
+		t.Errorf("thumbnail is %dx%d, want 128x102", b.Dx(), b.Dy())
+	}
+
+	e.do("POST", "/api/v1/thumbs", tok, map[string]any{"keys": []string{}}, 400, nil)
+	e.do("POST", "/api/v1/thumbs", tok, map[string]any{"keys": make([]string, 51)}, 400, nil)
 }
