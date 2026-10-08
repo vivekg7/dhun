@@ -8,9 +8,10 @@
     <group
         android:translateX="-35"
         android:translateY="-29">
+        <clip-path android:pathData="M0,0 H108 V45.05 H0 Z M0,49.55 H108 V58.45 H0 Z M0,62.95 H108 V108 H0 Z" />
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M44,34 L56.88,42.05 L44,42.05 Z M44,49.55 L68.88,49.55 L76,54 L68.88,58.45 L44,58.45 Z M44,65.95 L56.88,65.95 L44,74 Z"
+            android:pathData="M44,34 L76,54 L44,74 Z"
             android:strokeColor="#FFFFFF"
             android:strokeLineJoin="round"
             android:strokeWidth="6" />

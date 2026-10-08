@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Dhun's mark: a play triangle cut into three slices, three stacked queues
-  that read as one play button (docs/plans/011_android_app.md). Each slice
-  is filled and stroked with a round join, which rounds its corners and
-  leaves the 4.5-unit gaps between them.
+  that read as one play button (docs/plans/011_android_app.md). As in the
+  design, the triangle is filled and stroked with a round join, which rounds
+  its three corners, and two straight 4.5-unit gaps are clipped out of it.
+  Clipped rather than painted over in the background colour, so the gaps
+  stay gaps in the themed icon and the notification glyph.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M44,34 L56.88,42.05 L44,42.05 Z M44,49.55 L68.88,49.55 L76,54 L68.88,58.45 L44,58.45 Z M44,65.95 L56.88,65.95 L44,74 Z"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineJoin="round"
-        android:strokeWidth="6" />
+    <group>
+        <clip-path android:pathData="M0,0 H108 V45.05 H0 Z M0,49.55 H108 V58.45 H0 Z M0,62.95 H108 V108 H0 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M44,34 L76,54 L44,74 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="6" />
+    </group>
 </vector>
