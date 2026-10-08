@@ -46,6 +46,8 @@ public final class Engine: @unchecked Sendable {
     private var finished = false
     private var endSample: Int64 = 0
     private var reading: Bytes?
+    /// The node's last known place: a paused node has no player time.
+    private var lastHeard: Int64 = 0
 
     // Owned by `queue`.
     private var feeding: Segment?
@@ -137,6 +139,7 @@ public final class Engine: @unchecked Sendable {
             lock.withLock {
                 segments = []
                 reading = nil
+                lastHeard = 0
             }
         }
     }
@@ -166,6 +169,7 @@ public final class Engine: @unchecked Sendable {
         lock.withLock {
             segments = [s]
             finished = false
+            lastHeard = 0
         }
         feeding = s
         scheduled = 0
@@ -175,8 +179,10 @@ public final class Engine: @unchecked Sendable {
 
     /// Samples the node has played since the last play(); call under `lock`.
     private func heard() -> Int64 {
-        guard let t = node.lastRenderTime, let p = node.playerTime(forNodeTime: t) else { return 0 }
-        return max(0, p.sampleTime)
+        if let t = node.lastRenderTime, let p = node.playerTime(forNodeTime: t) {
+            lastHeard = max(0, p.sampleTime)
+        }
+        return lastHeard
     }
 
     /// Drops segments the node has played past; call under `lock`.

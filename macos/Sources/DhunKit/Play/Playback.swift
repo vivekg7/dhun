@@ -538,6 +538,9 @@ public final class Playback {
         if start != nil { offerResume = nil }
         if start == nil { start = startPosition(song) }
         if start == nil { start = song.id == q.currentSong ? q.positionMs : 0 }
+        // Saved at the very end (a sleep timer stopped it there): start the song over,
+        // as Media3 does on Play, rather than finishing it again at once.
+        if song.durationMs > 0, start! >= song.durationMs - 1000 { start = 0 }
         items = songs.map(\.id)
         rebuildOrder(keepingShuffle: false, shuffle: q.shuffle)
         app.store.putQueue(q)
