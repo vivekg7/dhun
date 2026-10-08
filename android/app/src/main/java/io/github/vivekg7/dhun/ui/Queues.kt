@@ -41,10 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,7 @@ import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import io.github.vivekg7.dhun.play.SleepTimer
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -95,6 +99,23 @@ fun QueuesScreen(nav: Nav) {
     val list = rememberLazyListState()
 
     var query by rememberSaveable(shown.id) { mutableStateOf("") }
+    val rowPx = with(LocalDensity.current) { 64.dp.roundToPx() }
+    val focus = LocalFocusManager.current
+
+    /**
+     * Back to the current song from anywhere in a long queue (Musicolet's
+     * tap on the counter): the search is cleared, since the song may not
+     * be among what it shows, and the song lands in the middle of the list.
+     */
+    val toCurrent: () -> Unit = {
+        query = ""
+        focus.clearFocus()
+        scope.launch {
+            snapshotFlow { list.layoutInfo.totalItemsCount }.first { it == songs.size }
+            val visible = list.layoutInfo.viewportSize.height / rowPx
+            list.animateScrollToItem((index - visible / 2).coerceAtLeast(0))
+        }
+    }
     val rows =
         remember(songs, query) {
             val q = query.trim()
@@ -160,7 +181,7 @@ fun QueuesScreen(nav: Nav) {
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = songs.isNotEmpty()) { scope.launch { list.animateScrollToItem((index - 2).coerceAtLeast(0)) } },
+                        .clickable(enabled = songs.isNotEmpty(), onClickLabel = "Scroll to the current song", onClick = toCurrent),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {

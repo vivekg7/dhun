@@ -57,10 +57,14 @@ first**, which renumbers every queue on each switch.
 
 - A second row, as Musicolet's: **Play/Pause** (or **Resume** for a queue
   not playing), **Sort**, where the queue is (**"4 / 6"** over "9:57 left of
-  19:19"; a tap scrolls back to the current song), **Save as playlist**
+  19:19"), **Save as playlist**
   (adds to an existing playlist or makes one, named after the queue) and a
   menu with **Select multiple** and **Rename**. Shuffle left this row: it is
   on Now playing, as in Musicolet.
+- **Tapping "4 / 6" brings the current song back**, from anywhere in a
+  queue of a thousand songs, to the middle of the list, as in Musicolet. It
+  clears the search first: the current song may not be among the matches,
+  and the positions shown are then the queue's again.
 - **The current song is outlined**: in the accent in the playing queue; in
   grey and italics in another queue, where it marks where that queue will
   resume. Musicolet does the same; the old filled bar looked like a
