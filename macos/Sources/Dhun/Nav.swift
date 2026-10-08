@@ -102,6 +102,8 @@ final class Nav {
     var section: Section? = .albums
     var path: [Route] = []
     var search = ""
+    /// Bumped by Find (⌘F): the window focuses its search field.
+    var findRequests = 0
     var inspector = false
     var inspectorTab = InspectorTab.queue
 

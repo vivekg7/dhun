@@ -20,6 +20,7 @@ struct Root: View {
 struct MainView: View {
     @Environment(AppModel.self) private var app
     @Environment(Nav.self) private var nav
+    @FocusState private var searching: Bool
 
     var body: some View {
         @Bindable var nav = nav
@@ -34,6 +35,8 @@ struct MainView: View {
                 }
             }
             .searchable(text: $nav.search, placement: .toolbar, prompt: "Title, album or artist")
+            .searchFocused($searching)
+            .onChange(of: nav.findRequests) { searching = true }
             .inspector(isPresented: $nav.inspector) {
                 Inspector()
                     .inspectorColumnWidth(min: 260, ideal: 320, max: 460)

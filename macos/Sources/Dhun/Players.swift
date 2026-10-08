@@ -271,6 +271,12 @@ struct Commands: SwiftUI.Commands {
             }
             .keyboardShortcut("l", modifiers: [.command, .option])
         }
+        CommandGroup(after: .textEditing) {
+            Button("Find") {
+                nav.findRequests += 1
+            }
+            .keyboardShortcut("f", modifiers: .command)
+        }
         CommandGroup(after: .newItem) {
             Button("Sync Now") { Task { await app.sync.now() } }.keyboardShortcut("r", modifiers: .command)
         }

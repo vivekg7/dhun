@@ -69,6 +69,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { app.refresh() }
         }
         app.refresh()
+        watchKeys()
+    }
+
+    /// Space plays or pauses and ⌘← ⌘→ skip wherever the focus is, as in
+    /// Music: a list or the sidebar would otherwise take Space for itself.
+    /// While typing they stay the text's own keys, and a file opened from
+    /// Finder keeps Space for its own player.
+    private func watchKeys() {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [app] e in
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let w = NSApp.keyWindow, w.attachedSheet == nil, NSApp.modalWindow == nil,
+                    !(w.delegate is FilePlayerWindow)
+                else { return false }
+                let typing = w.firstResponder is NSText
+                let mods = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                    .subtracting([.numericPad, .function])
+                switch (e.keyCode, mods) {
+                case (49, []) where !typing:
+                    app.playback.toggle()
+                    return true
+                case (123, .command) where typing, (124, .command) where typing:
+                    // Before the Controls menu sees them: the start or end of the line.
+                    w.firstResponder?.keyDown(with: e)
+                    return true
+                default:
+                    return false
+                }
+            }
+            return handled ? nil : e
+        }
     }
 
     func applicationDidBecomeActive(_ n: Notification) { app.refresh() }
