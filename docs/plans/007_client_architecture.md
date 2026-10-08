@@ -98,9 +98,10 @@ Plain HTML, CSS and JavaScript ES modules: no framework and no build step.
 The files are **embedded in the Go binary** (`embed`) and served by the
 backend from the same origin, so the cookie auth works and there is nothing
 extra to deploy. The admin panel lives here, where a large screen suits
-reviewing an inbox. Its first screen, **Users**, ships in v1, because family
-members are added there; the curation screens
-([004](004_curation_workflow.md)) follow after v1.
+reviewing an inbox; its curation screens ([004](004_curation_workflow.md))
+follow after v1. Its first screen was to be **Users**, in v1. That moved to
+the Android app (2026-10-08, [023](023_users_on_android.md)): a short list
+and a form need no large screen, and it should not wait on this client.
 
 ## Repo layout
 

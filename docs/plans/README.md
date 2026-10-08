@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [023 — Managing family members on Android](023_users_on_android.md)               | `ACCEPTED` — moved from the web client; no code yet                                     |
 | [022 — A choice of mini player on Android](022_mini_player_styles.md)             | `MERGED` — in 0.7.0 on the owner's phone                                                |
 | [021 — Playing audio files opened from other apps](021_open_from_other_apps.md)   | `MERGED` — in 0.7.0 on the owner's phone                                                |
 | [020 — The Queues tab, as Musicolet's](020_queue_screen.md)                       | `MERGED` — in 0.6.0 on the owner's phone                                                |

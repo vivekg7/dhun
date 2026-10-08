@@ -62,7 +62,8 @@ and anything undecided is under [Open questions](#open-questions).
 
 - **Roles:** one admin (the owner) and family members.
   - The admin account is created from `docker-compose.yml` on first start.
-    Family members are added from the admin panel; there is no sign-up.
+    Family members are added from the Android app, by the admin; there is
+    no sign-up.
 - **Everyone sees the whole main collection** — every folder under `Music/`
   except the curation workflow's own `_`-prefixed folders (`_inbox`, `_meta`,
   `_trash`), which hold unreviewed and deleted files.
@@ -275,6 +276,10 @@ Proposed. Awaiting the owner's confirmation.
   not at all, are settings that follow the user to every device —
   [plans/009](plans/009_resume_long_files.md).
 - **Downloads** with a storage limit.
+- **Family members (admin only):** under Settings → Account, list the
+  users, add a member and reset a member's forgotten password. Moved here
+  from the web client (owner, 2026-10-08;
+  [plan 023](plans/023_users_on_android.md)).
 - **Open audio files from other apps:** Dhun is offered in "Open with",
   and the file plays in a small dialog over that app, never opening Dhun.
   It makes no queue (the playing one pauses where it is), is not logged,
@@ -293,10 +298,8 @@ Proposed. Awaiting the owner's confirmation.
 - Sign in, browse, search, play, switch between queues, and play playlists.
 - Hand-off (resume), so a session started on the phone continues here, and
   long files resume where they were left on any device.
-- Web only: the admin panel's first screen, **Users** — add a family member
-  and reset a forgotten password.
 
-**Later (not v1)** — The rest of the admin panel (moves, upgrades, `_inbox` review;
+**Later (not v1)** — The web admin panel (moves, upgrades, `_inbox` review;
 the current curation tool runs until then), uploads into that review, live hand-off ("Play
 here"), predicting songs to cache from history, the Subsonic-compatible API, Android Auto,
 Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,
