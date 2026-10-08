@@ -76,6 +76,30 @@ Folders are not stored. A folder view comes from the path prefixes.
 FLAC, including duration, without cgo. To verify at implementation time; the
 fallback is `dhowden/tag` for tags plus our own duration parsing.
 
+**Matroska and WebM** are read by a small EBML parser of our own
+(`server/internal/library/matroska.go`). YouTube downloaders save WebM with
+Opus inside under an `.opus` name, and several hundred of the owner's songs
+are like that ([024](024_macos_app.md)). taglib picks its parser by the file
+extension, and the build in use (v0.14.0, the latest) has no Matroska parser
+under any name, so those songs were indexed with no format, no codec, a
+duration of 0 and the file name as title. The scanner now decides by the
+first four bytes (EBML's `1A 45 DF A3`), never by the name. The parser reads
+the duration (Info), codec, sample rate and channels (the audio track), and
+the tags ffmpeg and yt-dlp write (SimpleTags, plus the title ffmpeg puts in
+Info). The bitrate is the file's average, as ffprobe gives it. Such a song
+is stored as format `webm` (or `matroska`), codec `opus`, and streamed as
+`audio/webm`. A file with no `Duration` element (a live or piped recording)
+still reads as 0; none were found in the library. Embedded art in Matroska
+(attachments) is not read; the folder's cover applies.
+
+A new parser means rows indexed before it were wrong, and a file whose size
+and mtime are unchanged is never read again. Migration
+`0008_reread_unreadable.sql` therefore clears the stored mtime of every song
+with no format, so the next scan re-reads just those files, keeping their
+IDs. The rows get a new library version, so the apps fetch them in the
+usual delta. This is the way to re-read songs after a reader change: a
+migration that marks the affected rows, not a full rescan of ~50 GB.
+
 ### Per-user data
 
 | Table                | Holds                                                                                                                                                                                                                                                                                                                                       |

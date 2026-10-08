@@ -13,8 +13,10 @@ import (
 	"go.senan.xyz/taglib"
 )
 
-// audioExts are the files the scanner indexes. Restricted to what Media3 on
-// Android and AVFoundation on macOS can both play.
+// audioExts are the files the scanner indexes: what Media3 on Android and the
+// macOS app can both play. The macOS app plays most through Core Audio, and
+// WebM Opus saved under an .opus name through a reader of its own
+// (docs/plans/024_macos_app.md).
 var audioExts = map[string]bool{
 	".mp3": true, ".m4a": true, ".m4b": true, ".aac": true, ".flac": true,
 	".opus": true, ".ogg": true, ".oga": true, ".wav": true, ".aif": true, ".aiff": true,
@@ -38,14 +40,24 @@ type tags struct {
 // playable rather than silently missing from the library.
 func readTags(abs, rel string) (tags, error) {
 	var t tags
-	props, perr := taglib.ReadProperties(abs)
-	m, terr := taglib.ReadTags(abs)
-	if perr == nil {
-		t.DurationMS = props.Length.Milliseconds()
-		t.Format, t.Codec = props.Format, props.InnerCodec
-		t.Bitrate, t.SampleRate = int(props.BitRate), int(props.SampleRate)
-		t.BitDepth, t.Channels = int(props.BitDepth), int(props.Channels)
-		t.EmbeddedArt = len(props.Images) > 0
+	var m map[string][]string
+	var perr, terr error
+	if f, size, ok := openMatroska(abs); ok {
+		// taglib picks its parser by extension and has no Matroska one:
+		// WebM saved as .opus would read as untagged, with no duration.
+		m = readMatroska(f, size, &t)
+		f.Close()
+	} else {
+		var props taglib.Properties
+		props, perr = taglib.ReadProperties(abs)
+		m, terr = taglib.ReadTags(abs)
+		if perr == nil {
+			t.DurationMS = props.Length.Milliseconds()
+			t.Format, t.Codec = props.Format, props.InnerCodec
+			t.Bitrate, t.SampleRate = int(props.BitRate), int(props.SampleRate)
+			t.BitDepth, t.Channels = int(props.BitDepth), int(props.Channels)
+			t.EmbeddedArt = len(props.Images) > 0
+		}
 	}
 	first := func(keys ...string) string {
 		for _, k := range keys {
@@ -76,6 +88,24 @@ func readTags(abs, rel string) (tags, error) {
 		return t, perr
 	}
 	return t, nil
+}
+
+// openMatroska opens abs if it is Matroska or WebM, by its first bytes.
+func openMatroska(abs string) (*os.File, int64, bool) {
+	f, err := os.Open(abs)
+	if err != nil {
+		return nil, 0, false
+	}
+	var b [4]byte
+	info, err := f.Stat()
+	if err == nil {
+		_, err = io.ReadFull(f, b[:])
+	}
+	if err != nil || string(b[:]) != EBMLMagic {
+		f.Close()
+		return nil, 0, false
+	}
+	return f, info.Size(), true
 }
 
 // nameSeparators split multi-artist and multi-genre tags such as

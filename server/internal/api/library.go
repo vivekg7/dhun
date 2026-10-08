@@ -195,7 +195,14 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, err)
 		return
 	}
-	if t, ok := audioTypes[strings.ToLower(path.Ext(f.Path))]; ok {
+	t := audioTypes[strings.ToLower(path.Ext(f.Path))]
+	// WebM saved under an .opus name. Players sniff the bytes anyway (Media3
+	// only orders its extractors by this header), but it should not say Ogg.
+	var magic [4]byte
+	if _, err := file.ReadAt(magic[:], 0); err == nil && string(magic[:]) == library.EBMLMagic {
+		t = "audio/webm"
+	}
+	if t != "" {
 		w.Header().Set("Content-Type", t)
 	}
 	http.ServeContent(w, r, path.Base(f.Path), info.ModTime(), file)

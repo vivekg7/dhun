@@ -369,3 +369,26 @@ func TestArtKeysAreFilledIn(t *testing.T) {
 		t.Errorf("a song with its key was read again: %s", st)
 	}
 }
+
+// YouTube downloaders save WebM with Opus inside under an .opus name. taglib
+// picks its parser by extension and has no Matroska one, so these were
+// indexed with no duration, format or tags.
+func TestWebMSavedAsOpusIsRead(t *testing.T) {
+	s, put := setup(t)
+	put("webm.opus", "Collection/Sufi/1-07 - kfk.opus")
+	scan(t, s)
+
+	var title, artist, album, albumArtist, format, codec string
+	var year, track, rate, channels, bitrate int
+	var duration int64
+	s.DB.QueryRow(`SELECT title, artist, album, album_artist, year, track, duration_ms,
+		format, codec, sample_rate, channels, bitrate FROM songs`).
+		Scan(&title, &artist, &album, &albumArtist, &year, &track, &duration, &format, &codec, &rate, &channels, &bitrate)
+	if title != "Kun Faya Kun" || artist != "A.R. Rahman, Javed Ali & Mohit Chauhan" ||
+		album != "Rockstar" || albumArtist != "A.R. Rahman" || year != 2011 || track != 7 {
+		t.Errorf("tags: %q %q %q %q %d %d", title, artist, album, albumArtist, year, track)
+	}
+	if duration != 2008 || format != "webm" || codec != "opus" || rate != 48000 || channels != 1 || bitrate == 0 {
+		t.Errorf("properties: %dms %s/%s %dHz %dch %dkbps", duration, format, codec, rate, channels, bitrate)
+	}
+}

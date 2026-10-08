@@ -486,8 +486,17 @@ components:
         track: { type: integer }
         disc: { type: integer }
         durationMs: { type: integer }
-        format: { type: string, example: mpeg }
-        codec: { type: string, example: aac }
+        format:
+          type: string
+          example: mpeg
+          description: >
+            The container, read from the file's content, not its name: mpeg,
+            mp4, flac, ogg, wav, aiff, webm or matroska. A WebM file saved
+            under an .opus name is webm. Empty when the file could not be read.
+        codec:
+          type: string
+          example: aac
+          description: The codec inside a container (aac, alac, opus, vorbis, pcm); empty for mpeg and flac
         bitrate: { type: integer, description: kbit/s }
         sampleRate: { type: integer }
         bitDepth: { type: integer }
