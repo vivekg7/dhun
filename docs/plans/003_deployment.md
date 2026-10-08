@@ -1,6 +1,6 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `RELEASED` — `server-v0.1.4` running on the owner's NAS since 2026-10-08
+**Status:** `RELEASED` — `server-v0.1.5` running on the owner's NAS since 2026-10-08
 **Started:** 2026-10-06 · **Revised:** 2026-10-07 (safety review before the first install)
 
 ## Problem

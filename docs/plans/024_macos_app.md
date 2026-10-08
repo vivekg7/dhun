@@ -167,7 +167,9 @@ extension. Every client needs the duration: for the seek bar, long-file
 resume (009) and the half-heard rule for play counts (008). Fixed on the
 server, separately from this plan: the scanner reads Matroska with an EBML
 parser of its own, deciding by the first bytes, and re-reads the songs it
-indexed wrongly ([005](005_storage_and_library_model.md)).
+indexed wrongly ([005](005_storage_and_library_model.md)). Released in
+`server-v0.1.5` (2026-10-08): on the NAS, all 24 WebM songs then had a
+format and a duration.
 
 - **C. Play only finished files with `AVAudioFile`, and wait for the cache
   to fill.** Rejected once B worked. A normal song arrives in about a second

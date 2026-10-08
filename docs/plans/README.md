@@ -102,9 +102,9 @@ wrong.
 | [009 — Resume long files on every device](009_resume_long_files.md)               | `MERGED` — server on the NAS; Android on the owner's phone                              |
 | [008 — Listening history](008_listening_history.md)                               | `MERGED` — server on the NAS; Android on the owner's phone                              |
 | [007 — Client architecture and repo layout](007_client_architecture.md)           | `IN PROGRESS` — Android built (011); macOS replaced by 024                              |
-| [006 — API and sync](006_api_and_sync.md)                                         | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
-| [005 — Storage and library model](005_storage_and_library_model.md)               | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
+| [006 — API and sync](006_api_and_sync.md)                                         | `RELEASED` — `server-v0.1.5` on the NAS since 2026-10-08                                |
+| [005 — Storage and library model](005_storage_and_library_model.md)               | `RELEASED` — `server-v0.1.5` on the NAS since 2026-10-08                                |
 | [004 — Dhun owns every change to the collection](004_curation_workflow.md)        | `ACCEPTED` — option C; no code yet                                                      |
-| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)              | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
+| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)              | `RELEASED` — `server-v0.1.5` on the NAS since 2026-10-08                                |
 | [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                       | `MERGED` — resume hand-off in 017; live transfer after v1                               |
-| [001 — Our own backend, in Go](001_own_backend_in_go.md)                          | `RELEASED` — `server-v0.1.4` on the NAS since 2026-10-08                                |
+| [001 — Our own backend, in Go](001_own_backend_in_go.md)                          | `RELEASED` — `server-v0.1.5` on the NAS since 2026-10-08                                |

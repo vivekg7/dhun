@@ -1,6 +1,6 @@
 # 001 — Our own backend, in Go
 
-**Status:** `RELEASED` — server in `server/`; running on the NAS as `server-v0.1.4` since 2026-10-08
+**Status:** `RELEASED` — server in `server/`; running on the NAS as `server-v0.1.5` since 2026-10-08
 **Started:** 2026-10-06
 
 ## Problem
