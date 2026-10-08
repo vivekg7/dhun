@@ -1,6 +1,6 @@
 # 024 — The macOS app, at the Android app's level
 
-**Status:** `IN PROGRESS` — every step built and installed on the owner's Mac (2026-10-08); in daily use, not yet released
+**Status:** `MERGED` — 0.1.0 installed on the owner's Mac (2026-10-08) and in daily use; no GitHub release until it has had a few weeks of testing
 **Started:** 2026-10-08
 
 ## Problem

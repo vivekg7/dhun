@@ -21,8 +21,9 @@ and, for the admin, managing family members
 ([plan 023](docs/plans/023_users_on_android.md)); there is no GitHub
 release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
-control, a floating mini player and Open With from Finder; it has not yet
-been installed for daily use. The web client comes after it.
+control, a floating mini player and Open With from Finder; 0.1.0 is in
+daily use on the owner's Mac, with no GitHub release yet. The web client
+comes after it.
 
 ## Run the server
 

@@ -32,7 +32,9 @@ and anything undecided is under [Open questions](#open-questions).
 - **Users:** the owner and close family, 3–4 people. All fully trusted.
 - Named **Dhun** (धुन, "tune"). Open source under **GPL-3.0**, hosted at
   GitHub `vivekg7/dhun`. Distributed through **GitHub Releases** only. The Play Store
-  is considered only if other people ask for it.
+  is considered only if other people ask for it. An app goes into a GitHub
+  release only after a few days or weeks of daily use on the owner's own
+  devices; until then it is installed by hand (owner, 2026-10-08).
 
 ## Decided
 
