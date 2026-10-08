@@ -109,7 +109,12 @@ public final class SQLite: @unchecked Sendable {
             case nil: rc = sqlite3_bind_null(st, n)
             case .int(let v): rc = sqlite3_bind_int64(st, n, Int64(v))
             case .double(let v): rc = sqlite3_bind_double(st, n, v)
-            case .text(let v): rc = sqlite3_bind_text(st, n, v, -1, transient)
+            case .text(let v):
+                // By length, not up to a NUL: an album's id holds one, and a
+                // C string would cut it there (a pin then matched no album).
+                rc = v.utf8CString.withUnsafeBufferPointer {
+                    sqlite3_bind_text(st, n, $0.baseAddress, Int32($0.count - 1), transient)
+                }
             case .blob(let v):
                 rc = v.withUnsafeBytes { sqlite3_bind_blob(st, n, $0.baseAddress, Int32(v.count), transient) }
             }
@@ -125,7 +130,10 @@ public final class SQLite: @unchecked Sendable {
         public func bool(_ i: Int32) -> Bool { sqlite3_column_int64(st, i) != 0 }
         public func double(_ i: Int32) -> Double { sqlite3_column_double(st, i) }
         public func text(_ i: Int32) -> String {
-            sqlite3_column_text(st, i).map { String(cString: $0) } ?? ""
+            guard let p = sqlite3_column_text(st, i) else { return "" }
+            return String(
+                decoding: UnsafeBufferPointer(start: p, count: Int(sqlite3_column_bytes(st, i))),
+                as: UTF8.self)
         }
         public func blob(_ i: Int32) -> Data {
             let n = Int(sqlite3_column_bytes(st, i))

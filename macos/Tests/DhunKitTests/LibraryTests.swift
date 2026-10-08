@@ -161,3 +161,19 @@ private func song(
     ]
     #expect(covered(pins, c, playlists, favs, [])!.map(\.id) == [4, 2, 3, 1])
 }
+
+/// An album's id holds a NUL between its name and its artist or folder; as a C
+/// string it was cut there, and the album's download then matched no album.
+@Test func anAlbumDownloadSurvivesTheDatabase() throws {
+    let c = Catalog([song(1, "A/a.mp3", album: "Bravo", albumArtist: "Znaider")])
+    let album = c.albums[0]
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let db = try DB(path: dir.appendingPathComponent("t.db").path)
+    db.putPin(
+        Pin(
+            key: Downloads.key(Downloads.album, album.id), kind: Downloads.album, ref: album.id, name: "",
+            at: 0))
+    #expect(covered(db.pins(), c, [], [], [])!.map(\.id) == [1])
+}
