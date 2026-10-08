@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `IN PROGRESS` — all five steps built; not yet on the phone or the NAS
+**Status:** `MERGED` — app in 0.5.0 on the owner's phone; covers by key await the next server release
 **Started:** 2026-10-07
 
 ## Problem

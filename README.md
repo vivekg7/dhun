@@ -10,9 +10,11 @@ lives on a NAS.
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
 Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
-runs on the owner's phone as 0.4.0, with downloads, playlist editing, the
-sleep timer, lyrics, speed and pitch, hand-off, and settings grouped as in
-Musicolet; there is no GitHub release yet. macOS and web come after it.
+runs on the owner's phone as 0.5.0, with downloads, playlist editing, the
+sleep timer, lyrics, speed and pitch, hand-off, settings grouped as in
+Musicolet, a song cache, and playback that waits out a network drop
+([plan 019](docs/plans/019_networking_and_caching.md)); there is no GitHub
+release yet. macOS and web come after it.
 
 ## Run the server
 

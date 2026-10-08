@@ -82,24 +82,24 @@ wrong.
 
 ## Index
 
-| Plan                                                                              | Status                                                                |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [019 — Networking, retries and caching on Android](019_networking_and_caching.md) | `IN PROGRESS` — all five steps built; not yet on the phone or the NAS |
-| [018 — The settings screen on Android](018_settings_layout.md)                    | `MERGED` — in 0.4.0 on the owner's phone                              |
-| [017 — Hand-off (resume) on Android](017_handoff.md)                              | `MERGED` — in 0.3.0 on the owner's phone                              |
-| [016 — Play speed and pitch on Android](016_speed_and_pitch.md)                   | `MERGED` — in 0.3.0; settings cap on the NAS (`server-v0.1.3`)        |
-| [015 — Lyrics on Android](015_lyrics.md)                                          | `MERGED` — in 0.3.0 on the owner's phone                              |
-| [014 — The sleep timer on Android](014_sleep_timer.md)                            | `MERGED` — in 0.3.0; redesigned in 0.4.0                              |
-| [013 — Editing playlists on Android](013_playlist_editing.md)                     | `MERGED` — server in `server-v0.1.2`; app in 0.3.0                    |
-| [012 — Downloads on Android](012_downloads.md)                                    | `MERGED` — in 0.2.0 on the owner's phone                              |
-| [011 — The Android app: look, structure and first build](011_android_app.md)      | `MERGED` — on the owner's phone; no GitHub release yet                |
-| [010 — Special playlists and automatic views](010_special_playlists.md)           | `MERGED` — server on the NAS; Android on the owner's phone            |
-| [009 — Resume long files on every device](009_resume_long_files.md)               | `MERGED` — server on the NAS; Android on the owner's phone            |
-| [008 — Listening history](008_listening_history.md)                               | `MERGED` — server on the NAS; Android on the owner's phone            |
-| [007 — Client architecture and repo layout](007_client_architecture.md)           | `IN PROGRESS` — Android under way (011)                               |
-| [006 — API and sync](006_api_and_sync.md)                                         | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07              |
-| [005 — Storage and library model](005_storage_and_library_model.md)               | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07              |
-| [004 — Dhun owns every change to the collection](004_curation_workflow.md)        | `ACCEPTED` — option C; no code yet                                    |
-| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)              | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07              |
-| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                       | `MERGED` — resume hand-off in 017; live transfer after v1             |
-| [001 — Our own backend, in Go](001_own_backend_in_go.md)                          | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07              |
+| Plan                                                                              | Status                                                                                    |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [019 — Networking, retries and caching on Android](019_networking_and_caching.md) | `MERGED` — app in 0.5.0 on the owner's phone; covers by key await the next server release |
+| [018 — The settings screen on Android](018_settings_layout.md)                    | `MERGED` — in 0.4.0 on the owner's phone                                                  |
+| [017 — Hand-off (resume) on Android](017_handoff.md)                              | `MERGED` — in 0.3.0 on the owner's phone                                                  |
+| [016 — Play speed and pitch on Android](016_speed_and_pitch.md)                   | `MERGED` — in 0.3.0; settings cap on the NAS (`server-v0.1.3`)                            |
+| [015 — Lyrics on Android](015_lyrics.md)                                          | `MERGED` — in 0.3.0 on the owner's phone                                                  |
+| [014 — The sleep timer on Android](014_sleep_timer.md)                            | `MERGED` — in 0.3.0; redesigned in 0.4.0                                                  |
+| [013 — Editing playlists on Android](013_playlist_editing.md)                     | `MERGED` — server in `server-v0.1.2`; app in 0.3.0                                        |
+| [012 — Downloads on Android](012_downloads.md)                                    | `MERGED` — in 0.2.0 on the owner's phone                                                  |
+| [011 — The Android app: look, structure and first build](011_android_app.md)      | `MERGED` — on the owner's phone; no GitHub release yet                                    |
+| [010 — Special playlists and automatic views](010_special_playlists.md)           | `MERGED` — server on the NAS; Android on the owner's phone                                |
+| [009 — Resume long files on every device](009_resume_long_files.md)               | `MERGED` — server on the NAS; Android on the owner's phone                                |
+| [008 — Listening history](008_listening_history.md)                               | `MERGED` — server on the NAS; Android on the owner's phone                                |
+| [007 — Client architecture and repo layout](007_client_architecture.md)           | `IN PROGRESS` — Android under way (011)                                                   |
+| [006 — API and sync](006_api_and_sync.md)                                         | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07                                  |
+| [005 — Storage and library model](005_storage_and_library_model.md)               | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07                                  |
+| [004 — Dhun owns every change to the collection](004_curation_workflow.md)        | `ACCEPTED` — option C; no code yet                                                        |
+| [003 — Deployment on the NAS with Docker Compose](003_deployment.md)              | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07                                  |
+| [002 — Sync, offline and hand-off](002_sync_and_handoff.md)                       | `MERGED` — resume hand-off in 017; live transfer after v1                                 |
+| [001 — Our own backend, in Go](001_own_backend_in_go.md)                          | `RELEASED` — `server-v0.1.3` on the NAS since 2026-10-07                                  |
