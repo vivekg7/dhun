@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.io.RandomAccessFile
 
 /**
  * Downloads (docs/plans/012_downloads.md). The user pins things (an album,
@@ -121,6 +122,9 @@ class Downloads(
         val have = dao.downloads().first().associateBy { it.song }
         val todo = songs.filter { s -> have[s.id].let { it == null || (s.size > 0 && it.size != s.size) } }
         var used = have.values.filter { it.song in want }.sumOf { it.size }
+        // A part kept for resuming whose song is no longer wanted.
+        val resumable = todo.map { it.id }.toSet()
+        dir()?.listFiles { f -> f.name.endsWith(".part") && f.name.substringBefore('.').toLongOrNull() !in resumable }?.forEach { it.delete() }
         update(State.Idle, songs.size, used, have)
         if (app.prefs.token.isEmpty()) return
         keepLyrics(songs.filter { it.id in have })
@@ -171,7 +175,14 @@ class Downloads(
         }
     }
 
-    /** Fetches one song to `<id>.<ext>`, through a `.part` file so a half-written file is never played; null if the server no longer has it. */
+    /**
+     * Fetches one song to `<id>.<ext>`, through a `.part` file so a
+     * half-written file is never played; null if the server no longer has
+     * it. A part left by a broken try is carried on with a range request
+     * rather than fetched again from the start
+     * (docs/plans/019_networking_and_caching.md): a large FLAC on a weak
+     * network might otherwise never finish.
+     */
     private suspend fun fetch(
         s: Song,
         dir: File,
@@ -184,19 +195,41 @@ class Downloads(
                     .ifEmpty { s.format }
             val file = File(dir, "${s.id}.$ext")
             val part = File(dir, "${s.id}.$ext.part")
+            var got = part.length()
             val req =
                 Request
                     .Builder()
                     .url(app.api.streamUrl(s.id))
+                    .apply { if (got > 0) header("Range", "bytes=$got-") }
                     .build()
-            app.api.http.newCall(req).execute().use { res ->
-                if (res.code == 404 || res.code == 410) return@withContext null
-                if (!res.isSuccessful) throw ApiException(res.code, "HTTP ${res.code}")
+            app.api.songs.newCall(req).execute().use { res ->
+                when {
+                    res.code == 404 || res.code == 410 -> {
+                        part.delete()
+                        return@withContext null
+                    }
+
+                    // The part is longer than the file: the file changed. Start again.
+                    res.code == 416 -> {
+                        part.delete()
+                        throw IOException("${s.title}: the file changed on the server")
+                    }
+
+                    !res.isSuccessful -> {
+                        throw ApiException(res.code, "HTTP ${res.code}")
+                    }
+
+                    // The server ignored the range: start again.
+                    res.code == 200 -> {
+                        got = 0
+                    }
+                }
                 val body = res.body
-                val total = body.contentLength().takeIf { it > 0 } ?: s.size
-                var got = 0L
-                var shown = 0L
-                part.outputStream().use { out ->
+                val total = body.contentLength().takeIf { it >= 0 }?.let { it + got } ?: s.size
+                var shown = got
+                RandomAccessFile(part, "rw").use { out ->
+                    out.setLength(got)
+                    out.seek(got)
                     body.byteStream().use { input ->
                         val buf = ByteArray(64 * 1024)
                         while (true) {
@@ -211,9 +244,10 @@ class Downloads(
                         }
                     }
                 }
-                if (s.size > 0 && got != s.size) {
+                // Against what the server sent: the song list may be older than the file.
+                if (total > 0 && got != total) {
                     part.delete()
-                    throw IOException("${s.title}: got $got of ${s.size} bytes")
+                    throw IOException("${s.title}: got $got of $total bytes")
                 }
                 if (!part.renameTo(file)) throw IOException("Could not save ${file.name}")
             }

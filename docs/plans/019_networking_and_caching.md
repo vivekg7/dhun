@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `IN PROGRESS` — steps 1 to 4 built; resuming downloads next
+**Status:** `IN PROGRESS` — all five steps built; not yet on the phone or the NAS
 **Started:** 2026-10-07
 
 ## Problem
@@ -197,7 +197,11 @@ turn on what a failed load means.
    Offline, cached songs are not dimmed. Settings → Downloads → Song cache
    sets the limit: 1, 3 (the default), 5 or 10 GB, or off.
 
-5. **Downloads resume** a broken file from where it stopped.
+5. **Downloads resume** a broken file from where it stopped, with a range
+   request from the end of its `.part`, 30 s after the break as before.
+   The finished file is checked against the size the server sent, not
+   the song list, which may be older than the file. A part whose song is
+   no longer wanted is deleted.
 
 ## Open questions
 

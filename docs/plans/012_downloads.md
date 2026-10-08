@@ -46,7 +46,10 @@ that often wastes data and flash.
   reports the transport of the network underneath. Streaming is unaffected.
 - One song at a time, in pin order (the newest pin first, so what you just
   tapped starts at once). Written to `<id>.<ext>.part`, checked against the
-  catalogue's size, then renamed, so a half-written file is never played.
+  size the server sent, then renamed, so a half-written file is never
+  played. A part left by a broken try is carried on with a range request
+  since [019](019_networking_and_caching.md), and dropped once its song is
+  no longer wanted.
 - A **foreground service** (`dataSync`) shows the progress and keeps the
   process alive while downloads run. It is started from the app; when
   Android forbids starting it from the background (Android 12+), the
