@@ -108,15 +108,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ n: Notification) { app.playback.quitting() }
 
-    /// Open With from Finder (plan 021): a small window of its own; no queue, no listen logged.
+    /// Open With from Finder (plan 021): a small window of its own; no queue,
+    /// no listen logged. One file at a time, as on the phone: a new one
+    /// replaces the one playing rather than playing over it.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            app.playback.pause()
-            let w = FilePlayerWindow(url: url, app: app) { [weak self] closed in
-                self?.filePlayers.removeAll { $0 === closed }
-            }
-            filePlayers.append(w)
-            w.show()
+        guard let url = urls.first else { return }
+        app.playback.pause()
+        for w in filePlayers { w.close() }
+        let w = FilePlayerWindow(url: url, app: app) { [weak self] closed in
+            self?.filePlayers.removeAll { $0 === closed }
         }
+        filePlayers.append(w)
+        w.show()
     }
 }

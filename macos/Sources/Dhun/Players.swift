@@ -100,6 +100,8 @@ final class FilePlayerWindow: NSObject, NSWindowDelegate {
         model.start()
     }
 
+    func close() { window.close() }
+
     func windowWillClose(_ notification: Notification) {
         model.stop()
         closed(self)
@@ -119,6 +121,8 @@ final class FileModel {
     @ObservationIgnored private let engine = Engine()
     @ObservationIgnored private let queue = DispatchQueue(label: "dhun.file")
     @ObservationIgnored private var timer: Timer?
+    /// Where to open the file again after the output changed (headphones out), which stops the engine.
+    @ObservationIgnored private var restartAt: Double?
 
     init(url: URL) {
         self.url = url
@@ -127,6 +131,13 @@ final class FileModel {
 
     func start() {
         Task { await readTags() }
+        engine.interrupted = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.restartAt = self.position
+                self.playing = false
+            }
+        }
         queue.async { [engine, url] in
             do {
                 try engine.play(song: 0, bytes: try FileBytes(url))
@@ -137,7 +148,7 @@ final class FileModel {
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, self.restartAt == nil else { return }
                 if let p = self.engine.position() {
                     self.position = p.seconds
                     self.duration = p.duration
@@ -152,6 +163,10 @@ final class FileModel {
         if playing {
             engine.pause()
             playing = false
+        } else if let at = restartAt {
+            restartAt = nil
+            playing = true
+            queue.async { [engine, url] in try? engine.play(song: 0, bytes: try FileBytes(url), from: at) }
         } else if engine.position() == nil {
             seek(0)
             playing = true
