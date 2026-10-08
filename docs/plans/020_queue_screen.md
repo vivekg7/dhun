@@ -1,6 +1,6 @@
 # 020 — The Queues tab, as Musicolet's
 
-**Status:** `MERGED` — tried on the emulator; not yet on the owner's phone
+**Status:** `MERGED` — in 0.6.0 on the owner's phone
 **Started:** 2026-10-08
 
 ## Problem
