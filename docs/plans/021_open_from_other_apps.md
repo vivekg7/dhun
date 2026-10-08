@@ -1,6 +1,6 @@
 # 021 — Playing audio files opened from other apps
 
-**Status:** `MERGED` — not yet in a release
+**Status:** `MERGED` — in 0.7.0 on the owner's phone
 **Started:** 2026-10-08
 
 ## Problem

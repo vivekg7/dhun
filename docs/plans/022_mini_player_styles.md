@@ -1,6 +1,6 @@
 # 022 — A choice of mini player on Android
 
-**Status:** `MERGED` — not yet in a release
+**Status:** `MERGED` — in 0.7.0 on the owner's phone
 **Started:** 2026-10-08
 
 ## Problem
