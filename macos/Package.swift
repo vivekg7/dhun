@@ -5,10 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "Dhun",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     targets: [
         // Everything testable without a window: playback, data, sync.
         .target(name: "DhunKit"),
+        // The app: windows, menus and the menu bar control.
+        .executableTarget(name: "Dhun", dependencies: ["DhunKit"]),
         // The playback spike's harness (plan 024, step 0).
         // A top-level script, so Swift 5 mode spares it strict concurrency.
         .executableTarget(

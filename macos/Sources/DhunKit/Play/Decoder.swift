@@ -2,7 +2,7 @@ import AVFoundation
 import AudioToolbox
 
 /// Turns one song's bytes into PCM in the engine's format.
-public protocol Decoder: AnyObject {
+public protocol SongDecoder: AnyObject {
     /// Song length in seconds, gapless trim applied; 0 if unknown.
     var duration: Double { get }
     /// Fills `buffer` (engine format) up to its capacity. A `frameLength`
@@ -13,7 +13,7 @@ public protocol Decoder: AnyObject {
 
 /// Picks the decoder by the file's first bytes, never its name: many of the
 /// library's `.opus` files are really WebM (plan 024).
-public func openDecoder(_ bytes: Bytes, format: AVAudioFormat) throws -> Decoder {
+public func openDecoder(_ bytes: Bytes, format: AVAudioFormat) throws -> SongDecoder {
     var magic = [UInt8](repeating: 0, count: 4)
     _ = try bytes.read(0, 4, into: &magic)
     if magic == [0x1A, 0x45, 0xDF, 0xA3] {
@@ -24,6 +24,8 @@ public func openDecoder(_ bytes: Bytes, format: AVAudioFormat) throws -> Decoder
 
 public struct DecodeError: Error, CustomStringConvertible {
     public let description: String
+    /// The read under it was interrupted, not broken.
+    public var cancelled = false
     init(_ what: String, _ status: OSStatus) {
         description = "\(what) failed: \(status) '\(fourCC(status))'"
     }
@@ -40,7 +42,7 @@ private func fourCC(_ s: OSStatus) -> String {
 /// the same way as one on disk. ExtAudioFile applies the encoder delay and
 /// padding the file declares (LAME header, iTunSMPB, Opus pre-skip), which is
 /// what makes back-to-back songs gapless, and resamples to the engine's rate.
-final class AudioFileDecoder: Decoder {
+final class AudioFileDecoder: SongDecoder {
     private let bytes: Bytes
     private var file: AudioFileID?
     private var ext: ExtAudioFileRef?
@@ -99,6 +101,7 @@ final class AudioFileDecoder: Decoder {
     }
 
     func read(into buffer: AVAudioPCMBuffer) throws {
+        readError = nil
         var frames = buffer.frameCapacity
         // The list advertises the buffer's current length; offer its capacity.
         let list = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
@@ -114,6 +117,7 @@ final class AudioFileDecoder: Decoder {
     }
 
     func seek(to seconds: Double) throws {
+        readError = nil
         let st = ExtAudioFileSeek(ext!, Int64(seconds * fileRate))
         guard st == noErr else { throw readError ?? DecodeError("ExtAudioFileSeek", st) }
     }

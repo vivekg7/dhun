@@ -9,10 +9,10 @@ STUDIO_JBR := /Applications/Android Studio.app/Contents/jbr/Contents/Home
 export JAVA_HOME ?= $(shell [ -d "$(STUDIO_JBR)" ] && echo "$(STUDIO_JBR)")
 GRADLE = cd android && ./gradlew -q
 # swift-format ships with Xcode, so the Mac app adds no tool of its own.
-SWIFT_SRC = macos/Package.swift macos/Sources macos/Tests
+SWIFT_SRC = macos/Package.swift macos/make-icon.swift macos/Sources macos/Tests
 SWIFT_FORMAT = xcrun swift-format
 
-.PHONY: help init fmt lint test check image apk lint-server lint-android lint-macos test-server test-android test-macos
+.PHONY: help init fmt lint test check image apk mac lint-server lint-android lint-macos test-server test-android test-macos
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
@@ -22,6 +22,7 @@ help:
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
 	@echo 'apk    build the signed release APK and archive it in local/'
+	@echo 'mac    build Dhun.app, signed ad hoc, and archive it in local/'
 
 # Writes the one setting that cannot be committed: autoMemoryDirectory takes an
 # absolute path, so it lives in the git-ignored settings.local.json while the
@@ -81,3 +82,6 @@ image:
 
 apk:
 	scripts/archive-apk.sh
+
+mac:
+	scripts/build-mac.sh

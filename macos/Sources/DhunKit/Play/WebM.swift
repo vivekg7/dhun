@@ -6,7 +6,7 @@ import AudioToolbox
 /// (plan 024). Reads the single audio track's packets and decodes them with
 /// Apple's Opus decoder. Only what those files use is supported: one Opus
 /// track, known element sizes, blocks without lacing.
-final class WebMDecoder: Decoder {
+final class WebMDecoder: SongDecoder {
     private let bytes: Bytes
     private let format: AVAudioFormat
     private var track: UInt64 = 0

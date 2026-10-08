@@ -1,0 +1,21 @@
+# The macOS half of `make check`, when the Mac app changes (plan 024). The
+# runner's Xcode brings Swift and swift-format; nothing else is installed.
+name: macos
+
+on:
+  push:
+    branches: [main]
+    paths: ["macos/**", "Makefile", ".github/workflows/macos.yml"]
+  pull_request:
+    paths: ["macos/**", "Makefile", ".github/workflows/macos.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The app needs the macOS 26 SDK, so Xcode 26.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - run: make lint-macos test-macos

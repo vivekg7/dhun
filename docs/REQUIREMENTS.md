@@ -119,7 +119,7 @@ and anything undecided is under [Open questions](#open-questions).
 | Platform             | Scope                                                                                          |
 | -------------------- | ---------------------------------------------------------------------------------------------- |
 | Android 12 and newer | **Full feature set, no compromise.** Primary target.                                           |
-| macOS 14 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)). |
+| macOS 26 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)). |
 | Web                  | Minimal features are fine. **Online-only**; served by the backend itself.                      |
 | Linux                | Optional.                                                                                      |
 

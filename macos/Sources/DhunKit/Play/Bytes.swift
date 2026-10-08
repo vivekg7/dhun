@@ -13,6 +13,13 @@ public protocol Bytes: AnyObject, Sendable {
     /// Copies up to `count` bytes at `offset`, waiting for them if they have
     /// not arrived. Returns fewer only at the end of the file.
     func read(_ offset: Int64, _ count: Int, into: UnsafeMutableRawPointer) throws -> Int
+    /// Makes a read that is waiting for bytes throw `cancelled` (a skip or a
+    /// seek); later reads wait as before.
+    func interrupt()
+}
+
+extension Bytes {
+    public func interrupt() {}
 }
 
 public enum BytesError: Error {
@@ -53,6 +60,7 @@ public final class SparseFile: Bytes, @unchecked Sendable {
     private let cond = NSCondition()
     private var have: [Range<Int64>] = []  // sorted, disjoint
     private var failure: Error?
+    private var interrupts = 0
     /// Called (off the lock) with the offset a reader waits for.
     public var wanted: (@Sendable (Int64) -> Void)?
 
@@ -87,6 +95,21 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         cond.unlock()
     }
 
+    public func interrupt() {
+        cond.lock()
+        interrupts += 1
+        cond.broadcast()
+        cond.unlock()
+    }
+
+    /// The fetch failed and is waiting to try again: the player says it is waiting.
+    public private(set) var failing = false
+    public func setFailing(_ f: Bool) {
+        cond.lock()
+        failing = f
+        cond.unlock()
+    }
+
     public func fail(_ error: Error) {
         cond.lock()
         failure = error
@@ -99,10 +122,15 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         guard want > 0 else { return 0 }
         cond.lock()
         var told = false
+        let asOf = interrupts
         while end(from: offset) < offset + want {
             if let failure {
                 cond.unlock()
                 throw failure
+            }
+            if interrupts != asOf {
+                cond.unlock()
+                throw BytesError.cancelled
             }
             if !told {
                 told = true

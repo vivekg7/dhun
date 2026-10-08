@@ -19,7 +19,10 @@ from other apps ([plan 021](docs/plans/021_open_from_other_apps.md)), a
 choice of mini player ([plan 022](docs/plans/022_mini_player_styles.md))
 and, for the admin, managing family members
 ([plan 023](docs/plans/023_users_on_android.md)); there is no GitHub
-release yet. macOS and web come after it.
+release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
+is built to the Android app's level, offline included, with a menu bar
+control, a floating mini player and Open With from Finder; it has not yet
+been installed for daily use. The web client comes after it.
 
 ## Run the server
 
@@ -50,10 +53,11 @@ Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 ## Develop
 
 `make init` once per clone, then `make check` (formatting, `go vet`, ktlint,
-Android lint, tests), `make fmt`, and `make image`. The API contract is
-[`api/openapi.yaml`](api/openapi.yaml). The Android app needs a JDK (Android
-Studio's is found on its own) and `android/local.properties` pointing at an
-Android SDK with platform 37.
+Android lint, swift-format, tests), `make fmt`, and `make image`. The API
+contract is [`api/openapi.yaml`](api/openapi.yaml). The Android app needs a
+JDK (Android Studio's is found on its own) and `android/local.properties`
+pointing at an Android SDK with platform 37. The macOS app needs Xcode for
+its toolchain only: it is a Swift package, built from the command line.
 
 ### Release builds
 
@@ -78,6 +82,13 @@ this machine.
 that turns an obfuscated crash back into names. A dirty working tree is
 archived as `-dirty-g<commit>`, so work in progress never takes a release's
 name, and an existing archive is never overwritten without `--force`.
+
+`make mac` (`scripts/build-mac.sh`) builds `Dhun.app`, signs it ad hoc (no
+Apple account or certificate), and archives it in `local/` as
+`dhun-mac-v<version>.zip`, under the same naming rules; `--install` also
+copies it to `/Applications`. The version is in `macos/Info.plist`. On a
+Mac other than the one that built it, allow the first launch under System
+Settings → Privacy & Security.
 
 - What it must do — [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
 - Why it is built this way — [`docs/plans/`](docs/plans/README.md)

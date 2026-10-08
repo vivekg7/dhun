@@ -110,9 +110,9 @@ if let server {
 func bytes(_ path: String) throws -> Bytes {
     if let server, let size = sizes[path] {
         let tmp = scratch.appendingPathComponent(UUID().uuidString + ".part")
-        let f = Fetch(
-            url: server.appendingPathComponent("api/v1/stream/\(path)"), token: token,
-            file: try SparseFile(tmp, size: size))
+        var req = URLRequest(url: server.appendingPathComponent("api/v1/stream/\(path)"))
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let f = Fetch(request: req, file: try SparseFile(tmp, size: size))
         fetches.append(f)
         f.start()
         return f.file
@@ -197,12 +197,12 @@ case "play":
     let engine = Engine()
     var nextIndex = 1
     let lock = NSLock()
-    engine.next = {
+    engine.next = { _ in
         lock.withLock {
             while nextIndex < files.count {
                 let n = nextIndex
                 nextIndex += 1
-                if let d = try? openDecoder(try bytes(files[n]), format: engine.format) { return (n, d) }
+                if let b = try? bytes(files[n]) { return (n, b) }
                 print("cannot open \(name(n))")
             }
             return nil
@@ -210,7 +210,7 @@ case "play":
     }
     engine.failed = { song, error in print("\(name(song)): \(error)") }
     let t0 = Date()
-    try engine.play(song: 0, decoder: try openDecoder(try bytes(files[0]), format: engine.format), from: from)
+    try engine.play(song: 0, bytes: try bytes(files[0]), from: from)
     print(
         String(format: "started in %.3fs at %.0f Hz", Date().timeIntervalSince(t0), engine.format.sampleRate))
 
@@ -237,7 +237,7 @@ case "play":
                 case "r": engine.speed = Float(value)
                 case "p": engine.semitones = Float(value)
                 case "n":
-                    if let (n, d) = engine.next?() { try engine.play(song: n, decoder: d) }
+                    if let (n, b) = engine.next?(0) { try engine.play(song: n, bytes: b) }
                 case "q": exit(0)
                 default: print("?")
                 }

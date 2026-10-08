@@ -1,6 +1,6 @@
 # 024 — The macOS app, at the Android app's level
 
-**Status:** `IN PROGRESS` — the playback spike (step 0) passed; the skeleton is next
+**Status:** `IN PROGRESS` — every step built (2026-10-08); not yet installed for daily use
 **Started:** 2026-10-08
 
 ## Problem
@@ -164,8 +164,10 @@ runs off the UI thread.
 **What the spike found on the server.** It indexes WebM `.opus` files
 with no format and a duration of 0, because its tag reader goes by the
 extension. Every client needs the duration: for the seek bar, long-file
-resume (009) and the half-heard rule for play counts (008). That is a
-server fix of its own, separate from this plan.
+resume (009) and the half-heard rule for play counts (008). Fixed on the
+server, separately from this plan: the scanner reads Matroska with an EBML
+parser of its own, deciding by the first bytes, and re-reads the songs it
+indexed wrongly ([005](005_storage_and_library_model.md)).
 
 - **C. Play only finished files with `AVAudioFile`, and wait for the cache
   to fill.** Rejected once B worked. A normal song arrives in about a second
@@ -191,10 +193,11 @@ server fix of its own, separate from this plan.
 A native SwiftUI app in `macos/`, at the Android app's level and offline,
 built as described above. Technical defaults, which the owner can override:
 
-- **macOS 14 (Sonoma) and newer.** It is the first release with the
-  Observation framework (`@Observable`). The inspector and `MenuBarExtra`
-  windows are there too. The owner runs macOS 27; 14 leaves room for older
-  family Macs.
+- **macOS 26 and newer** (owner, 2026-10-08: no older Macs to support).
+  The first plan said 14, for older family Macs; the owner chose the
+  current release instead, so the app uses SwiftUI as it is now (a
+  floating window level, table columns shown only on some lists) with no
+  workarounds for older systems.
 - **The window.**
   - A `NavigationSplitView` sidebar with Queues; the library (Folders,
     Albums, Artists, Genres); Favorites, Listen Later and the automatic
@@ -218,9 +221,13 @@ built as described above. Technical defaults, which the owner can override:
   alternate handler. The file plays in a small window of its own, through a
   second engine. It makes no queue and logs no listen; the playing queue
   pauses where it is ([021](021_open_from_other_apps.md)).
-- **The sign-in token** goes in the Keychain, not `UserDefaults`, where any
-  process of the user could read it. The device name sent at sign-in is the
-  Mac's name (`Host.current().localizedName`).
+- **The sign-in token** is kept in a file that only the user can read
+  (mode 0600), in the app's data folder, as the phone keeps it in its
+  app-private storage. The Keychain was the first choice, and it was
+  rejected when the app first ran (2026-10-08). Keychain access is tied to
+  the code signature, and an ad-hoc signature changes with every build, so
+  each update would ask for the login password. The device name sent at
+  sign-in is the Mac's name (`Host.current().localizedName`).
 - **Storage.** Downloads, the cache and covers live under
   `~/Library/Application Support/Dhun/`. All three are on one volume so
   that promoting a song is a rename, as on the phone. The defaults are the
@@ -230,9 +237,14 @@ built as described above. Technical defaults, which the owner can override:
   becoming active, when the network returns (`NWPathMonitor`), on waking
   from sleep, and from **Sync now**.
 - **Versioning.** The Mac app is versioned on its own, starting at 0.1.0
-  and tagged `macos-vX.Y.Z`. It is signed ad hoc. With no Developer ID, a
-  family Mac allows it once under System Settings → Privacy & Security. A
-  paid Developer ID and notarization can come later, with no code change.
+  (`macos/Info.plist`) and tagged `macos-vX.Y.Z`. `make mac` builds it.
+- **Signing is ad hoc only** (`codesign --sign -`): no Apple account, team
+  or certificate is involved. The Apple account set up in Xcode on the
+  owner's Mac belongs to the owner's employer, and Dhun is a personal project, so
+  it must never be signed with it (owner, 2026-10-08). With no Developer
+  ID, a family Mac allows the app once under System Settings → Privacy &
+  Security. A Developer ID and notarization could come later, only on an
+  account of the owner's own, with no code change.
 - **Tooling.** `swift format` from the Xcode toolchain, so no new tool
   joins. `make fmt`, `lint-macos` and `test-macos` join the `Makefile`. A
   CI job runs on a macOS runner.
@@ -251,7 +263,7 @@ moves with it.
 
 1. **Skeleton.** `make mac` and CI (the Makefile's `lint-macos` and
    `test-macos` came with step 0).
-   Sign-in, the Keychain, the SQLite schema, the library pull, the catalogue
+   Sign-in, the token file, the SQLite schema, the library pull, the catalogue
    (albums, artists, genres, the folder tree, search and natural sort), and
    browsing with covers. Ported tests: `CatalogTest`.
 2. **Playing.** The engine from step 0 under `Playback`. The 20 queues,
@@ -261,7 +273,7 @@ moves with it.
 3. **Offline.** The outbox and the push/pull loop with back-off. A revoked
    token keeps the unsent edits, as on Android. The play cache with prefetch, then Downloads
    and pins with promotion by rename. Ported tests: `QueueOrderTest`,
-   `DownloadsTest`, `SongCacheTest`.
+   `DownloadsTest`; `SongCacheTest`'s waiting reader is `SparseFileTests`.
 4. **The rest of the phone.**
    - Playlist editing (013), Favorites, Listen Later and the automatic
      views (010).
@@ -272,6 +284,40 @@ moves with it.
    - Family members (023).
 5. **Mac-only pieces.** The menu bar control, the floating mini window and
    Open With from Finder.
+
+## How the build went (2026-10-08)
+
+Steps 1 to 5 were built in one go, after the spike, rather than one
+install at a time.
+
+**Checked:**
+
+- The Swift tests, which include the phone's catalogue, lyrics, tempo,
+  queue-order and downloads tests, ported.
+- A throwaway end-to-end run of the real `AppModel` against the server on
+  the owner's Mac. It signed in, synced 194 songs, played an album, skipped
+  and seeked, marked a favourite, and the outbox emptied on the next sync.
+- The window, signed in, showing the albums with their covers.
+
+**Not yet checked by hand:** downloads, hand-off, the sleep timer, the
+menu bar control, the mini window and Open With.
+
+**Changes from the plan above:**
+
+- The token moved from the Keychain to a file (see the decision above).
+- macOS 26 replaced 14, by the owner's choice.
+- The song cache drops a part file left by an earlier run. A part filled
+  out of order (a seek, an index at the end) only knew in memory which of
+  its bytes had arrived. Downloads are written in order, so they still
+  resume.
+- **The engine takes bytes, not decoders.** It opens each song itself, so
+  it can interrupt a read waiting for the network. A skip or seek never
+  waits for bytes that may not come.
+- **Two bugs the first runs found:**
+  - The Now Playing artwork closure was inferred as main-actor and trapped
+    when MediaPlayer called it on its own queue.
+  - Sync's debounce cancelled a sync already under way, and with it its
+    requests.
 
 ## Open questions
 
