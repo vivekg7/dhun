@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `IN PROGRESS` — steps 1 to 3 on `main`; the song cache next
+**Status:** `IN PROGRESS` — steps 1 to 4 built; resuming downloads next
 **Started:** 2026-10-07
 
 ## Problem
@@ -174,12 +174,29 @@ turn on what a failed load means.
    run; the next sync goes on from there. List rows draw from the table
    alone; until a thumbnail is there, a row falls back to a full cover.
 
-4. **The song cache.** A folder of original files next to Downloads, with a
-   Room table of size and last play. The fetcher keeps the current song and
-   the next two, or the next ten on Wi-Fi, resuming a broken
-   file with a range request. The player resolves a song to a download,
-   then the cache (read while it grows), then the stream. A download of a
-   cached song is a rename.
+4. **The song cache.** A folder of original files beside Downloads, on
+   the same storage, so a download of a cached song is a rename. No table:
+   a file is whole once it loses its `.part`, and its modification time is
+   when it was last played, so the files are the whole record, as with the
+   covers. The fetcher keeps the song playing, even paused (it is what
+   play will want, and a resume is then instant), and while playing the
+   next two, or the next ten when the network is not mobile data, as
+   Downloads judges it. It fetches one song at a time, at full speed,
+   resuming a broken file with a range request and retrying a failure
+   without limit while the song is still wanted. When the song, the
+   queue's order or playing changes, it looks again; a fetch whose song is
+   no longer first stops and keeps its part. At the limit, the songs
+   played longest ago go, never one in the plan. A song since downloaded
+   is dropped, the cache never holding one.
+
+   The player opens a song through `SongSource`: a download, then a whole
+   cached file, then the part being fetched, read as it arrives; the
+   stream only for a seek more than 1 MB past what has arrived, or with
+   the cache off. A reader that has caught up with a failing fetch raises
+   an error, so the player retries and says it is waiting for the network.
+   Offline, cached songs are not dimmed. Settings → Downloads → Song cache
+   sets the limit: 1, 3 (the default), 5 or 10 GB, or off.
+
 5. **Downloads resume** a broken file from where it stopped.
 
 ## Open questions

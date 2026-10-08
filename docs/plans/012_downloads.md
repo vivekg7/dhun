@@ -97,7 +97,9 @@ queue is loaded is used the next time that song plays.
 - A **Downloads card** in the Playlists tab, under Favorites and Listen
   Later: the space used, what is happening (downloading, waiting for Wi-Fi,
   full), the pins, and every downloaded song.
-- **Offline**, songs that are not downloaded are **dimmed**. "Offline"
+- **Offline**, songs not on the phone are **dimmed**: not downloaded,
+  and since [019](019_networking_and_caching.md) not in the song cache
+  either. "Offline"
   means the last request could not reach the server, or there is no
   network at all. Until 0.4.0 the player also skipped them, moving to the
   next downloaded song when one failed to load; since

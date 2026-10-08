@@ -146,7 +146,8 @@ class Downloads(
             }
             startService()
             _status.value = _status.value.copy(state = State.Downloading, current = s, progress = 0f)
-            val file = fetch(s, dir) ?: continue
+            // A song in the song cache moves here rather than being fetched again.
+            val file = app.cache.promote(s, dir) ?: fetch(s, dir) ?: continue
             have[s.id]?.let { old -> if (old.path != file.path) File(old.path).delete() }
             val row = Download(s.id, file.path, s.size, System.currentTimeMillis())
             dao.putDownload(row)
@@ -239,9 +240,13 @@ class Downloads(
         _status.value = Status(state, wanted, done, used, need)
     }
 
-    /** The SD card when there is one (docs/plans/007_client_architecture.md), else the phone. No permission is needed for either. */
-    private fun dir(): File? {
-        val dirs = app.getExternalFilesDirs(DIR).filterNotNull().filter(::mounted)
+    /**
+     * The SD card when there is one (docs/plans/007_client_architecture.md),
+     * else the phone. No permission is needed for either. The song cache
+     * asks for its folder here too, to be on the same storage.
+     */
+    fun dir(name: String = DIR): File? {
+        val dirs = app.getExternalFilesDirs(name).filterNotNull().filter(::mounted)
         return (dirs.firstOrNull { Environment.isExternalStorageRemovable(it) } ?: dirs.firstOrNull())?.also { it.mkdirs() }
     }
 
@@ -261,7 +266,7 @@ class Downloads(
     private fun hasNetwork() = caps()?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
     /** Through a VPN (Tailscale), Android reports the transport of the network underneath. */
-    private fun onMobileData() = caps()?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+    fun onMobileData() = caps()?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
 
     /**
      * The foreground service keeps the process alive and shows progress.

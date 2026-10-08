@@ -214,6 +214,20 @@ private fun DownloadSettings() {
         prefs.chooseWifiOnly(it)
         app.downloads.poke()
     }
+    val cached by app.cache.used.collectAsState()
+    ChoiceRow(
+        "Song cache",
+        listOf(1, 3, 5, 10, 0),
+        prefs.cacheLimitGb,
+        { if (it == 0) "Off" else "$it GB" },
+        note =
+            "Songs you play, and the next ones in the queue (2 on mobile data, 10 on Wi-Fi), are kept " +
+                "so they play without waiting. At the limit, the songs played longest ago make room.",
+        summary = if (prefs.cacheLimitGb == 0) "Off" else "${prefs.cacheLimitGb} GB · ${bytes(cached)} used",
+    ) {
+        prefs.chooseCacheLimit(it)
+        app.cache.poke()
+    }
 }
 
 @Composable
@@ -303,10 +317,12 @@ private fun <T> ChoiceRow(
     note: String? = null,
     synced: Boolean = false,
     enabled: Boolean = true,
+    /** The row's line, when it says more than the value chosen. */
+    summary: String? = null,
     onPick: (T) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    SettingRow(title, label(selected) + if (synced) " · on all your devices" else "", enabled = enabled) { open = true }
+    SettingRow(title, summary ?: (label(selected) + if (synced) " · on all your devices" else ""), enabled = enabled) { open = true }
     if (!open) return
     AlertDialog(
         onDismissRequest = { open = false },

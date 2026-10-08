@@ -44,6 +44,8 @@ class Sync(
                 override fun onAvailable(network: Network) {
                     soon()
                     app.downloads.poke()
+                    // Wi-Fi or mobile data decides how far ahead it fetches.
+                    app.cache.poke()
                 }
 
                 // A hand-over from Wi-Fi to mobile data loses one network as

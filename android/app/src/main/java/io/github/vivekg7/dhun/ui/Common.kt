@@ -209,15 +209,17 @@ fun SongRow(
     val app = App.app
     val files by app.downloads.files.collectAsState()
     val reachable by app.api.reachable.collectAsState()
+    val cached by app.cache.songs.collectAsState()
     val downloaded = song.id in files
+    val onPhone = downloaded || song.id in cached
     Row(
         Modifier
             .fillMaxWidth()
             .background(if (current) c.primaryContainer.copy(alpha = 0.55f) else c.surface)
             .clickable(onClick = onClick)
             .height(64.dp)
-            // Offline, what is not downloaded cannot play (docs/plans/012_downloads.md).
-            .alpha(if (reachable || downloaded) 1f else 0.38f)
+            // Offline, what is not on the phone cannot play (docs/plans/012_downloads.md).
+            .alpha(if (reachable || onPhone) 1f else 0.38f)
             .padding(start = if (leading == null) 16.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

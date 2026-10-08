@@ -1,6 +1,5 @@
 package io.github.vivekg7.dhun.play
 
-import android.net.Uri
 import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
@@ -11,9 +10,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -48,7 +47,6 @@ import kotlinx.serialization.json.JsonNull
 import java.io.IOException
 import java.util.TimeZone
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 /**
  * The player and the queues around it (docs/plans/007_client_architecture.md).
@@ -86,24 +84,10 @@ class Playback(
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-    /**
-     * Items keep the stream URL; when a song is opened, a downloaded file
-     * takes its place (docs/plans/012_downloads.md). Resolving at open time
-     * means a download that finishes while the queue is loaded is used too.
-     */
-    private fun dataSource(): ResolvingDataSource.Factory {
-        // A stalled stream is retried after 10 s, not OkHttp's 30: the next try may well work.
-        val http =
-            app.api.http
-                .newBuilder()
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build()
-        val stream = OkHttpDataSource.Factory(http)
-        return ResolvingDataSource.Factory(DefaultDataSource.Factory(app, stream)) { spec ->
-            val id = spec.uri.lastPathSegment?.toLongOrNull()
-            val file = if (id != null && spec.uri.toString() == app.api.streamUrl(id)) app.downloads.file(id) else null
-            if (file != null) spec.withUri(Uri.fromFile(file)) else spec
-        }
+    /** Items keep the stream URL; [SongSource] finds where each song is when it is opened. */
+    private fun dataSource(): DataSource.Factory {
+        val other = DefaultDataSource.Factory(app, OkHttpDataSource.Factory(app.api.songs))
+        return DataSource.Factory { SongSource(app, other.createDataSource()) }
     }
 
     val queues: StateFlow<List<QueueRow>> =
@@ -777,6 +761,23 @@ class Playback(
         ) = sleep.update()
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = sleep.update()
+
+        /** What the song cache should hold follows the song, the queue's order and whether it plays. */
+        override fun onEvents(
+            player: Player,
+            events: Player.Events,
+        ) {
+            if (events.containsAny(
+                    Player.EVENT_MEDIA_ITEM_TRANSITION,
+                    Player.EVENT_TIMELINE_CHANGED,
+                    Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
+                    Player.EVENT_REPEAT_MODE_CHANGED,
+                    Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                )
+            ) {
+                app.cache.poke()
+            }
+        }
 
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) loadFailed = false

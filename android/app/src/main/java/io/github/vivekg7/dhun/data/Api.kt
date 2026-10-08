@@ -59,6 +59,13 @@ class Api(
             }.build()
 
     /**
+     * For songs, the player's stream and the cache's fetches: a stall is
+     * given up after 10 s, not 30, and tried again; the next try may well
+     * work (docs/plans/019_networking_and_caching.md).
+     */
+    val songs: OkHttpClient by lazy { http.newBuilder().readTimeout(10, TimeUnit.SECONDS).build() }
+
+    /**
      * False while the server cannot be reached: the last request to it failed
      * and none has worked since, or the phone has no network ([Sync]). Songs
      * not on the phone are dimmed then (docs/plans/012_downloads.md). Every

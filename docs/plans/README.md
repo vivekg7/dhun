@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                         |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [019 — Networking, retries and caching on Android](019_networking_and_caching.md) | `IN PROGRESS` — steps 1 to 3 on `main`; the song cache next    |
+| [019 — Networking, retries and caching on Android](019_networking_and_caching.md) | `IN PROGRESS` — steps 1 to 4 built; resuming downloads next    |
 | [018 — The settings screen on Android](018_settings_layout.md)                    | `MERGED` — in 0.4.0 on the owner's phone                       |
 | [017 — Hand-off (resume) on Android](017_handoff.md)                              | `MERGED` — in 0.3.0 on the owner's phone                       |
 | [016 — Play speed and pitch on Android](016_speed_and_pitch.md)                   | `MERGED` — in 0.3.0; settings cap on the NAS (`server-v0.1.3`) |

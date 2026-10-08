@@ -52,8 +52,9 @@ queue, which is where it matters. "End of queue → jump to the next queue"
 (Musicolet, after v1) is the same switch, triggered on completion.
 
 **Where audio comes from.** Each song resolves, in order, to a **Download**,
-then the **Cache** (after v1), then the **stream**. This happens in a
-`ResolvingDataSource`, so the player only ever sees a song ID.
+then the **Cache** (built in [019](019_networking_and_caching.md), read
+while it is still arriving), then the **stream**. This happens in a data
+source of our own (`SongSource`), so the player only ever sees a song ID.
 
 **Downloads and Cache are plain files, not Media3's `SimpleCache`.**
 `SimpleCache` stores byte ranges in opaque span files, and two caches cannot

@@ -15,6 +15,7 @@ import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Db
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Lyrics
+import io.github.vivekg7.dhun.data.SongCache
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
 import io.github.vivekg7.dhun.play.Playback
@@ -40,6 +41,7 @@ class App : Application() {
     val playback by lazy { Playback(this) }
     val downloads by lazy { Downloads(this) }
     val lyrics by lazy { Lyrics(this) }
+    val cache by lazy { SongCache(this) }
 
     /** The catalogue in memory: 7,000 songs browse and search faster there than through SQL. */
     val catalog by lazy {
@@ -77,6 +79,7 @@ class App : Application() {
             playback.reset()
             prefs.signOut()
             downloads.deleteAll()
+            cache.deleteAll()
             db.clearAllTables()
         }
     }
@@ -128,6 +131,15 @@ class Prefs(
         private set
     var wifiOnly by mutableStateOf(sp.getBoolean("wifiOnly", true))
         private set
+
+    /** The song cache's limit (docs/plans/019_networking_and_caching.md); 0 turns it off. */
+    var cacheLimitGb by mutableIntStateOf(sp.getInt("cacheLimitGb", 3))
+        private set
+
+    fun chooseCacheLimit(gb: Int) {
+        cacheLimitGb = gb
+        sp.edit { putInt("cacheLimitGb", gb) }
+    }
 
     fun chooseDownloadLimit(gb: Int) {
         downloadLimitGb = gb

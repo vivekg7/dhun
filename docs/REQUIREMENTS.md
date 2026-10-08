@@ -159,11 +159,12 @@ user (example: Downloads 10 GB, Cache 3 GB).
 
 - Downloading a song that is already cached **moves** it from Cache to
   Downloads instead of fetching it again.
-- Smart cache strategies are **user settings, all on by default**: cache what
-  is played, pre-fetch the next songs of the current queue, pre-fetch the rest
-  of the current queue, and predict from listening history.
-- **Downloads are in v1. Smart cache comes later.**
-- The cache is **3 GB by default**. It keeps every song played, plus the
+- Smart cache strategies: cache what is played, pre-fetch the next songs of
+  the current queue, and later predict from listening history. The first
+  two are fixed rules rather than separate settings; the one setting is
+  the cache's size, or off.
+- **Downloads and the cache are both in v1** (the cache since plan 019).
+- The cache is **3 GB by default**, set in Settings → Downloads. It keeps every song played, plus the
   next two songs of the queue on any network and the next ten on Wi-Fi. Full, it drops the songs played longest ago, never one in the
   queue ahead (owner, 2026-10-07; [plan 019](plans/019_networking_and_caching.md)).
 - **A network drop never skips a song.** The player says it is waiting
@@ -183,8 +184,9 @@ user (example: Downloads 10 GB, Cache 3 GB).
   data. At the storage limit (10 GB by default) they **stop and say so**;
   nothing downloaded is deleted to make room.
 - Downloaded songs carry a mark, and a **Downloads** card sits in the
-  Playlists tab. **Offline**, songs that are not downloaded are dimmed; the
-  player waits for the network rather than skip them (see the cache above).
+  Playlists tab. **Offline**, songs not on the phone (downloaded or
+  cached) are dimmed; the player waits for the network rather than skip
+  them (see the cache above).
 
 ### Delivery
 
@@ -284,7 +286,7 @@ Proposed. Awaiting the owner's confirmation.
 
 **Later (not v1)** — The rest of the admin panel (moves, upgrades, `_inbox` review;
 the current curation tool runs until then), uploads into that review, live hand-off ("Play
-here"), Smart cache, the Subsonic-compatible API, Android Auto,
+here"), predicting songs to cache from history, the Subsonic-compatible API, Android Auto,
 Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,
 bookmarks, widgets, most-played stats, lyrics editor, tag editor, audio cutter,
 and the rest of the inventory.
