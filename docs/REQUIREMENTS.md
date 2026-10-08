@@ -272,6 +272,11 @@ Proposed. Awaiting the owner's confirmation.
   not at all, are settings that follow the user to every device —
   [plans/009](plans/009_resume_long_files.md).
 - **Downloads** with a storage limit.
+- **Open audio files from other apps:** Dhun is offered in "Open with",
+  and the file plays in a small dialog over that app, never opening Dhun.
+  It makes no queue (the playing one pauses where it is), is not logged,
+  and stops when the dialog closes (owner, 2026-10-08;
+  [plan 021](plans/021_open_from_other_apps.md)).
 - **Phone-local songs**, kept separate from NAS songs as described above.
 - An offline working copy of the synced data, pushed back on reconnect.
 - **Hand-off (resume):** offer to continue what another device was playing,

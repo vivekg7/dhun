@@ -9,4 +9,16 @@
         <item name="android:windowSplashScreenBackground">@color/window</item>
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
     </style>
+
+    <!--
+      A file opened from another app plays in a dialog over that app
+      (docs/plans/021_open_from_other_apps.md). Compose draws the card, so the
+      window itself is see-through; a tap outside it closes it.
+    -->
+    <style name="Theme.Dhun.PlayFile" parent="android:Theme.Material.Dialog.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowMinWidthMinor">92%</item>
+        <item name="android:windowMinWidthMajor">50%</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
 </resources>

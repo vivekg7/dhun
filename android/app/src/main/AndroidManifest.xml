@@ -42,6 +42,29 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Audio files other apps open with Dhun play in a dialog over them
+          (docs/plans/021_open_from_other_apps.md). An empty taskAffinity keeps
+          it out of the app's own task, so the app never comes forward with it.
+          content:// only: a file:// path from another app cannot be read.
+        -->
+        <activity
+            android:name=".PlayFileActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Dhun.PlayFile">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+            </intent-filter>
+        </activity>
+
         <!-- Exported for media controllers: the system, Bluetooth, Android Auto. -->
         <service
             android:name=".play.PlaybackService"

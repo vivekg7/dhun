@@ -271,7 +271,7 @@ private fun SeekBar(
  * with a gap. Tap or drag anywhere on it; the 32 dp height is the touch area.
  */
 @Composable
-private fun Seek(
+fun Seek(
     fraction: Float,
     onDrag: (Float) -> Unit,
     onDone: () -> Unit,

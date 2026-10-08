@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [021 — Playing audio files opened from other apps](021_open_from_other_apps.md)   | `MERGED` — not yet in a release                                                         |
 | [020 — The Queues tab, as Musicolet's](020_queue_screen.md)                       | `MERGED` — in 0.6.0 on the owner's phone                                                |
 | [019 — Networking, retries and caching on Android](019_networking_and_caching.md) | `MERGED` — app in 0.5.0 on the owner's phone; server side in `server-v0.1.4` on the NAS |
 | [018 — The settings screen on Android](018_settings_layout.md)                    | `MERGED` — in 0.4.0 on the owner's phone                                                |
