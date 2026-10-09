@@ -1,6 +1,6 @@
 # 026 — Using the Android app without an account
 
-**Status:** `MERGED` — on `main`, checked on the emulator; not yet on the owner's phone
+**Status:** `MERGED` — in 0.10.0 on the owner's phone (2026-10-09); checked on the emulator
 **Started:** 2026-10-09
 
 ## Problem
