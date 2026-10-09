@@ -5,9 +5,9 @@ import SwiftUI
 /// order and dragged to reorder; a click opens the queue's songs as a page,
 /// with Play or Resume, Sort, Save as playlist, Rename and Remove.
 ///
-/// A page, not the queues and their songs side by side: with the inspector
-/// open, two lists side by side in the window's split view looped its size
-/// updates until AppKit aborted the app.
+/// A page, not the queues and their songs side by side, which also gives the
+/// songs the full width. (Side by side once crashed the app; that was
+/// SwiftUI's inspector, since replaced: docs/plans/028_mac_crash_and_polish.md.)
 struct QueuesView: View {
     @Environment(AppModel.self) private var app
 

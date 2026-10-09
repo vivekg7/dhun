@@ -9,14 +9,21 @@ struct Root: View {
         if app.signedIn {
             MainView()
         } else {
-            SignInView()
+            SignInView().frame(minWidth: 820)
         }
     }
 }
 
 /// The library window: the sidebar, the list in the middle with a search
 /// field, the queue or lyrics on the right, and Now playing along the bottom
-/// with the hand-off bar above it (plan 024).
+/// with the hand-off bar above it (plans 024, 028).
+///
+/// The queue and lyrics are a panel of our own beside the split view, not
+/// SwiftUI's inspector: beside a split view whose page changed, the
+/// inspector looped its layout until AppKit aborted the app ("more Update
+/// Constraints in Window passes than there are views"), whatever it held.
+/// Inside the detail column the panel would go with each page pushed. The
+/// window widens to fit it rather than squeezing the list.
 struct MainView: View {
     @Environment(AppModel.self) private var app
     @Environment(Nav.self) private var nav
@@ -25,32 +32,30 @@ struct MainView: View {
     var body: some View {
         @Bindable var nav = nav
         VStack(spacing: 0) {
-            NavigationSplitView {
-                Sidebar()
-                    .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
-            } detail: {
-                NavigationStack(path: $nav.path) {
-                    Detail()
-                        .navigationDestination(for: Route.self) { RouteView(route: $0) }
-                }
-            }
-            .searchable(text: $nav.search, placement: .toolbar, prompt: "Title, album or artist")
-            .searchFocused($searching)
-            .onChange(of: nav.findRequests) { searching = true }
-            .inspector(isPresented: $nav.inspector) {
-                Inspector()
-                    .inspectorColumnWidth(min: 260, ideal: 320, max: 460)
-            }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        nav.inspector.toggle()
-                    } label: {
-                        Label("Queue and lyrics", systemImage: "sidebar.right")
+            HStack(spacing: 0) {
+                NavigationSplitView {
+                    Sidebar()
+                        .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
+                } detail: {
+                    NavigationStack(path: $nav.path) {
+                        Detail()
+                            .navigationDestination(for: Route.self) { RouteView(route: $0) }
                     }
-                    .help("Show the playing queue and the lyrics")
+                    .frame(minWidth: 400)
+                }
+                .searchable(text: $nav.search, placement: .toolbar, prompt: "Title, album or artist")
+                .searchFocused($searching)
+                .onChange(of: nav.findRequests) { searching = true }
+                if nav.inspector {
+                    Divider()
+                    // Opened from Now playing's queue and lyrics buttons, or ⌥⌘U and ⌥⌘L.
+                    Inspector()
+                        .frame(width: 320)
+                        .transition(.move(edge: .trailing))
                 }
             }
+            .animation(.smooth(duration: 0.25), value: nav.inspector)
+            .frame(minWidth: nav.inspector ? 1000 : 820)
             Banners()
             NowPlayingBar()
         }

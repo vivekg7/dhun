@@ -209,7 +209,8 @@ built as described above. Technical defaults, which the owner can override:
   - A Now playing bar runs along the bottom: cover, title, controls, seek,
     favourite, speed, sleep and the lyrics toggle. The hand-off bar sits
     above it.
-  - An inspector on the right shows the playing queue or the lyrics.
+  - A panel on the right shows the playing queue or the lyrics. Not
+    SwiftUI's inspector, which crashed the app ([028](028_mac_crash_and_polish.md)).
   - Keyboard: Space plays or pauses, ⌘← and ⌘→ go to the previous and next
     song, and ⌘F searches. A **Controls** menu holds the same commands.
 - **Closing the window does not stop the music.** The app keeps playing,
@@ -317,7 +318,9 @@ all fixed:
   rebuilding a reused row before its environment is there, so rows take
   the model as a value. The second is a layout loop in AppKit with two
   lists side by side in the window's split view, so Queues is now a list
-  of queues and each queue opens as a page, as on the phone.
+  of queues and each queue opens as a page, as on the phone. That loop
+  was SwiftUI's inspector, and still struck on other pages; 028 replaced
+  the inspector.
 - **Album downloads never started.** An album's id holds a NUL; the SQLite
   layer bound text as a C string and cut it there. Text is now bound by
   length.

@@ -15,7 +15,7 @@ struct DhunApp: App {
             Root()
                 .environment(delegate.app)
                 .environment(nav)
-                .frame(minWidth: 820, minHeight: 520)
+                .frame(minHeight: 520)
                 .themed(delegate.app)
         }
         .defaultSize(width: 1180, height: 760)
