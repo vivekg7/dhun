@@ -28,8 +28,10 @@ struct DhunApp: App {
                 .themed(delegate.app)
         }
         .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.plain)
         .windowLevel(.floating)
+        // Alone it does not move a plain window (`MiniPlayer`'s gesture does),
+        // but without it a move is not saved for the next launch.
         .windowBackgroundDragBehavior(.enabled)
         .defaultPosition(.topTrailing)
 

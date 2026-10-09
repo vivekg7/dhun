@@ -68,14 +68,30 @@ struct MenuBarPlayer: View {
 }
 
 /// The floating mini window (plan 024), the counterpart of the phone's
-/// pill: small, above other windows, where it was last left.
+/// pill: small, above other windows, where it was last left. A plain
+/// window, since a title bar's buttons took a strip as tall as the player:
+/// it is dragged by anywhere on it, and a close button shows over the cover
+/// while the pointer is on it. It never becomes the key window, so ⌘W does
+/// not reach it.
 struct MiniPlayer: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.dismissWindow) private var dismissWindow
+    @State private var hovering = false
 
     var body: some View {
         let p = app.playback
         HStack(spacing: 10) {
             Cover(song: p.current, size: 52)
+                .overlay(alignment: .topLeading) {
+                    if hovering {
+                        Button("Close", systemImage: "xmark.circle.fill") { dismissWindow(id: "mini") }
+                            .labelStyle(.iconOnly).buttonStyle(.plain)
+                            .font(.title3).symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.6))
+                            .padding(2)
+                            .transition(.opacity)
+                    }
+                }
             VStack(alignment: .leading, spacing: 4) {
                 Text(p.current?.title ?? "Nothing playing").font(.callout.weight(.medium)).lineLimit(1)
                 Text(p.current?.displayArtist ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -84,6 +100,9 @@ struct MiniPlayer: View {
             .frame(width: 190, alignment: .leading)
         }
         .padding(10)
+        .background(.background, in: .rect(cornerRadius: 14))
+        .gesture(WindowDragGesture())
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
     }
 }
 

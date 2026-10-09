@@ -86,6 +86,15 @@ Only pausing saved the queue's place, so quitting, or another device
 taking over, went back to where the song was paused. A seek while paused
 now saves the place, as pausing does.
 
+Left over from that testing, and fixed after 0.2.0:
+
+- **The mini window's empty strip.** Its window buttons sat in a title bar
+  strip above the player. The window has no title bar now: it is dragged
+  by anywhere on it, and a close button shows over the cover while the
+  pointer is on it. Hiding only the buttons left the strip, at the bottom.
+  A window without a title bar never becomes the key window, so ⌘W does
+  not reach it.
+
 Tested by driving the app with real clicks and keys on the owner's Mac: a
 walk through every sidebar section, playlists, a queue's page, album and
 artist pages and back, with the panel open, crashed every run before and

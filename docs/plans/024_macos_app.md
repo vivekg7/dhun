@@ -220,6 +220,9 @@ built as described above. Technical defaults, which the owner can override:
   title, controls, seek and the queue picker.
 - **The floating mini window** is a small window that stays on top of
   other windows, shown from the Window menu. Its position is remembered.
+  It has no title bar, which took a strip as tall as the player: it is
+  moved by dragging anywhere on it, and closed by a button that shows over
+  the cover while the pointer is on it ([028](028_mac_crash_and_polish.md)).
 - **Open With from Finder.** The app declares the audio types as an
   alternate handler. The file plays in a small window of its own, through a
   second engine. It makes no queue and logs no listen; the playing queue
