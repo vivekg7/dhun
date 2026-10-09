@@ -1,6 +1,6 @@
 # 028 — The Mac app's layout crash, motion and polish
 
-**Status:** `IN PROGRESS` — built and tested on the owner's Mac; not yet on `main`
+**Status:** `MERGED` — in 0.2.0 on the owner's Mac (2026-10-09)
 **Started:** 2026-10-09
 
 ## Problem
