@@ -26,14 +26,20 @@ struct Thumb: View {
     }
 }
 
-/// A larger cover, fetched when first shown; the thumbnail until it arrives.
+/// A larger cover, fetched when first shown; the thumbnail until it
+/// arrives, then the cover fades in over it. A cover already in memory is
+/// shown at once, so a grid scrolled back does not flash.
 struct Cover: View {
     @Environment(AppModel.self) private var app
     let song: Song?
     let size: CGFloat
-    @State private var image: NSImage?
+    /// The cover fetched, and for which key: a view given another song must not show the last one's.
+    @State private var loaded: (key: String, image: NSImage)?
 
     var body: some View {
+        let key = "\(song?.art ?? "")-\(song?.id ?? 0)-\(Int(size))"
+        let px = Int(size * 2)
+        let image = loaded?.key == key ? loaded?.image : song.flatMap { app.covers.cached($0, px: px) }
         Group {
             if let image {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
@@ -45,10 +51,9 @@ struct Cover: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: max(4, size / 24)))
-        .task(id: "\(song?.art ?? "")-\(song?.id ?? 0)-\(Int(size))") {
-            image = nil
-            guard let song else { return }
-            image = await app.covers.image(song, px: Int(size * 2))
+        .task(id: key) {
+            guard let song, image == nil, let img = await app.covers.image(song, px: px) else { return }
+            withAnimation(.easeOut(duration: 0.2)) { loaded = (key, img) }
         }
     }
 }
@@ -118,7 +123,9 @@ struct Empty: View {
     }
 }
 
-/// The phone has a search box on every list; here it filters the list in place.
+/// The phone has a search box on every list; here it filters the list in
+/// place. In the toolbar, not the page: the window's first text field
+/// takes the focus, and Space must play and pause, not type.
 struct FilterField: ToolbarContent {
     @Binding var text: String
     let prompt: String

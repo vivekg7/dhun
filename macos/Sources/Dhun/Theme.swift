@@ -11,6 +11,10 @@ struct Palette: Identifiable {
     let dark: UInt32
     var id: String { name }
 
+    @MainActor static func of(_ app: AppModel) -> Palette {
+        all[min(max(app.appearance.palette, 0), all.count - 1)]
+    }
+
     static let all = [
         Palette(name: "Dull Orange", light: 0xC27B45, dark: 0xD9925C),
         Palette(name: "Sage", light: 0x7E9C7A, dark: 0x98B594),
@@ -42,7 +46,7 @@ extension NSColor {
 struct Themed: ViewModifier {
     let app: AppModel
     func body(content: Content) -> some View {
-        let palette = Palette.all[min(max(app.appearance.palette, 0), Palette.all.count - 1)]
+        let palette = Palette.of(app)
         content
             .tint(palette.color)
             .accentColor(palette.color)

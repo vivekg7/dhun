@@ -9,35 +9,39 @@ struct Sidebar: View {
     var body: some View {
         @Bindable var nav = nav
         List(selection: Binding(get: { nav.section }, set: { if let s = $0 { nav.open(s) } })) {
-            Label("Queues", systemImage: "list.number").tag(Section.queues)
-            SwiftUI.Section("Library") {
-                Label("Folders", systemImage: "folder").tag(Section.folders)
-                Label("Albums", systemImage: "square.stack").tag(Section.albums)
-                Label("Artists", systemImage: "music.mic").tag(Section.artists)
-                Label("Genres", systemImage: "guitars").tag(Section.genres)
-            }
-            SwiftUI.Section("Lists") {
-                ForEach(ListKind.allCases, id: \.self) { k in
-                    Label(k.title, systemImage: k.icon).tag(Section.list(k))
-                        .dropDestination(for: String.self) { items, _ in
-                            guard let mark = k.mark else { return false }
-                            for id in songIds(items) { app.store.mark(mark, id, true) }
-                            return true
-                        }
+            Group {
+                Label("Queues", systemImage: "list.number").tag(Section.queues)
+                SwiftUI.Section("Library") {
+                    Label("Folders", systemImage: "folder").tag(Section.folders)
+                    Label("Albums", systemImage: "square.stack").tag(Section.albums)
+                    Label("Artists", systemImage: "music.mic").tag(Section.artists)
+                    Label("Genres", systemImage: "guitars").tag(Section.genres)
                 }
-            }
-            SwiftUI.Section("Playlists") {
-                ForEach(app.playlists) { p in
-                    Label(p.name, systemImage: p.shared ? "music.note.house" : "music.note.list")
-                        .tag(Section.playlist(p.id))
-                        .dropDestination(for: String.self) { items, _ in
-                            guard p.editable else { return false }
-                            app.store.addToPlaylist(p, songIds(items))
-                            return true
-                        }
+                SwiftUI.Section("Lists") {
+                    ForEach(ListKind.allCases, id: \.self) { k in
+                        Label(k.title, systemImage: k.icon).tag(Section.list(k))
+                            .dropDestination(for: String.self) { items, _ in
+                                guard let mark = k.mark else { return false }
+                                for id in songIds(items) { app.store.mark(mark, id, true) }
+                                return true
+                            }
+                    }
                 }
+                SwiftUI.Section("Playlists") {
+                    ForEach(app.playlists) { p in
+                        Label(p.name, systemImage: p.shared ? "music.note.house" : "music.note.list")
+                            .tag(Section.playlist(p.id))
+                            .dropDestination(for: String.self) { items, _ in
+                                guard p.editable else { return false }
+                                app.store.addToPlaylist(p, songIds(items))
+                                return true
+                            }
+                    }
+                }
+                Label("Downloads", systemImage: "arrow.down.circle").tag(Section.downloads)
             }
-            Label("Downloads", systemImage: "arrow.down.circle").tag(Section.downloads)
+            // The sidebar's icons in the app's colour, not the system's blue.
+            .listItemTint(.fixed(Palette.of(app).color))
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {

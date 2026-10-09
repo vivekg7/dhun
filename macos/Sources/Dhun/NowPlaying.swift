@@ -9,18 +9,32 @@ struct NowPlayingBar: View {
 
     var body: some View {
         let p = app.playback
+        let forward = direction.forward(to: p.current?.id, in: p.items)
         HStack(spacing: 14) {
-            HStack(spacing: 10) {
-                Cover(song: p.current, size: 46)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.current?.title ?? "Nothing playing").fontWeight(.medium).lineLimit(1)
-                    // Redrawn on a clock too: "Sleep in 12 min" counts down on its own.
-                    TimelineView(.periodic(from: .now, by: 15)) { _ in
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            ZStack(alignment: .leading) {
+                HStack(spacing: 10) {
+                    Cover(song: p.current, size: 46)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(p.current?.title ?? "Nothing playing").fontWeight(.medium).lineLimit(1)
+                        // Redrawn on a clock too: "Sleep in 12 min" counts down on its own.
+                        TimelineView(.periodic(from: .now, by: 15)) { _ in
+                            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                 }
+                .frame(width: 250, alignment: .leading)
+                // The next song comes in from the right, the previous from the left, as on the
+                // phone. The song leaving only fades, quickly: it keeps the transition it was
+                // last drawn with, so a slide of its own would go the way the change before went.
+                .id(p.current?.id)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                        removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
             .frame(width: 250, alignment: .leading)
+            .clipped()
+            .animation(.smooth(duration: 0.3), value: p.current?.id)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { if let s = p.current { nav.goToAlbum(s, app) } }
             .contextMenu { if let s = p.current { SongMenu(songs: [s]) } }
@@ -67,6 +81,8 @@ struct NowPlayingBar: View {
         .overlay(alignment: .top) { Divider() }
     }
 
+    @State private var direction = Direction()
+
     private var subtitle: String {
         let p = app.playback
         guard let s = p.current else { return "" }
@@ -75,6 +91,25 @@ struct NowPlayingBar: View {
         if let q = p.active { parts.append(q.name) }
         if let sleep = p.sleep.label { parts.append("Sleep \(sleep)") }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Which way the queue moved when the song changed: on to a later song, or
+/// back. Worked out while drawing, so the slide that change starts already
+/// goes the right way; off the end of a repeating queue to its start is
+/// still forward.
+final class Direction {
+    private var last: (id: Int?, at: Int?) = (nil, nil)
+    private var wasForward = true
+
+    func forward(to id: Int?, in items: [Int]) -> Bool {
+        guard id != last.id else { return wasForward }
+        let at = id.flatMap { items.firstIndex(of: $0) }
+        if let from = last.at, let to = at {
+            wasForward = to > from || (from == items.count - 1 && to == 0)
+        }
+        last = (id, at)
+        return wasForward
     }
 }
 
@@ -108,6 +143,7 @@ struct Transport: View {
                     .system(size: compact ? 26 : 32)
                 )
                 .foregroundStyle(.tint)
+                .contentTransition(.symbolEffect(.replace))
             }
             .help(p.isPlaying ? "Pause" : "Play")
             .accessibilityLabel(p.isPlaying ? "Pause" : "Play")
@@ -122,7 +158,9 @@ struct Transport: View {
                 } label: {
                     Image(systemName: p.repeatMode == "song" ? "repeat.1" : "repeat")
                         .foregroundStyle(
-                            p.repeatMode == "off" ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint))
+                            p.repeatMode == "off" ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tint)
+                        )
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .help(
                     ["off": "Repeat", "queue": "Repeating the queue", "song": "Repeating this song"][
@@ -175,11 +213,41 @@ struct FavoriteButton: View {
             if let s { app.store.mark(Store.fav, s.id, !on) }
         } label: {
             Image(systemName: on ? "heart.fill" : "heart").foregroundStyle(
-                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
+            )
+            .toggled(on, of: s?.id)
         }
         .help(on ? "Remove from Favorites" : "Add to Favorites")
         .accessibilityLabel(on ? "Remove from Favorites" : "Add to Favorites")
         .disabled(s == nil)
+    }
+}
+
+extension View {
+    /// A mark turned on fills and bounces, as on the phone; turned off it
+    /// only empties. A song shown that has it on already does not bounce.
+    func toggled(_ on: Bool, of song: Int?) -> some View {
+        modifier(Toggled(on: on, song: song))
+    }
+}
+
+private struct Toggled: ViewModifier {
+    let on: Bool
+    let song: Int?
+    @State private var bounces = 0
+
+    private struct Mark: Equatable {
+        let on: Bool
+        let song: Int?
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.bounce, value: bounces)
+            .onChange(of: Mark(on: on, song: song)) { was, now in
+                if now.on, !was.on, now.song == was.song { bounces += 1 }
+            }
     }
 }
 
@@ -193,7 +261,9 @@ struct LaterButton: View {
             if let s { app.store.mark(Store.later, s.id, !on) }
         } label: {
             Image(systemName: on ? "clock.fill" : "clock").foregroundStyle(
-                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
+            )
+            .toggled(on, of: s?.id)
         }
         .help(on ? "Remove from Listen Later" : "Listen Later")
         .accessibilityLabel(on ? "Remove from Listen Later" : "Listen Later")
@@ -288,7 +358,9 @@ struct SleepButton: View {
         } label: {
             Image(systemName: app.playback.sleep.mode == nil ? "moon.zzz" : "moon.zzz.fill")
                 .foregroundStyle(
-                    app.playback.sleep.mode == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+                    app.playback.sleep.mode == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint)
+                )
+                .contentTransition(.symbolEffect(.replace))
         }
         .help(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
         .accessibilityLabel(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
@@ -361,15 +433,19 @@ struct Inspector: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(10)
-            switch nav.inspectorTab {
-            case .queue:
-                if let q = app.playback.active {
-                    QueueSongs(queue: q)
-                } else {
-                    ContentUnavailableView("Nothing playing", systemImage: "list.bullet")
+            Group {
+                switch nav.inspectorTab {
+                case .queue:
+                    if let q = app.playback.active {
+                        QueueSongs(queue: q)
+                    } else {
+                        ContentUnavailableView("Nothing playing", systemImage: "list.bullet")
+                    }
+                case .lyrics: LyricsView()
                 }
-            case .lyrics: LyricsView()
             }
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.15), value: nav.inspectorTab)
         }
     }
 }

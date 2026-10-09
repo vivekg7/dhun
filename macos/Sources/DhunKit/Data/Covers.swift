@@ -46,6 +46,15 @@ public final class Covers: @unchecked Sendable {
         return img
     }
 
+    /// The cover `image` would give, if it is in memory already: a view
+    /// shows it in its first frame rather than the thumbnail, then the cover.
+    public func cached(_ s: Song, px: Int) -> NSImage? {
+        guard s.hasArt else { return nil }
+        if px <= Covers.thumb { return thumbnail(s) }
+        let size = Covers.sizes.first { $0 >= px } ?? Covers.sizes.last!
+        return memory.object(forKey: "\(key(s))/\(size)" as NSString)
+    }
+
     /// The cover at least `px` across where the server has it that large;
     /// offline, a smaller kept copy beats none.
     public func image(_ s: Song, px: Int) async -> NSImage? {

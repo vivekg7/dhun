@@ -80,6 +80,7 @@ struct SongTable: View {
             guard let i = rows.firstIndex(where: { ids.contains($0.id) }) else { return }
             app.playback.play(name: name, source: source, songs: rows, start: i)
         }
+        .overlay { if songs.isEmpty { Empty() } }
         // A table of its own per list: reusing one for another list's rows is
         // where the environment went missing, and selection and sort are the
         // list's own.
@@ -223,17 +224,20 @@ struct ListHeader<Extra: View>: View {
                 Text(title).font(.title2.weight(.semibold)).lineLimit(2)
                 if !subtitle.isEmpty { Text(subtitle).foregroundStyle(.secondary) }
                 HStack(spacing: 8) {
-                    Button("Play", systemImage: "play.fill") {
-                        app.playback.play(name: title, source: source, songs: songs, start: 0)
+                    // Only when there is something to play, as on the phone.
+                    if !songs.isEmpty {
+                        Button("Play", systemImage: "play.fill") {
+                            app.playback.play(name: title, source: source, songs: songs, start: 0)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Shuffle", systemImage: "shuffle") {
+                            app.playback.play(name: title, source: source, songs: songs.shuffled(), start: 0)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    Button("Shuffle", systemImage: "shuffle") {
-                        app.playback.play(name: title, source: source, songs: songs.shuffled(), start: 0)
-                    }
+                    // Still offered on an empty list: Favorites kept on this Mac fills as songs are added.
                     if let (kind, ref) = pin { PinButton(kind: kind, ref: ref, name: title) }
                     extra
                 }
-                .disabled(songs.isEmpty)
                 .padding(.top, 4)
             }
             Spacer()

@@ -130,13 +130,15 @@ struct Missing: View {
     }
 }
 
-/// The phone's banners, above Now playing: hand-off, "continue from…?", notes.
+/// The phone's banners, above Now playing: hand-off, "continue from…?",
+/// notes. Each folds in and out rather than appearing.
 struct Banners: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
+        let handoff = app.playback.handoff.flatMap { np in app.catalog.byId[np.song].map { (np, $0) } }
         VStack(spacing: 0) {
-            if let np = app.playback.handoff, let s = app.catalog.byId[np.song] {
+            if let (np, s) = handoff {
                 Banner(icon: "arrow.triangle.2.circlepath") {
                     let from = np.deviceName.isEmpty ? "another device" : np.deviceName
                     let at = clock(Double(app.playback.placeOf(np)) / 1000)
@@ -163,6 +165,10 @@ struct Banners: View {
                 }
             }
         }
+        .clipped()
+        .animation(
+            .smooth(duration: 0.25),
+            value: [handoff != nil, app.playback.offerResume != nil, app.playback.notice != nil])
     }
 }
 
@@ -182,5 +188,6 @@ struct Banner<Message: View, Actions: View>: View {
         .padding(.vertical, 7)
         .background(.tint.opacity(0.12))
         .overlay(alignment: .top) { Divider() }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }

@@ -77,22 +77,24 @@ struct AppearanceSettings: View {
     var body: some View {
         @Bindable var app = app
         Form {
-            Picker("Theme", selection: $app.appearance.theme) {
-                Text("Follow the system").tag("system")
-                Text("Light").tag("light")
-                Text("Dark").tag("dark")
-            }
-            LabeledContent("Accent colour") {
-                HStack(spacing: 8) {
-                    ForEach(Array(Palette.all.enumerated()), id: \.offset) { i, p in
-                        Circle().fill(p.color).frame(width: 22, height: 22)
-                            .overlay {
-                                if i == app.appearance.palette {
-                                    Circle().stroke(.primary, lineWidth: 2).padding(-3)
+            SwiftUI.Section("Appearance") {
+                Picker("Theme", selection: $app.appearance.theme) {
+                    Text("Follow the system").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                LabeledContent("Accent colour") {
+                    HStack(spacing: 8) {
+                        ForEach(Array(Palette.all.enumerated()), id: \.offset) { i, p in
+                            Circle().fill(p.color).frame(width: 22, height: 22)
+                                .overlay {
+                                    if i == app.appearance.palette {
+                                        Circle().stroke(.primary, lineWidth: 2).padding(-3)
+                                    }
                                 }
-                            }
-                            .onTapGesture { app.appearance.palette = i }
-                            .help(p.name)
+                                .onTapGesture { app.appearance.palette = i }
+                                .help(p.name)
+                        }
                     }
                 }
             }
@@ -175,10 +177,12 @@ struct StorageSettings: View {
                     .foregroundStyle(.secondary)
             }
             SwiftUI.Section {
-                Picker("Song cache", selection: $app.storage.cacheLimitGb) {
+                LabeledContent("Used", value: formatBytes(app.cache.used))
+                Picker("Storage limit", selection: $app.storage.cacheLimitGb) {
                     ForEach([1, 3, 5, 10, 0], id: \.self) { Text($0 == 0 ? "Off" : "\($0) GB").tag($0) }
                 }
-                LabeledContent("Used", value: formatBytes(app.cache.used))
+            } header: {
+                Text("Song cache")
             } footer: {
                 Text(
                     "Songs you play, and the next ones in the queue (10, or 2 on a phone's hotspot), are kept so they play without waiting. At the limit, the songs played longest ago make room."
