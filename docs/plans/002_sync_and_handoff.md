@@ -78,6 +78,7 @@ v1**, built on the same live connection. H3 only if it turns out to be wanted.
 - ~~Should a hand-off move the whole queue state, or only the active
   queue?~~ Only the active queue: the others are synced anyway
   ([017](017_handoff.md)).
-- Phone-local songs are not synced. When a queue mixing local and NAS songs is
-  handed off, what does the other device show for the local ones? Open until
-  phone-local songs are built.
+- ~~Phone-local songs are not synced. When a queue mixing local and NAS songs
+  is handed off, what does the other device show for the local ones?~~ The
+  queue without them; while a phone song plays, nothing is offered
+  ([025](025_phone_local_songs.md)).

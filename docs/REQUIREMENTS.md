@@ -147,8 +147,17 @@ and anything undecided is under [Open questions](#open-questions).
 ### Phone-local songs
 
 - **Songs already on the phone and NAS songs are kept separate** for now, even
-  when they are the same track. A queue or playlist may contain both, but
-  **only the NAS songs in it are synced** to the server. To be revisited later.
+  when they are the same track. A queue may contain both, but **only the NAS
+  songs in it are synced** to the server. To be revisited later.
+- They are **mixed into** Albums, Artists, Genres and search with a phone
+  mark; Folders has an **On this phone** root. Every audio file Android
+  knows about counts, minus excluded folders and files shorter than a
+  minimum length (default 30 s). Off until turned on in Settings.
+- **Queues only:** a phone song cannot go into a playlist, so NAS playlists
+  stay the same on every device. Phone-only playlists may come later.
+- Favorites, Listen Later, play counts and resume points work for phone
+  songs **on the phone only** (owner, 2026-10-08;
+  [plan 025](plans/025_phone_local_songs.md)).
 
 ### Offline storage: Downloads and Cache
 
