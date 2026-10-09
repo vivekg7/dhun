@@ -1,6 +1,6 @@
 # 028 — The Mac app's layout crash, motion and polish
 
-**Status:** `MERGED` — in 0.2.0 on the owner's Mac (2026-10-09)
+**Status:** `MERGED` — in 0.2.0, with fixes in 0.2.1, on the owner's Mac (2026-10-09)
 **Started:** 2026-10-09
 
 ## Problem
@@ -86,7 +86,7 @@ Only pausing saved the queue's place, so quitting, or another device
 taking over, went back to where the song was paused. A seek while paused
 now saves the place, as pausing does.
 
-Left over from that testing, and fixed after 0.2.0:
+Left over from that testing, and fixed in 0.2.1:
 
 - **The mini window's empty strip.** Its window buttons sat in a title bar
   strip above the player. The window has no title bar now: it is dragged
