@@ -78,18 +78,28 @@ class App : Application() {
         )
     }
 
-    /** Forgets the account, everything synced from it, what was playing, and its downloads. */
-    fun signOut() {
-        scope.launch { forget() }
+    /** Forgets the account, everything synced from it, and what was playing; the downloads only if not [keepDownloads]. */
+    fun signOut(keepDownloads: Boolean) {
+        scope.launch { forget(keepDownloads) }
     }
 
-    suspend fun forget() =
+    /**
+     * What the phone keeps is its own (docs/plans/026_without_an_account.md):
+     * the phone songs' data, the queues made only of them, and, when kept,
+     * the downloads with their songs, which stay playable without a server.
+     */
+    suspend fun forget(keepDownloads: Boolean) =
         kotlinx.coroutines.withContext(Dispatchers.Main) {
             playback.reset()
+            val who = prefs.userName
             prefs.signOut()
-            downloads.deleteAll()
+            // Who left what stays: the next sign-in, if someone else's, takes it over (SignInScreen).
+            if (prefs.keptFrom.isEmpty()) prefs.keptFrom = who
+            if (!keepDownloads) downloads.deleteAll()
             cache.deleteAll()
-            db.clearAllTables()
+            val kept = db.dao().forgetAccount(keepDownloads)
+            // The outbox is gone: the next account learns of the kept queues from these.
+            for (q in kept) store.createQueue(q)
         }
 
     companion object {
@@ -111,6 +121,23 @@ class Prefs(
     var server by stored("server", "")
     var token by stored("token", "")
     var userName by stored("user", "")
+
+    /** Chosen on the sign-in screen: the app opens with no account (docs/plans/026_without_an_account.md). */
+    var withoutAccount: Boolean
+        get() = withoutAccountState
+        set(v) {
+            withoutAccountState = v
+            sp.edit { putBoolean("withoutAccount", v) }
+        }
+    private var withoutAccountState by mutableStateOf(sp.getBoolean("withoutAccount", false))
+
+    /**
+     * The account whose sign-out left this phone's downloads and queues,
+     * until the next sign-in's first sync. While set, no downloaded file is
+     * deleted: the pins that cover them name playlists and marks that come
+     * back only with that sync.
+     */
+    var keptFrom by stored("keptFrom", "")
 
     /** Whether the user is the admin, who manages family members (docs/plans/023_users_on_android.md). */
     var admin: Boolean

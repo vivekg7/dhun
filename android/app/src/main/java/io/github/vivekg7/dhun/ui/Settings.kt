@@ -127,7 +127,8 @@ private fun MainSettings(open: (SettingsPage) -> Unit) {
     SettingRow("Downloads", "${limitLabel(prefs.downloadLimitGb)} · ${if (prefs.wifiOnly) "Wi-Fi only" else "Any network"}", Icons.Download) {
         open(SettingsPage.Downloads)
     }
-    SettingRow("Account", "${prefs.userName} on ${prefs.server.substringAfter("://")}", Icons.Artist) { open(SettingsPage.Account) }
+    val account = if (prefs.token.isEmpty()) "Not signed in" else "${prefs.userName} on ${prefs.server.substringAfter("://")}"
+    SettingRow("Account", account, Icons.Artist) { open(SettingsPage.Account) }
     SettingRow("About", "Dhun ${BuildConfig.VERSION_NAME}", Icons.Info) { open(SettingsPage.About) }
 }
 
@@ -346,22 +347,43 @@ private fun DownloadSettings() {
 @Composable
 private fun AccountSettings(open: (SettingsPage) -> Unit) {
     val app = App.app
+    val prefs = app.prefs
     val error by app.sync.error.collectAsState()
-    SettingRow("Signed in as ${app.prefs.userName}", app.prefs.server)
-    error?.let { SettingRow("Last sync failed", it) }
-    if (app.prefs.admin) SettingRow("Family members", "Add a member, reset a forgotten password") { open(SettingsPage.Family) }
+    if (prefs.token.isEmpty()) {
+        // Back to the sign-in screen, which can also return here (docs/plans/026_without_an_account.md).
+        SettingRow("Sign in", "To your family's music server") { prefs.withoutAccount = false }
+    } else {
+        SettingRow("Signed in as ${prefs.userName}", prefs.server)
+        error?.let { SettingRow("Last sync failed", it) }
+        if (prefs.admin) SettingRow("Family members", "Add a member, reset a forgotten password") { open(SettingsPage.Family) }
+    }
+    // Revoked, the account is still this phone's until signed out.
+    if (prefs.userName.isEmpty()) return
     var confirm by remember { mutableStateOf(false) }
-    SettingRow("Sign out", "This phone's downloads are deleted") { confirm = true }
+    val files by app.downloads.files.collectAsState()
+    SettingRow("Sign out", "Keep or delete this phone's downloads") { confirm = true }
     if (confirm) {
+        val out = { keep: Boolean ->
+            confirm = false
+            app.signOut(keepDownloads = keep)
+        }
         AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text("Sign out?") },
-            text = { Text("This phone's downloads are deleted. Your queues, playlists and history stay on the server.") },
+            text = {
+                val size = bytes(files.values.sumOf { it.size })
+                val kept = if (files.isEmpty()) "" else "\n\nKept, this phone's ${files.size} downloaded songs ($size) still play without signing in."
+                Text("Your queues, playlists and history stay on the server, and the songs on this phone keep their favourites and counts here.$kept")
+            },
             confirmButton = {
-                TextButton({
-                    confirm = false
-                    app.signOut()
-                }) { Text("Sign out") }
+                if (files.isEmpty()) {
+                    TextButton({ out(true) }) { Text("Sign out") }
+                } else {
+                    Row {
+                        TextButton({ out(false) }) { Text("Delete downloads") }
+                        TextButton({ out(true) }) { Text("Keep downloads") }
+                    }
+                }
             },
             dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
         )
@@ -401,7 +423,7 @@ private fun FamilySettings() {
     error?.let { SettingRow("Could not load family members", "${it.trimEnd('.')}. Tap to try again.") { load() } }
     members?.forEach { m ->
         if (m.admin) {
-            // Resetting it here would sign out this phone, and signing out deletes its downloads.
+            // Resetting it here would sign out this phone.
             SettingRow(m.name, "Admin · its password is changed on the NAS")
         } else {
             SettingRow(m.name, memberSummary(m)) { resetting = m }
@@ -647,12 +669,20 @@ fun SignInScreen() {
                 val login = app.api.login(url, user.trim(), password, Build.MODEL)
                 // Someone else's data stays theirs. Only the name is compared: the
                 // same server is reached at its home or its Tailscale address.
-                if (app.prefs.userName.isNotEmpty() && login.user.name != app.prefs.userName) app.forget()
+                // The downloads stay, as on any sign-out that keeps them: the library is the family's.
+                if (app.prefs.userName.isNotEmpty() && login.user.name != app.prefs.userName) app.forget(keepDownloads = true)
+                // Left by someone else: the downloads and queues are theirs now (docs/plans/026_without_an_account.md).
+                if (app.prefs.keptFrom.isNotEmpty() && app.prefs.keptFrom != login.user.name) {
+                    app.downloads.adopt()
+                    app.playback.reissueQueues()
+                    app.prefs.keptFrom = login.user.name
+                }
                 app.prefs.server = url
                 app.prefs.userName = login.user.name
                 app.prefs.admin = login.user.admin
                 app.prefs.deviceId = login.deviceId
                 app.prefs.token = login.token
+                app.prefs.withoutAccount = false
                 // This screen leaves as soon as the token is set; the first sync outlives it.
                 app.scope.launch { app.sync.now() }
             } catch (e: ApiException) {
@@ -676,6 +706,21 @@ fun SignInScreen() {
             askLocal.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
         } else {
             signIn()
+        }
+    }
+
+    // Without an account the app is the phone's songs: asked for here, and opened either way.
+    val askMusic =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) app.prefs.choosePhoneSongs(true)
+            app.local.refresh()
+            app.prefs.withoutAccount = true
+        }
+    val withoutAccount = {
+        if (app.local.allowed() || app.prefs.phoneSongs) {
+            app.prefs.withoutAccount = true
+        } else {
+            askMusic.launch(LocalSongs.PERMISSION)
         }
     }
 
@@ -731,6 +776,14 @@ fun SignInScreen() {
         Button(submit, Modifier.fillMaxWidth().height(52.dp), enabled = !busy && server.isNotBlank() && user.isNotBlank() && password.isNotEmpty()) {
             Text(if (busy) "Signing in…" else "Sign in")
         }
+        TextButton(withoutAccount, Modifier.fillMaxWidth(), enabled = !busy) { Text("Use without signing in") }
+        val kept by app.downloads.files.collectAsState()
+        Text(
+            "Play the songs on this phone${if (kept.isEmpty()) "" else " and the downloads kept here"}. " +
+                "Sign in any time from Settings → Account.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

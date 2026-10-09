@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             DhunTheme(app.prefs.themeMode, app.prefs.palette) {
                 // The Surface sets the text and icon colour for everything inside.
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    if (app.prefs.token.isEmpty()) SignInScreen() else Shell()
+                    if (app.prefs.token.isEmpty() && !app.prefs.withoutAccount) SignInScreen() else Shell()
                 }
             }
         }

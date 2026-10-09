@@ -156,8 +156,9 @@ phone's next sync kept its five phone songs and the one playing.
 - **The notification's cover** is Android's album-art URI for the file's
   album (kept in the song's `art`): the media session loads covers by URI,
   and the audio file's own URI is not an image.
-- **Signing out** clears the phone songs' favourites, counts and resume
-  points with everything else: the database is one.
+- **Signing out** cleared the phone songs' favourites, counts and resume
+  points with everything else, since the database is one. Since
+  [026](026_without_an_account.md) it keeps them.
 - **Waiting for the library.** Downloads and the reload of the last queue
   wait for the NAS songs, not for any song: phone songs alone would read as
   "the library is empty, delete every download".

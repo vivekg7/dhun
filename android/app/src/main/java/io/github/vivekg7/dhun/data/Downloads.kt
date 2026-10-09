@@ -98,18 +98,43 @@ class Downloads(
     /** The local file for a song, if it is downloaded; called by the player when it opens a song. */
     fun file(song: Long): File? = files.value[song]?.let { File(it.path) }?.takeIf { it.exists() }
 
-    /** On sign-out: the files belong to the account being left. */
+    /** On a sign-out that does not keep them. */
     suspend fun deleteAll() =
         withContext(Dispatchers.IO) {
             for (d in files.value.values) File(d.path).delete()
             app.getExternalFilesDirs(DIR).filterNotNull().forEach { it.deleteRecursively() }
         }
 
+    /** A kept file that is not the song the server has under its ID ([Sync]). */
+    suspend fun drop(d: Download) {
+        withContext(Dispatchers.IO) { File(d.path).delete() }
+        dao.deleteDownload(d.song)
+        dao.deletePin(key(SONG, d.song.toString()))
+    }
+
+    /**
+     * Someone else signs in to downloads kept from another account
+     * (docs/plans/026_without_an_account.md): every file stays, as a pin of
+     * its own song, until they remove it. Pins of the other person's
+     * playlists and lists go; album, folder, artist and genre pins are the
+     * library's and stay.
+     */
+    suspend fun adopt() {
+        val songs = app.catalog.value.byId
+        for (d in dao.downloads().first()) {
+            val ref = d.song.toString()
+            dao.putPin(Pin(key(SONG, ref), SONG, ref, songs[d.song]?.title.orEmpty(), d.at))
+        }
+        for (p in dao.pins().first()) if (p.kind == PLAYLIST || p.kind == LIST) dao.deletePin(p.key)
+    }
+
     private suspend fun run() {
         val songs = wanted.value ?: return
         val want = songs.associateBy { it.id }
         // Files nothing covers any more: removed from a playlist, unpinned, gone from the library.
-        for (d in files.value.values) {
+        // Not while kept through a sign-out: their pins' playlists and marks are not here yet.
+        val checked = if (app.prefs.keptFrom.isEmpty()) files.value.values else emptyList()
+        for (d in checked) {
             if (d.song !in want) {
                 withContext(Dispatchers.IO) { File(d.path).delete() }
                 dao.deleteDownload(d.song)

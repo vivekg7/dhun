@@ -54,7 +54,8 @@ The owner chose (2026-10-07):
 Details decided while building:
 
 - **Sign out asks first.** It deletes this phone's downloads, and was one
-  tap away.
+  tap away. Since [026](026_without_an_account.md) it asks whether to keep
+  them.
 - The accent colour's dialog shows the swatches, not their names in a list:
   a colour is chosen by looking at it.
 - The open category survives rotation and Android reclaiming the app, like

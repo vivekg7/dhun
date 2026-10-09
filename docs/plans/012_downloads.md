@@ -80,8 +80,9 @@ about this phone's storage and network.
 `Android/data/io.github.vivekg7.dhun/files/downloads/` on the SD card when
 one is present, otherwise on the phone, and no storage permission is
 needed for either. Each file's path is stored with it, so a card inserted
-later only receives new downloads. Signing out deletes them, as it deletes
-everything else of the account; uninstalling deletes them too.
+later only receives new downloads. Signing out deletes them unless the
+user keeps them ([026](026_without_an_account.md)); uninstalling deletes
+them too.
 
 ### Playing them
 

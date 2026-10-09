@@ -102,7 +102,19 @@ fun FolderScreen(
     val catalog by App.app.catalog.collectAsState()
     val folder = catalog.folders[path]
     if (folder == null) {
-        Empty(if (catalog.songs.isEmpty()) "The library is loading…" else "This folder is gone")
+        val prefs = App.app.prefs
+        Empty(
+            when {
+                catalog.songs.isNotEmpty() -> "This folder is gone"
+
+                prefs.token.isNotEmpty() -> "The library is loading…"
+
+                // No account and no songs: say where songs come from (docs/plans/026_without_an_account.md).
+                prefs.phoneSongs -> "No songs on this phone yet.\nSign in from Settings → Account to play your family's library."
+
+                else -> "Turn on Settings → Songs on this phone,\nor sign in from Settings → Account."
+            },
+        )
         return
     }
     LazyColumn(Modifier.fillMaxSize()) {

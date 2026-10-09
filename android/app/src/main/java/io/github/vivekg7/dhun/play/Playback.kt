@@ -206,8 +206,8 @@ class Playback(
             closeInterrupted()
             // Reload the queue that was playing when the app last stopped,
             // paused, once the catalogue it refers to is in memory (the NAS
-            // songs, not only the phone's).
-            app.catalog.first { it.hasNas }
+            // songs, not only the phone's; with no account, the phone's).
+            app.catalog.first { it.hasNas || (app.prefs.token.isEmpty() && it.songs.isNotEmpty()) }
             val q =
                 app.db
                     .dao()
@@ -381,6 +381,29 @@ class Playback(
     }
 
     private suspend fun setOrder(ids: List<String>) = store.setting(ORDER, JsonArray(ids.map(::JsonPrimitive)))
+
+    /**
+     * Another member signs in to queues left by a sign-out
+     * (docs/plans/026_without_an_account.md). A queue's ID is unique across
+     * the server, so the one it had under the old account cannot be created
+     * under the new one, and every edit to it would be refused. Each gets a
+     * new ID and is created again as it is now.
+     */
+    suspend fun reissueQueues() {
+        val dao = app.db.dao()
+        val order = ordered.value.map { it.id }
+        val ids = HashMap<String, String>()
+        for (q in dao.allQueues()) {
+            val id = UUID.randomUUID().toString()
+            ids[q.id] = id
+            dao.deleteQueue(q.id)
+            dao.dropQueueOps(q.id)
+            app.prefs.setQueueSource(id, app.prefs.queueSource(q.id))
+            store.createQueue(q.copy(id = id))
+        }
+        ids[activeId.value]?.let(::setActive)
+        setOrder(order.mapNotNull { ids[it] })
+    }
 
     /** Drag in the queue picker: queue [from] goes to [to], counting from 0. */
     fun moveQueue(

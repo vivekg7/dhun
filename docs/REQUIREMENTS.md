@@ -238,7 +238,14 @@ Proposed. Awaiting the owner's confirmation.
   palettes, Dull Orange first —
   [plans/011](plans/011_android_app.md).
 - Connect to the server (its home address, or its Tailscale address away)
-  and sign in.
+  and sign in, or **use it without signing in**: the phone's songs, and any
+  downloads kept from an earlier sign-in, play with no server (owner,
+  2026-10-09; [plan 026](plans/026_without_an_account.md)).
+- **Signing out asks whether to keep this phone's downloads.** Kept, they
+  stay playable without signing in, and stay for whichever family member
+  signs in next until they remove them. Phone songs' favourites, counts
+  and resume points, and queues made only of phone songs, are the phone's
+  and survive signing out.
 - Browse **Folders** (the real NAS folder tree), Albums, Artists, Genres and
   Playlists. Search by title, album or artist.
 - **Multiple queues.** Playing from any list starts a new queue instead of

@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [026 — Using the Android app without an account](026_without_an_account.md)       | `MERGED` — on `main`; not yet on the owner's phone                                      |
 | [025 — Phone-local songs on Android](025_phone_local_songs.md)                    | `MERGED` — in 0.9.0 on the owner's phone                                                |
 | [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `MERGED` — 0.1.0 on the owner's Mac; GitHub release after weeks of testing              |
 | [023 — Managing family members on Android](023_users_on_android.md)               | `MERGED` — in 0.8.0 on the owner's phone                                                |

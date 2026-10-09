@@ -11,6 +11,7 @@ import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
+import androidx.room3.Transaction
 import androidx.room3.Upsert
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import kotlinx.coroutines.flow.Flow
@@ -352,4 +353,76 @@ interface DbDao {
 
     @Query("DELETE FROM thumb WHERE `key` IN (:keys)")
     suspend fun deleteThumbs(keys: List<String>)
+
+    @Query("SELECT id FROM song")
+    suspend fun songIds(): List<Long>
+
+    @Query("SELECT * FROM song WHERE id IN (SELECT song FROM download)")
+    suspend fun downloadedSongs(): List<Song>
+
+    @Query("DELETE FROM song WHERE id IN (:ids)")
+    suspend fun deleteSongs(ids: List<Long>)
+
+    @Query("DELETE FROM pin")
+    suspend fun clearPins()
+
+    @Query("DELETE FROM download")
+    suspend fun clearDownloads()
+
+    @Query("DELETE FROM outbox")
+    suspend fun clearOutbox()
+
+    @Query("DELETE FROM playlist")
+    suspend fun clearPlaylists()
+
+    @Query("DELETE FROM mark WHERE song > 0")
+    suspend fun clearMarks()
+
+    @Query("DELETE FROM resume WHERE song > 0")
+    suspend fun clearResumes()
+
+    // A phone song's own speed (speed.-…) is the phone's; every other setting the account's.
+    @Query("DELETE FROM setting WHERE name NOT LIKE 'speed.-%'")
+    suspend fun clearSettings()
+
+    @Query("DELETE FROM song WHERE id NOT IN (SELECT song FROM download)")
+    suspend fun clearSongsNotDownloaded()
+
+    @Query("DELETE FROM lyrics WHERE song NOT IN (SELECT song FROM download)")
+    suspend fun clearLyricsNotDownloaded()
+
+    @Query("DELETE FROM thumb")
+    suspend fun clearThumbs()
+
+    @Query("SELECT * FROM queue")
+    suspend fun allQueues(): List<QueueRow>
+
+    // An op on a queue has a key ending in ":<queue>" (Store.record).
+    @Query("DELETE FROM outbox WHERE `key` LIKE '%:' || :queue")
+    suspend fun dropQueueOps(queue: String)
+
+    /**
+     * Signing out (docs/plans/026_without_an_account.md): clears what came
+     * from the account, and returns the queues kept because they hold only
+     * phone songs.
+     */
+    @Transaction
+    suspend fun forgetAccount(keepDownloads: Boolean): List<QueueRow> {
+        clearOutbox()
+        clearPlaylists()
+        clearMarks()
+        clearResumes()
+        clearPlayStats()
+        clearSettings()
+        if (!keepDownloads) {
+            clearPins()
+            clearDownloads()
+            clearThumbs()
+        }
+        clearSongsNotDownloaded()
+        clearLyricsNotDownloaded()
+        val (phone, account) = allQueues().partition { q -> songIds(q.songs).let { it.isNotEmpty() && it.all { id -> id < 0 } } }
+        for (q in account) deleteQueue(q.id)
+        return phone
+    }
 }

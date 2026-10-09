@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -97,6 +98,11 @@ class Sync(
                 // The server rewrote those playlists: fetch them as written.
                 if (pushedPlaylists) pullLibrary()
                 pullPlays()
+                // The playlists and marks the kept downloads' pins name are back: the files follow the pins again.
+                if (app.prefs.keptFrom.isNotEmpty()) {
+                    app.prefs.keptFrom = ""
+                    app.downloads.poke()
+                }
                 // Its own run: the first time it is minutes of work, and the sync is not waiting on it.
                 app.scope.launch { Covers.fetchThumbs() }
                 _error.value = null
@@ -127,8 +133,11 @@ class Sync(
      * gone (docs/plans/013_playlist_editing.md).
      */
     private suspend fun pullLibrary() {
-        val lib = app.api.library(app.prefs.libraryVersion)
-        if (lib.songs.isNotEmpty()) dao.putSongs(lib.songs.map { it.toSong() })
+        val since = app.prefs.libraryVersion
+        val lib = app.api.library(since)
+        val songs = lib.songs.map { it.toSong() }
+        if (since == 0L) keepOnly(songs)
+        if (songs.isNotEmpty()) dao.putSongs(songs)
         val pending = dao.outbox(Int.MAX_VALUE).map { it.key }
 
         fun edited(id: Long) = pending.any { it.endsWith(":" + Store.playlistTag(id)) }
@@ -159,6 +168,28 @@ class Sync(
             dao.putPlaylist(Playlist(p.id, p.name, p.path, p.shared, p.songs.joinIds(), p.ref))
         }
         if (!skipped) app.prefs.libraryVersion = lib.version
+    }
+
+    /**
+     * A full pull is the whole library: a song row it lacks is gone from the
+     * server. A download kept through a sign-out stays only if the server
+     * has the same song under its ID; another server's song with that ID
+     * is not it (docs/plans/026_without_an_account.md).
+     */
+    private suspend fun keepOnly(server: List<Song>) {
+        val byId = server.associateBy { it.id }
+        if (app.prefs.keptFrom.isNotEmpty()) {
+            val kept = dao.downloadedSongs().associateBy { it.id }
+            for (d in dao.downloads().first()) {
+                val new = byId[d.song]
+                if (new == null || !sameSong(kept[d.song] ?: continue, new)) app.downloads.drop(d)
+            }
+        }
+        dao
+            .songIds()
+            .filter { it !in byId }
+            .chunked(500)
+            .forEach { dao.deleteSongs(it) }
     }
 
     /** A playlist made on this phone and the server id it became, for a page still showing the old one. */
@@ -311,3 +342,13 @@ const val LIBRARY_FORMAT = 1L
 
 private const val RETRY_MIN = 5_000L
 private const val RETRY_MAX = 2 * 60_000L
+
+/**
+ * Whether [new], from the server signed in to, is the song [kept] was: the
+ * same path, or, since a song moved on the NAS keeps its ID and its length,
+ * a duration within 2 seconds.
+ */
+fun sameSong(
+    kept: Song,
+    new: Song,
+) = kept.path == new.path || kotlin.math.abs(kept.durationMs - new.durationMs) <= 2_000
