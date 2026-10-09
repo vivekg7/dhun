@@ -1,6 +1,6 @@
 # 025 — Phone-local songs on Android
 
-**Status:** `IN PROGRESS` — built and checked on the emulator (2026-10-09); not yet on the owner's phone
+**Status:** `MERGED` — in 0.9.0 on the owner's phone (2026-10-09); checked on the emulator
 **Started:** 2026-10-08
 
 ## Problem
