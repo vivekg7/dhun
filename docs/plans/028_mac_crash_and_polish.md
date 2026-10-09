@@ -81,6 +81,11 @@ Decided while building; the owner may override any of it.
   note on an empty list (Download stays: Favorites kept on this Mac fills
   as songs are added); every Settings section has a heading.
 
+Found while testing, and fixed: **a seek made while paused was lost**.
+Only pausing saved the queue's place, so quitting, or another device
+taking over, went back to where the song was paused. A seek while paused
+now saves the place, as pausing does.
+
 Tested by driving the app with real clicks and keys on the owner's Mac: a
 walk through every sidebar section, playlists, a queue's page, album and
 artist pages and back, with the panel open, crashed every run before and

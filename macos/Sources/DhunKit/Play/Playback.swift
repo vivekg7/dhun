@@ -171,10 +171,12 @@ public final class Playback {
     }
 
     public func seek(to seconds: Double) {
-        guard current != nil else { return }
+        guard let s = current else { return }
         position = max(0, seconds)
         defer { media.update() }
-        if ended || needsRestart, let s = current {
+        // Paused, nothing else saves where it now is: quitting or the other devices would get the old place.
+        if !isPlaying, let q = active { savePlace(q, s, Int(position * 1000)) }
+        if ended || needsRestart {
             start(s, at: seconds, paused: !isPlaying)
             return
         }
@@ -794,14 +796,17 @@ public final class Playback {
         media.update()
         let pos = Int(position * 1000)
         report(q, s, pos, playing)
-        if !playing {
-            var row = q
-            row.currentSong = s.id
-            row.positionMs = pos
-            app.store.setCurrent(row)
-            saveResume(s, pos)
-        }
+        if !playing { savePlace(q, s, pos) }
         app.cache.poke()
+    }
+
+    /// Where queue `q` is, kept and synced: on pause, and on a seek while paused.
+    private func savePlace(_ q: QueueRow, _ s: Song, _ pos: Int) {
+        var row = q
+        row.currentSong = s.id
+        row.positionMs = pos
+        app.store.setCurrent(row)
+        saveResume(s, pos)
     }
 
     // MARK: Long files (plan 009)
