@@ -228,7 +228,7 @@ struct QueueSongs: View {
         guard let i = songs.firstIndex(where: { $0.id == currentId }) else {
             return summary(songs)
         }
-        let into = isActive ? Int(app.playback.position * 1000) : queue.positionMs ?? 0
+        let into = isActive ? Int(app.playback.position * 1000) : queue.positionMs
         let left = songs[i...].reduce(0) { $0 + $1.durationMs } - into
         return
             "\(i + 1) / \(songs.count) · \(clock(Double(left) / 1000)) left of \(clock(Double(total) / 1000))"
