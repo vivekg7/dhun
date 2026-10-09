@@ -211,7 +211,7 @@ class SongCache(
             }
             order
                 .mapNotNull { app.catalog.value.byId[player.getMediaItemAt(it).mediaId.toLongOrNull()] }
-                .filter { app.downloads.file(it.id) == null }
+                .filter { !it.onPhone && app.downloads.file(it.id) == null }
         }
 
     /**

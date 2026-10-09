@@ -343,8 +343,9 @@ class Downloads(
 
 /**
  * The songs [pins] cover, newest pin first so what was just tapped starts
- * first; null while the catalogue is empty, because an empty catalogue would
- * read as "delete every download".
+ * first; null while the NAS songs are not read, because an empty catalogue
+ * would read as "delete every download". Phone songs are on the phone
+ * already, so never wanted.
  */
 fun covered(
     pins: List<Pin>,
@@ -353,7 +354,7 @@ fun covered(
     favs: List<Mark>,
     later: List<Mark>,
 ): List<Song>? {
-    if (c.songs.isEmpty()) return null
+    if (!c.hasNas) return null
     val ids = LinkedHashSet<Long>()
     for (p in pins.sortedByDescending { it.at }) {
         when (p.kind) {
@@ -395,7 +396,7 @@ fun covered(
             }
         }
     }
-    return c.songsOf(ids.toList())
+    return c.songsOf(ids.toList()).filter { !it.onPhone }
 }
 
 /** "1.2 GB", "340 MB" */

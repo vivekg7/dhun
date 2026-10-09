@@ -2,16 +2,19 @@ package io.github.vivekg7.dhun.data
 
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.util.UUID
 
@@ -137,7 +140,7 @@ class Store(
         after: Long?,
     ) {
         dao.putQueue(q)
-        record("queue.insert", queue = q.id) {
+        record("queue.insert", queue = q.id, order = songIds(q.songs)) {
             put("queue", q.id)
             put("songs", JsonArray(songs.map(::JsonPrimitive)))
             if (after != null) put("after", after)
@@ -161,7 +164,7 @@ class Store(
         after: Long,
     ) {
         dao.putQueue(q)
-        record("queue.move", queue = q.id) {
+        record("queue.move", queue = q.id, order = songIds(q.songs)) {
             put("queue", q.id)
             put("song", song)
             put("after", after)
@@ -282,7 +285,8 @@ class Store(
     }
 
     /** One listen (docs/plans/008_listening_history.md). */
-    suspend fun play(l: Listen) =
+    suspend fun play(l: Listen) {
+        if (l.song < 0) return playOnPhone(l)
         record("play", at = l.startedAt) {
             put("song", l.song)
             put("ms", l.ms)
@@ -295,6 +299,29 @@ class Store(
             put("shuffle", l.shuffle)
             put("utcOffset", l.utcOffset)
         }
+    }
+
+    /**
+     * A phone song's listen, kept on the phone by the server's own rules
+     * (docs/plans/025_phone_local_songs.md): it counts once half the song was
+     * heard, and takes the song off Listen Later once it reached far enough.
+     */
+    private suspend fun playOnPhone(l: Listen) {
+        val length =
+            app.catalog.value.byId[l.song]
+                ?.durationMs ?: return
+        if (length <= 0) return
+        if (l.ms > 0 && l.ms * 2 >= length) {
+            val old = dao.playStat(l.song)
+            dao.putPlayStats(listOf(PlayStat(l.song, (old?.count ?: 0) + 1, maxOf(old?.lastPlayedAt ?: 0, l.startedAt))))
+        }
+        val s = settings.first()
+        val pct = s.int("listenLater.finishedPercent", 90).takeIf { it in 1..100 } ?: 90
+        val listed = dao.mark(LATER, l.song)?.deleted == false
+        if (s.bool("listenLater.autoRemove", true) && listed && l.toMs * 100 >= pct * length) {
+            dao.putMark(Mark(LATER, l.song, l.endedAt, deleted = true))
+        }
+    }
 
     /**
      * [key] replaces earlier ops with the same key. [queue] and [playlist]
@@ -307,16 +334,20 @@ class Store(
         queue: String? = null,
         playlist: Long? = null,
         at: Long = System.currentTimeMillis(),
+        order: List<Long> = emptyList(),
         fields: JsonObjectBuilder.() -> Unit,
     ) {
         val id = UUID.randomUUID().toString()
         val op =
-            buildJsonObject {
-                put("id", id)
-                put("type", type)
-                put("at", formatTime(at))
-                fields()
-            }
+            forServer(
+                buildJsonObject {
+                    put("id", id)
+                    put("type", type)
+                    put("at", formatTime(at))
+                    fields()
+                },
+                order,
+            ) ?: return
         if (key != null) dao.dropOps(key)
         val tag =
             when {
@@ -336,6 +367,40 @@ class Store(
 
         /** Ends the outbox key of an op on that playlist. */
         fun playlistTag(id: Long) = "pl$id"
+
+        /**
+         * [op] as the server may see it: without phone songs, or null when
+         * nothing is left to send (docs/plans/025_phone_local_songs.md). The
+         * server rejects an op naming a song it does not know, and a rejected
+         * op is dropped, so one phone song would lose a whole edit. Every op
+         * passes through here on its way to the outbox, whoever builds it.
+         * [order] is the queue after the edit, to name the NAS song before a
+         * phone song given as "after".
+         */
+        fun forServer(
+            op: JsonObject,
+            order: List<Long> = emptyList(),
+        ): JsonObject? {
+            val type = (op["type"] as? JsonPrimitive)?.content
+
+            fun id(name: String) = (op[name] as? JsonPrimitive)?.longOrNull
+            // A phone song's own speed, mark, resume point, listen or place in a queue.
+            if ((id("song") ?: 0) < 0 && type != "queue.create") return null
+            if (type == "setting.set" && (op["name"] as? JsonPrimitive)?.content.orEmpty().startsWith("speed.-")) return null
+            val out = op.toMutableMap()
+            if ((id("song") ?: 0) < 0) out["song"] = JsonPrimitive(0) // the server starts the queue at its first song
+            (op["songs"] as? JsonArray)?.let { songs ->
+                val kept = songs.filter { ((it as? JsonPrimitive)?.longOrNull ?: 0) >= 0 }
+                // An insert or removal of phone songs only says nothing to the server.
+                if (kept.isEmpty() && songs.isNotEmpty() && type in listOf("queue.insert", "queue.remove", "playlist.insert")) return null
+                out["songs"] = JsonArray(kept)
+            }
+            id("after")?.takeIf { it < 0 }?.let { after ->
+                val i = order.indexOf(after)
+                out["after"] = JsonPrimitive(order.take(i.coerceAtLeast(0)).lastOrNull { it > 0 } ?: 0)
+            }
+            return JsonObject(out)
+        }
     }
 }
 

@@ -12,6 +12,11 @@
     <!-- Downloads: a foreground service with progress (docs/plans/012_downloads.md). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Songs already on the phone (docs/plans/025_phone_local_songs.md); asked for only when turned on. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <!--
       No backup (allowBackup for old devices, no_backup.xml for Android 12+):

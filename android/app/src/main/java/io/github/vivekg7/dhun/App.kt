@@ -15,6 +15,7 @@ import io.github.vivekg7.dhun.data.Api
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Db
 import io.github.vivekg7.dhun.data.Downloads
+import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.Lyrics
 import io.github.vivekg7.dhun.data.SongCache
 import io.github.vivekg7.dhun.data.Store
@@ -28,7 +29,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -44,13 +46,14 @@ class App : Application() {
     val downloads by lazy { Downloads(this) }
     val lyrics by lazy { Lyrics(this) }
     val cache by lazy { SongCache(this) }
+    val local by lazy { LocalSongs(this) }
 
-    /** The catalogue in memory: 7,000 songs browse and search faster there than through SQL. */
+    /**
+     * The catalogue in memory: 7,000 songs browse and search faster there
+     * than through SQL. The NAS songs and the phone's, once both are read.
+     */
     val catalog by lazy {
-        db
-            .dao()
-            .songs()
-            .map { Catalog(it) }
+        combine(db.dao().songs(), local.songs.filterNotNull()) { nas, phone -> Catalog(nas + phone) }
             .stateIn(scope, SharingStarted.Eagerly, Catalog(emptyList()))
     }
 
@@ -194,6 +197,33 @@ class Prefs(
     var tempo: Tempo
         get() = Tempo(sp.getFloat("speed", 1f), sp.getInt("semitones", 0))
         set(t) = sp.edit { putFloat("speed", t.speed).putInt("semitones", t.semitones) }
+
+    /**
+     * Songs already on the phone (docs/plans/025_phone_local_songs.md): off
+     * until turned on, which asks for the permission. Files shorter than
+     * [phoneMinSeconds], and those under an excluded folder, are left out.
+     */
+    var phoneSongs by mutableStateOf(sp.getBoolean("phoneSongs", false))
+        private set
+    var phoneMinSeconds by mutableIntStateOf(sp.getInt("phoneMinSeconds", 30))
+        private set
+    var phoneExcluded by mutableStateOf(sp.getStringSet("phoneExcluded", null)?.toSet() ?: emptySet())
+        private set
+
+    fun choosePhoneSongs(on: Boolean) {
+        phoneSongs = on
+        sp.edit { putBoolean("phoneSongs", on) }
+    }
+
+    fun choosePhoneMinSeconds(s: Int) {
+        phoneMinSeconds = s
+        sp.edit { putInt("phoneMinSeconds", s) }
+    }
+
+    fun choosePhoneExcluded(folders: Set<String>) {
+        phoneExcluded = folders
+        sp.edit { putStringSet("phoneExcluded", folders) }
+    }
 
     /** Asked once, with the first download: Android 13 hides the progress notification without it. */
     var askedNotifications: Boolean

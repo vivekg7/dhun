@@ -78,6 +78,7 @@ object Covers {
         px: Int,
     ): Bitmap? {
         if (!song.hasArt) return null
+        if (song.onPhone) return phone(song, px)
         if (px <= THUMB) thumb(song)?.let { return it }
         val size = SIZES.firstOrNull { it >= px } ?: SIZES.last()
         val key = key(song)
@@ -95,6 +96,7 @@ object Covers {
      * larger view until its cover arrives. Null until it has been fetched.
      */
     suspend fun thumb(song: Song): Bitmap? {
+        if (song.onPhone) return phone(song, THUMB)
         if (!song.hasArt || song.art.isEmpty()) return null
         val mem = "${song.art}/t"
         memory.get(mem)?.let { return it }
@@ -106,6 +108,17 @@ object Covers {
                     ?.takeIf { it.isNotEmpty() } ?: return@withContext null
             BitmapFactory.decodeByteArray(data, 0, data.size)?.also { memory.put(mem, it) }
         }
+    }
+
+    /** A phone song's cover, from Android's thumbnailer (docs/plans/025_phone_local_songs.md). */
+    private suspend fun phone(
+        song: Song,
+        px: Int,
+    ): Bitmap? {
+        val size = if (px <= THUMB) THUMB else SIZES.firstOrNull { it >= px } ?: SIZES.last()
+        val mem = "p${song.id}/$size"
+        memory.get(mem)?.let { return it }
+        return app.local.cover(song.id, size)?.also { memory.put(mem, it) }
     }
 
     private val thumbsRunning = Mutex()

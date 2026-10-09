@@ -1,6 +1,6 @@
 # 025 — Phone-local songs on Android
 
-**Status:** `ACCEPTED` — behaviour decided with the owner; no code yet
+**Status:** `IN PROGRESS` — built and checked on the emulator (2026-10-09); not yet on the owner's phone
 **Started:** 2026-10-08
 
 ## Problem
@@ -132,6 +132,38 @@ truth to keep in step. The catalogue is already built in memory.
 
 The macOS app needs nothing: it has no phone songs ([024](024_macos_app.md)),
 and the queues it pulls simply lack them.
+
+## How the build went (2026-10-09)
+
+**Checked:** the unit tests (`PhoneSongsTest`: every op builder with a
+phone song in it, the pull merge, the ID), and on the emulator against a
+throwaway server: the switch asks for the permission; the media index's 22
+songs appear beside the server's 37, under **On this phone** and with the
+mark, without a restart once Android had scanned them; a phone album plays;
+its songs offer neither Add to playlist nor Download; a favourite on one
+stays on the phone. A NAS song added to the queue reached the server, as the
+queue `[34]`. When another device then put two songs at its start, the
+phone's next sync kept its five phone songs and the one playing.
+
+**Changes from the plan above:**
+
+- **One guard, not one per op.** `Store.forServer` sits in `record()`,
+  where every op passes on its way to the outbox. An op added later is
+  covered without anyone remembering to.
+- **Not music, whatever its length.** Files Android flags as a ringtone,
+  notification, alarm or recording are left out, as well as short ones.
+  Podcasts and audiobooks stay.
+- **The notification's cover** is Android's album-art URI for the file's
+  album (kept in the song's `art`): the media session loads covers by URI,
+  and the audio file's own URI is not an image.
+- **Signing out** clears the phone songs' favourites, counts and resume
+  points with everything else: the database is one.
+- **Waiting for the library.** Downloads and the reload of the last queue
+  wait for the NAS songs, not for any song: phone songs alone would read as
+  "the library is empty, delete every download".
+
+**Known limit:** with the switch turned off, a queue's phone songs are not
+loaded, so an edit to the playing queue then drops them from it.
 
 ## Rejected
 

@@ -69,9 +69,10 @@ fun savePlaylist(
     songs: List<Song>,
 ) {
     val app = App.app
+    val nas = songs.filter { !it.onPhone }
     app.scope.launch {
-        app.store.createPlaylist(name, songs.map { it.id })
-        note(context, "Saved “$name” · ${songs.distinctBy { it.id }.size} songs")
+        app.store.createPlaylist(name, nas.map { it.id })
+        note(context, "Saved “$name” · ${nas.distinctBy { it.id }.size} songs" + leftOut(songs))
     }
 }
 
@@ -81,18 +82,28 @@ private fun add(
     songs: List<Song>,
 ) {
     val app = App.app
+    val nas = songs.filter { !it.onPhone }
     app.scope.launch {
-        val skipped = app.store.addToPlaylist(p, songs.map { it.id })
-        val added = songs.distinctBy { it.id }.size - skipped
+        val skipped = app.store.addToPlaylist(p, nas.map { it.id })
+        val added = nas.distinctBy { it.id }.size - skipped
         note(
             context,
             when {
                 added == 0 -> if (skipped == 1) "Already in “${p.name}”" else "All $skipped already in “${p.name}”"
                 skipped > 0 -> "Added $added to “${p.name}” · $skipped already there"
                 else -> "Added $added to “${p.name}”"
-            },
+            } + leftOut(songs),
         )
     }
+}
+
+/**
+ * Phone songs stay out of playlists, which are the server's files and the
+ * same on every device (docs/plans/025_phone_local_songs.md).
+ */
+private fun leftOut(songs: List<Song>): String {
+    val n = songs.distinctBy { it.id }.count { it.onPhone }
+    return if (n == 0) "" else " · $n on this phone left out"
 }
 
 private suspend fun note(
@@ -122,6 +133,15 @@ fun AddToPlaylistDialog(
         return
     }
     val mine = playlists.filter { it.editable() }
+    if (songs.isNotEmpty() && songs.all { it.onPhone }) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Songs on this phone") },
+            text = { Text("Playlists hold songs from the server only, so they are the same on every device. Add phone songs to a queue instead.") },
+            confirmButton = { TextButton(onDismiss) { Text("OK") } },
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (songs.size == 1) "Add “${songs[0].title}” to" else "Add ${songs.size} songs to") },

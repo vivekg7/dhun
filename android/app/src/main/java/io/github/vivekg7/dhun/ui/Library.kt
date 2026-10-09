@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
+import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.Song
 
 /** Plays [songs] from [index] in a new queue named after the list (AGENTS.md). */
@@ -90,7 +91,7 @@ fun Empty(text: String) =
         Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 
-/** The real folder tree of the NAS, as Musicolet's hierarchical Folders tab. */
+/** The real folder tree of the NAS, and the phone's under its own root, as Musicolet's hierarchical Folders tab. */
 @Composable
 fun FolderScreen(
     path: String,
@@ -122,7 +123,8 @@ fun FolderScreen(
             }
         }
         items(folder.children, key = { "f/" + it.path }) { f ->
-            NameRow(Icons.Folder, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
+            val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
+            NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
         }
         val songs = folder.songs
         itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
@@ -164,6 +166,9 @@ fun AlbumsScreen(nav: Nav) {
                         )
                         if (pinned(Downloads.ALBUM, a.key)) {
                             Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (a.songs.first().onPhone) {
+                            Icon(Icons.Phone, "On this phone", Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Text(

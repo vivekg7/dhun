@@ -19,7 +19,9 @@ from other apps ([plan 021](docs/plans/021_open_from_other_apps.md)), a
 choice of mini player ([plan 022](docs/plans/022_mini_player_styles.md))
 and, for the admin, managing family members
 ([plan 023](docs/plans/023_users_on_android.md)); there is no GitHub
-release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
+release yet. Songs already on the phone, beside the NAS songs
+([plan 025](docs/plans/025_phone_local_songs.md)), are built but not yet
+installed. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
 control, a floating mini player and Open With from Finder; 0.1.0 is in
 daily use on the owner's Mac, with no GitHub release yet. The web client

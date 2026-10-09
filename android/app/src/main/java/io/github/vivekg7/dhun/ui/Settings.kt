@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.BuildConfig
 import io.github.vivekg7.dhun.data.ApiException
+import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.Member
 import io.github.vivekg7.dhun.data.bool
 import io.github.vivekg7.dhun.data.bytes
@@ -81,6 +85,7 @@ enum class SettingsPage(
     Main("Settings"),
     Appearance("Appearance"),
     Playback("Playback"),
+    Library("Songs on this phone"),
     Downloads("Downloads"),
     Account("Account"),
     Family("Family members"),
@@ -103,6 +108,7 @@ fun SettingsScreen(
                 SettingsPage.Main -> MainSettings(open)
                 SettingsPage.Appearance -> AppearanceSettings()
                 SettingsPage.Playback -> PlaybackSettings()
+                SettingsPage.Library -> LibrarySettings()
                 SettingsPage.Downloads -> DownloadSettings()
                 SettingsPage.Account -> AccountSettings(open)
                 SettingsPage.Family -> FamilySettings()
@@ -117,6 +123,7 @@ private fun MainSettings(open: (SettingsPage) -> Unit) {
     val prefs = App.app.prefs
     SettingRow("Appearance", "${prefs.themeMode.label} · ${prefs.palette.label}", Icons.Palette) { open(SettingsPage.Appearance) }
     SettingRow("Playback", "Long files, Listen Later", Icons.Play) { open(SettingsPage.Playback) }
+    SettingRow("Songs on this phone", if (prefs.phoneSongs) "Shown beside the server's" else "Off", Icons.Phone) { open(SettingsPage.Library) }
     SettingRow("Downloads", "${limitLabel(prefs.downloadLimitGb)} · ${if (prefs.wifiOnly) "Wi-Fi only" else "Any network"}", Icons.Download) {
         open(SettingsPage.Downloads)
     }
@@ -203,6 +210,100 @@ private fun PlaybackSettings() {
         synced = true,
         enabled = autoRemove,
     ) { set("listenLater.finishedPercent", JsonPrimitive(it)) }
+}
+
+// Songs already on the phone (docs/plans/025_phone_local_songs.md): this phone's, so not synced.
+@Composable
+private fun LibrarySettings() {
+    val app = App.app
+    val prefs = app.prefs
+    val context = LocalContext.current
+    val phone by app.local.songs.collectAsState()
+    val ask =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                prefs.choosePhoneSongs(true)
+                app.local.refresh()
+            } else {
+                android.widget.Toast
+                    .makeText(context, "Without access to music, Dhun cannot show the phone's songs", android.widget.Toast.LENGTH_LONG)
+                    .show()
+            }
+        }
+    val allowed = app.local.allowed()
+    val summary =
+        when {
+            !prefs.phoneSongs -> "Only the server's songs are shown"
+            !allowed -> "Tap to allow access to music"
+            else -> "${phone?.size ?: 0} songs, marked with a phone. They are never sent to the server."
+        }
+    SwitchRow("Songs on this phone", summary, prefs.phoneSongs && allowed) { on ->
+        if (on && !allowed) {
+            ask.launch(LocalSongs.PERMISSION)
+        } else {
+            prefs.choosePhoneSongs(on)
+            app.local.refresh()
+        }
+    }
+    ChoiceRow(
+        "Shortest song",
+        listOf(0, 10, 30, 60, 120),
+        prefs.phoneMinSeconds,
+        { if (it == 0) "Every file" else "$it seconds" },
+        note = "Shorter files are left out: ringtones, notification sounds, voice notes.",
+        enabled = prefs.phoneSongs,
+    ) {
+        prefs.choosePhoneMinSeconds(it)
+        app.local.refresh()
+    }
+    var excluding by remember { mutableStateOf(false) }
+    val excluded = prefs.phoneExcluded
+    SettingRow(
+        "Excluded folders",
+        if (excluded.isEmpty()) "None" else excluded.joinToString(", ") { it.removePrefix(LocalSongs.PHONE_ROOT + "/") },
+        enabled = prefs.phoneSongs,
+    ) { excluding = true }
+    if (excluding) ExcludedFoldersDialog { excluding = false }
+}
+
+/** Every folder of the phone holding audio, ticked to leave it and its subfolders out. */
+@Composable
+private fun ExcludedFoldersDialog(onDismiss: () -> Unit) {
+    val app = App.app
+    val folders by app.local.folders.collectAsState()
+    var chosen by remember { mutableStateOf(app.prefs.phoneExcluded) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Excluded folders") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                items(folders, key = { it.first }) { (path, count) ->
+                    val on = path in chosen
+                    Row(
+                        Modifier.fillMaxWidth().clickable { chosen = if (on) chosen - path else chosen + path },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(on, null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            path.removePrefix(LocalSongs.PHONE_ROOT + "/").ifEmpty { "Top folder" },
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text("$count", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton({
+                app.prefs.choosePhoneExcluded(chosen)
+                app.local.refresh()
+                onDismiss()
+            }) { Text("Done") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
 }
 
 // This phone's storage and network, so not synced (docs/plans/012_downloads.md).

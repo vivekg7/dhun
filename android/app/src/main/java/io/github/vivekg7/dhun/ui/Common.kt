@@ -144,13 +144,14 @@ fun PageHeader(
         Row(Modifier.padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Tip("Back") { IconButton(onBack) { Icon(Icons.Back, "Back") } }
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (songs.isNotEmpty() || actions.isNotEmpty()) {
+            val nas = songs.any { !it.onPhone }
+            if (nas || actions.isNotEmpty()) {
                 Box {
                     var open by remember { mutableStateOf(false) }
                     Tip("More options") { IconButton({ open = true }) { Icon(Icons.More, "More options") } }
                     DropdownMenu(open, { open = false }) {
                         val close = { open = false }
-                        if (songs.isNotEmpty()) MenuItem("Add to playlist…", close) { adding = true }
+                        if (nas) MenuItem("Add to playlist…", close) { adding = true }
                         for ((label, action) in actions) MenuItem(label, close, action)
                     }
                 }
@@ -171,7 +172,7 @@ fun PageHeader(
                         Text("Shuffle")
                     }
                 }
-                if (download != null) DownloadButton(download)
+                if (download != null && download.songs.any { !it.onPhone }) DownloadButton(download)
             }
         }
     }
@@ -225,7 +226,7 @@ fun SongRow(
     val reachable by app.api.reachable.collectAsState()
     val cached by app.cache.songs.collectAsState()
     val downloaded = song.id in files
-    val onPhone = downloaded || song.id in cached
+    val playable = song.onPhone || downloaded || song.id in cached
     val outline = if (live) c.primary else c.outline
     Row(
         Modifier
@@ -250,7 +251,7 @@ fun SongRow(
             ).combinedClickable(onLongClick = onLongClick, onClick = onClick)
             .height(64.dp)
             // Offline, what is not on the phone cannot play (docs/plans/012_downloads.md).
-            .alpha(if (reachable || onPhone) 1f else 0.38f)
+            .alpha(if (reachable || playable) 1f else 0.38f)
             .padding(start = if (leading == null) 16.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -274,6 +275,7 @@ fun SongRow(
             )
         }
         if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
+        if (song.onPhone) Icon(Icons.Phone, "On this phone", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
         Text(
             duration(song.durationMs),
             Modifier.width(56.dp),
@@ -320,13 +322,14 @@ fun SongMenuButton(
             MenuItem("Add to a queue…", close) { queueing = true }
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
-            MenuItem("Add to playlist…", close) { adding = true }
+            // A phone song stays out of playlists, and is on the phone already (docs/plans/025_phone_local_songs.md).
+            if (!song.onPhone) MenuItem("Add to playlist…", close) { adding = true }
             val pins by app.downloads.pins.collectAsState()
             val files by app.downloads.files.collectAsState()
             val key = Downloads.key(Downloads.SONG, song.id.toString())
-            if (pins.any { it.key == key }) {
+            if (!song.onPhone && pins.any { it.key == key }) {
                 MenuItem("Remove download", close) { scope.launch { app.downloads.unpin(key) } }
-            } else if (song.id !in files) {
+            } else if (!song.onPhone && song.id !in files) {
                 MenuItem("Download", close) { pin(Downloads.SONG, song.id.toString(), song.title) }
             }
             menu.nav?.let { nav ->

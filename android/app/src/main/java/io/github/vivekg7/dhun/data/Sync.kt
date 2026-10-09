@@ -206,7 +206,22 @@ class Sync(
                 continue
             }
             if (pending.any { it.endsWith(":${q.id}") }) continue
-            dao.putQueue(QueueRow(q.id, q.name, q.songs.joinIds(), q.currentSong, q.positionMs, q.shuffle, q.repeat, parseTime(q.usedAt)))
+            // The server never had this queue's phone songs: they stay, and so does one playing.
+            val mine = dao.queue(q.id)
+            val songs = mergePhoneSongs(mine?.let { songIds(it.songs) } ?: emptyList(), q.songs)
+            val phoneCurrent = mine?.takeIf { it.currentSong < 0 && it.currentSong in songs }
+            dao.putQueue(
+                QueueRow(
+                    q.id,
+                    q.name,
+                    songs.joinIds(),
+                    phoneCurrent?.currentSong ?: q.currentSong,
+                    phoneCurrent?.positionMs ?: q.positionMs,
+                    q.shuffle,
+                    q.repeat,
+                    parseTime(q.usedAt),
+                ),
+            )
         }
         for ((kind, items) in listOf(Store.FAV to s.favorites, Store.LATER to s.listenLater)) {
             for (i in items) {
@@ -262,6 +277,30 @@ class Sync(
         dao.clearPlayStats()
         dao.putPlayStats(plays.map { PlayStat(it.song, it.count, parseTime(it.lastPlayedAt)) })
     }
+}
+
+/**
+ * The server's order of a queue, with this phone's songs from [mine] put
+ * back (docs/plans/025_phone_local_songs.md): each after the NAS song it
+ * followed here, or the nearest one before that the server still has, or
+ * at the start. Phone songs in a row stay together and in order.
+ */
+fun mergePhoneSongs(
+    mine: List<Long>,
+    server: List<Long>,
+): List<Long> {
+    if (mine.none { it < 0 }) return server
+    val kept = server.toSet()
+    val after = LinkedHashMap<Long, MutableList<Long>>() // 0: the start
+    var anchor = 0L
+    for (id in mine) {
+        if (id < 0) {
+            after.getOrPut(anchor) { mutableListOf() } += id
+        } else if (id in kept) {
+            anchor = id
+        }
+    }
+    return after[0].orEmpty() + server.flatMap { listOf(it) + after[it].orEmpty() }
 }
 
 // A blip is over in seconds; the 15 minutes this once grew to left the app

@@ -86,6 +86,9 @@ data class Song(
     val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)
     val folder get() = path.substringBeforeLast('/', "")
     val displayArtist get() = artist.ifEmpty { albumArtist }.ifEmpty { "Unknown artist" }
+
+    /** A song already on the phone, never sent to the server ([LocalSongs]). */
+    val onPhone get() = id < 0
 }
 
 /**
@@ -298,8 +301,12 @@ interface DbDao {
     @Upsert
     suspend fun putPlayStats(stats: List<PlayStat>)
 
-    @Query("DELETE FROM play_stat")
+    // Phone songs' counts are kept on the phone only (docs/plans/025_phone_local_songs.md).
+    @Query("DELETE FROM play_stat WHERE song > 0")
     suspend fun clearPlayStats()
+
+    @Query("SELECT * FROM play_stat WHERE song = :song")
+    suspend fun playStat(song: Long): PlayStat?
 
     @Query("SELECT * FROM pin ORDER BY at DESC")
     fun pins(): Flow<List<Pin>>

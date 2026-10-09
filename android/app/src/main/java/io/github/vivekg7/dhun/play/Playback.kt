@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun.play
 
+import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.annotation.OptIn
@@ -204,8 +205,9 @@ class Playback(
         scope.launch {
             closeInterrupted()
             // Reload the queue that was playing when the app last stopped,
-            // paused, once the catalogue it refers to is in memory.
-            app.catalog.first { it.songs.isNotEmpty() }
+            // paused, once the catalogue it refers to is in memory (the NAS
+            // songs, not only the phone's).
+            app.catalog.first { it.hasNas }
             val q =
                 app.db
                     .dao()
@@ -653,19 +655,25 @@ class Playback(
         saveResume(song, pos)
     }
 
+    /** A phone song plays from its own file; [SongSource] passes its URI through. */
     private fun item(s: Song) =
         MediaItem
             .Builder()
             .setMediaId(s.id.toString())
-            .setUri(app.api.streamUrl(s.id))
+            .setUri(if (s.onPhone) app.local.uri(s.id) ?: Uri.EMPTY else app.api.streamUrl(s.id).toUri())
             .setMediaMetadata(
                 MediaMetadata
                     .Builder()
                     .setTitle(s.title)
                     .setArtist(s.displayArtist)
                     .setAlbumTitle(s.album)
-                    .apply { if (s.hasArt) setArtworkUri(app.api.artUrl(s.id, COVER_PX).toUri()) }
-                    .build(),
+                    .apply {
+                        if (s.onPhone) {
+                            setArtworkUri(app.local.artUri(s))
+                        } else if (s.hasArt) {
+                            setArtworkUri(app.api.artUrl(s.id, COVER_PX).toUri())
+                        }
+                    }.build(),
             ).build()
 
     // --- Long files (plan 009) ---------------------------------------------

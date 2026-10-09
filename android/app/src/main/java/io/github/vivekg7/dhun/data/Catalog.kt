@@ -16,12 +16,14 @@ class Catalog(
     /**
      * Two songs are on one album when they share the album name and either
      * the album artist or, without one, the folder. A bare album name would
-     * merge every "Greatest Hits" in the collection.
+     * merge every "Greatest Hits" in the collection. A phone copy of a NAS
+     * album is an album of its own, not each track twice in one
+     * (docs/plans/025_phone_local_songs.md).
      */
     val albums: List<Album> by lazy {
         songs
             .filter { it.album.isNotEmpty() }
-            .groupBy { it.album.lowercase() + '\u0000' + it.albumArtist.lowercase().ifEmpty { it.folder } }
+            .groupBy { (if (it.onPhone) "phone\u0000" else "") + it.album.lowercase() + '\u0000' + it.albumArtist.lowercase().ifEmpty { it.folder } }
             .map { (key, list) ->
                 val sorted = list.sortedWith(compareBy<Song>({ it.disc }, { it.track }).thenBy(TITLE) { it.title })
                 val first = sorted.first()
@@ -42,7 +44,8 @@ class Catalog(
             }
         for (s in songs) folder(s.folder).songs += s
         for (f in map.values) {
-            f.children.sortWith(compareBy(TITLE) { it.name })
+            // The phone's songs first, before the NAS folders.
+            f.children.sortWith(compareBy<Folder> { it.path != LocalSongs.PHONE_ROOT }.thenBy(TITLE) { it.name })
             f.songs.sortWith(compareBy<Song>({ it.disc }, { it.track }).thenBy(TITLE) { it.path })
         }
         folder("")
@@ -50,6 +53,9 @@ class Catalog(
     }
 
     fun songsOf(ids: List<Long>) = ids.mapNotNull { byId[it] }
+
+    /** False until the NAS songs are read: phone songs alone are not the library loaded. */
+    val hasNas: Boolean by lazy { songs.any { !it.onPhone } }
 
     /** Title, album and artist, ignoring case and accents; titles that start with the query first. */
     fun search(query: String): List<Song> {

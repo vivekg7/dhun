@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [025 — Phone-local songs on Android](025_phone_local_songs.md)                    | `ACCEPTED` — behaviour decided; no code yet                                             |
+| [025 — Phone-local songs on Android](025_phone_local_songs.md)                    | `IN PROGRESS` — built and checked on the emulator; not yet on the phone                 |
 | [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `MERGED` — 0.1.0 on the owner's Mac; GitHub release after weeks of testing              |
 | [023 — Managing family members on Android](023_users_on_android.md)               | `MERGED` — in 0.8.0 on the owner's phone                                                |
 | [022 — A choice of mini player on Android](022_mini_player_styles.md)             | `MERGED` — in 0.7.0 on the owner's phone                                                |
