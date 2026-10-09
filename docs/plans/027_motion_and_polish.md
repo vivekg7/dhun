@@ -1,6 +1,6 @@
 # 027 — Motion and polish on Android
 
-**Status:** `MERGED` — on `main`, checked on the owner's phone in a debug build
+**Status:** `MERGED` — in 0.11.0 on the owner's phone (2026-10-09)
 **Started:** 2026-10-09
 
 ## Problem
