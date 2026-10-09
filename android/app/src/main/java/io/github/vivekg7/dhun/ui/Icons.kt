@@ -10,6 +10,10 @@ import androidx.compose.ui.unit.dp
  * The few icons the app draws, as path data from Google's Material Symbols
  * (Apache 2.0; docs/INSPIRATIONS.md). The icons library would bring
  * thousands we never use (docs/plans/011_android_app.md).
+ *
+ * A shape after a `z` starts with an absolute `M`: older Android measures a
+ * relative `m` from the last point drawn, not from where the closed shape
+ * began, and drew Previous's triangle below its bar.
  */
 object Icons {
     private fun icon(
@@ -69,7 +73,7 @@ object Icons {
         "shuffle",
         "M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z",
     )
-    val Previous by icon("previous", "M6 6h2v12H6zm3.5 6l8.5 6V6z")
+    val Previous by icon("previous", "M6 6h2v12H6zM9.5 12l8.5 6V6z")
     val Next by icon("next", "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z")
     val Pause by icon("pause", "M6 19h4V5H6v14zm8-14v14h4V5h-4z")
     val Play by icon("play", "M8 5v14l11-7z")
@@ -101,7 +105,7 @@ object Icons {
     val Sleep by icon("sleep", "M12.34 2.02C6.59 1.82 2 6.42 2 12c0 5.52 4.48 10 10 10 3.71 0 6.93-2.02 8.66-5.02-7.51-.25-12.09-8.43-8.32-14.96z")
     val Speed by icon(
         "speed",
-        "M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z",
+        "M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zM10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z",
     )
     val Sync by icon(
         "sync",
