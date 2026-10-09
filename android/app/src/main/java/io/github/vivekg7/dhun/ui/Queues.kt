@@ -88,7 +88,7 @@ fun QueuesScreen(nav: Nav) {
     val shownId = picked.takeIf { pickedWhile == activeId }
     val shown = queues.firstOrNull { it.id == (shownId ?: activeId) } ?: queues.firstOrNull()
     if (shown == null) {
-        Empty("No queues yet.\nPlaying anything from your library starts one.")
+        Empty("No queues yet.\nPlaying anything from your library starts one.", page = true)
         return
     }
     val c = MaterialTheme.colorScheme
@@ -242,11 +242,11 @@ fun QueuesScreen(nav: Nav) {
                 list.scrollToItem((index - 2).coerceAtLeast(0))
             }
         }
-        val reorder = rememberReorder { from, to -> app.playback.moveIn(shown.id, from, to) }
+        val reorder = rememberReorder(list, rows, { it.value.id }) { from, to -> app.playback.moveIn(shown.id, from, to) }
         // Positions are the queue's own, so dragging waits until the search is cleared.
         val canDrag = query.isBlank() && sel == null
         LazyColumn(Modifier.weight(1f), state = list) {
-            items(rows, key = { it.value.id }) { (i, s) ->
+            items(reorder.shown, key = { it.value.id }) { (i, s) ->
                 val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
                 val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
                 val extra =
@@ -260,7 +260,7 @@ fun QueuesScreen(nav: Nav) {
                             }
                         }
                     }
-                Box(reorder.row(i)) {
+                Box(with(reorder) { row(s.id) }) {
                     SongRow(
                         s,
                         onClick = {
@@ -284,7 +284,7 @@ fun QueuesScreen(nav: Nav) {
                                 }
 
                                 canDrag -> {
-                                    { reorder.Handle(i, songs.size) }
+                                    { reorder.Handle(s.id) }
                                 }
 
                                 else -> {
@@ -373,13 +373,13 @@ private fun QueuePicker(
     val c = MaterialTheme.colorScheme
     val keep = activeId.takeIf { id -> queues.any { it.id == id } } ?: shownId
     var clearing by remember { mutableStateOf(false) }
-    val reorder = rememberReorder(PICKER_ROW) { from, to -> app.playback.moveQueue(from, to) }
     // Opens on the queue playing (else the one shown), in the middle of the
     // list, so with many queues it need not be looked for.
     val list =
         rememberLazyListState(
             (queues.indexOfFirst { it.id == activeId }.takeIf { it >= 0 } ?: queues.indexOfFirst { it.id == shownId }).minus(4).coerceAtLeast(0),
         )
+    val reorder = rememberReorder(list, queues, { it.id }) { from, to -> app.playback.moveQueue(from, to) }
     AlertDialog(
         onDismissRequest = onDismiss,
         // Wide, as Musicolet's: the names are what you choose by.
@@ -395,16 +395,15 @@ private fun QueuePicker(
         text = {
             // Eight and a half rows: the half shows there are more.
             LazyColumn(Modifier.heightIn(max = PICKER_ROW * 8.5f), state = list) {
-                itemsIndexed(queues, key = { _, q -> q.id }) { i, q ->
+                itemsIndexed(reorder.shown, key = { _, q -> q.id }) { i, q ->
                     Row(
-                        reorder
-                            .row(i)
+                        with(reorder) { row(q.id) }
                             .fillMaxWidth()
                             .height(PICKER_ROW)
                             .clickable { onPick(q.id) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        reorder.Handle(i, queues.size)
+                        reorder.Handle(q.id)
                         RadioButton(q.id == shownId, null)
                         Text("${i + 1}", Modifier.padding(start = 12.dp).width(24.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
                         if (q.id == activeId) Icon(Icons.Play, "Playing", Modifier.padding(end = 4.dp).size(18.dp), tint = c.primary)

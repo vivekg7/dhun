@@ -85,11 +85,14 @@ fun pinned(
     return pins.any { it.key == key }
 }
 
+/** A note where a list would be: in the middle of the screen when it is the whole screen ([page]). */
 @Composable
-fun Empty(text: String) =
-    Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-    }
+fun Empty(
+    text: String,
+    page: Boolean = false,
+) = Box((if (page) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(48.dp), contentAlignment = Alignment.Center) {
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+}
 
 /** The real folder tree of the NAS, and the phone's under its own root, as Musicolet's hierarchical Folders tab. */
 @Composable
@@ -104,16 +107,18 @@ fun FolderScreen(
     if (folder == null) {
         val prefs = App.app.prefs
         Empty(
-            when {
-                catalog.songs.isNotEmpty() -> "This folder is gone"
+            page = true,
+            text =
+                when {
+                    catalog.songs.isNotEmpty() -> "This folder is gone"
 
-                prefs.token.isNotEmpty() -> "The library is loading…"
+                    prefs.token.isNotEmpty() -> "The library is loading…"
 
-                // No account and no songs: say where songs come from (docs/plans/026_without_an_account.md).
-                prefs.phoneSongs -> "No songs on this phone yet.\nSign in from Settings → Account to play your family's library."
+                    // No account and no songs: say where songs come from (docs/plans/026_without_an_account.md).
+                    prefs.phoneSongs -> "No songs on this phone yet.\nSign in from Settings → Account to play your family's library."
 
-                else -> "Turn on Settings → Songs on this phone,\nor sign in from Settings → Account."
-            },
+                    else -> "Turn on Settings → Songs on this phone,\nor sign in from Settings → Account."
+                },
         )
         return
     }
@@ -203,7 +208,7 @@ fun AlbumScreen(
     onBack: () -> Unit,
 ) {
     val catalog by App.app.catalog.collectAsState()
-    val album = catalog.albums.firstOrNull { it.key == key } ?: return Empty("This album is gone")
+    val album = catalog.albums.firstOrNull { it.key == key } ?: return Empty("This album is gone", page = true)
     val facts = listOfNotNull(album.artist, album.year.takeIf { it > 0 }?.toString(), summary(album.songs)).joinToString(" · ")
     SongList(album.name, "album:${album.name}", album.songs, nav) {
         Column {
@@ -255,7 +260,7 @@ fun GroupScreen(
     val catalog by App.app.catalog.collectAsState()
     val group =
         (if (artists) catalog.artists else catalog.genres).firstOrNull { it.name.equals(name, ignoreCase = true) }
-            ?: return Empty("Nothing by $name")
+            ?: return Empty("Nothing by $name", page = true)
     // An artist's songs by album, then track: how they were released.
     val songs = remember(group) { group.songs.sortedWith(compareBy<Song>({ it.album.lowercase() }, { it.disc }, { it.track })) }
     val source = if (artists) "artist:${group.name}" else "genre:${group.name}"
@@ -282,5 +287,7 @@ fun SearchScreen(nav: Nav) {
             SongRow(s, onClick = { playList("Search: ${query.trim()}", "search", hits, i) }, menu = SongMenu(nav = nav))
         }
         if (query.isNotBlank() && hits.isEmpty()) item { Empty("No songs match “${query.trim()}”") }
+        // Not a blank page before typing: what the box searches.
+        if (query.isBlank() && catalog.songs.isNotEmpty()) item { Empty("Search ${catalog.songs.size} songs by title, artist or album.") }
     }
 }

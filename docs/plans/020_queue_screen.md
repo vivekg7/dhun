@@ -75,7 +75,9 @@ first**, which renumbers every queue on each switch.
   Musicolet's three, so more of the queue fits on screen.
 - **A search box at the bottom**, "Search in this queue…", filtering by
   title, artist or album. Dragging waits until it is cleared, since the
-  positions shown are no longer the queue's.
+  positions shown are no longer the queue's. How a drag moves (rows
+  sliding aside, scrolling at the edges) is in
+  [027](027_motion_and_polish.md).
 
 ### Editing any queue
 

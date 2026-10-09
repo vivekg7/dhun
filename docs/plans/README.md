@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                              | Status                                                                                  |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [027 — Motion and polish on Android](027_motion_and_polish.md)                    | `MERGED` — on `main`; not yet on the owner's phone                                      |
 | [026 — Using the Android app without an account](026_without_an_account.md)       | `MERGED` — in 0.10.0 on the owner's phone                                               |
 | [025 — Phone-local songs on Android](025_phone_local_songs.md)                    | `MERGED` — in 0.9.0 on the owner's phone                                                |
 | [024 — The macOS app, at the Android app's level](024_macos_app.md)               | `MERGED` — 0.1.0 on the owner's Mac; GitHub release after weeks of testing              |

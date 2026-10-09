@@ -1,6 +1,17 @@
 package io.github.vivekg7.dhun.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -22,6 +33,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,8 +62,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -65,8 +79,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.NowPlaying
+import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.ui.Motion.page
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Musicolet's tabs, in its order (docs/plans/011_android_app.md). */
@@ -169,6 +187,15 @@ class Nav(
 
     fun top(t: Tab) = stacks.getValue(t).lastOrNull()
 
+    /** What [t] shows: its top page, or its own list, with how deep that is and its key in [saved]. */
+    data class Entry(
+        val key: String,
+        val depth: Int,
+        val page: Page?,
+    )
+
+    fun entry(t: Tab) = Entry(key(t), stacks.getValue(t).size, top(t))
+
     fun canPop(t: Tab) = stacks.getValue(t).isNotEmpty()
 
     /**
@@ -220,53 +247,90 @@ fun Shell() {
     val pager = rememberPagerState(initialPage = Tab.Now.ordinal) { Tab.entries.size }
     val scope = rememberCoroutineScope()
     // The pager and nav.tab drive each other: a swipe sets the tab, "Go to album" moves the pager.
-    LaunchedEffect(pager.currentPage) { nav.tab = Tab.entries[pager.currentPage] }
-    LaunchedEffect(nav.tab) { if (pager.currentPage != nav.tab.ordinal) pager.animateScrollToPage(nav.tab.ordinal) }
+    // Only a settled page sets the tab: one passed on the way would turn the pager round, and
+    // a tap then would land on the wrong tab.
+    LaunchedEffect(pager.settledPage) { nav.tab = Tab.entries[pager.settledPage] }
+    LaunchedEffect(nav.tab) {
+        val to = nav.tab.ordinal
+        // Next door slides over, as a swipe; further jumps there, as tapping a tab does.
+        if (pager.currentPage != to) {
+            if (abs(pager.currentPage - to) == 1) {
+                pager.animateScrollToPage(to)
+            } else {
+                pager.scrollToPage(to)
+            }
+        }
+    }
 
     BackHandler(nav.settings != null) { nav.settingsBack() }
     BackHandler(nav.settings == null && nav.canPop(nav.tab)) { nav.pop(nav.tab) }
 
     // Settings replaces the tabs: they keep their state for coming back.
-    val settings = nav.settings
-    if (settings != null) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    MaterialTheme.colorScheme.background,
-                ).windowInsetsPadding(WindowInsets.statusBars)
-                .windowInsetsPadding(WindowInsets.navigationBars),
-        ) {
-            SettingsScreen(settings, { nav.settings = it }, nav::settingsBack)
+    AnimatedContent(nav.settings, transitionSpec = { page(depth(targetState) > depth(initialState)) }, label = "settings") { settings ->
+        if (settings != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.background,
+                    ).windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            ) {
+                SettingsScreen(settings, { nav.settings = it }, nav::settingsBack)
+            }
+        } else {
+            Tabs(nav, saved, pager) { t ->
+                // Tapping the tab you are on goes back to its own list.
+                if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
+                nav.tab = t
+                scope.launch { pager.scrollToPage(t.ordinal) }
+            }
         }
-        return
     }
-    saved.SaveableStateProvider("tabs") {
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            val mini = App.app.prefs.miniPlayer
-            Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
-                HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { page ->
-                    val tab = Tab.entries[page]
+}
+
+/** How far into Settings a page is, so going deeper slides forward and back slides back. */
+private fun depth(p: SettingsPage?) =
+    when (p) {
+        null -> 0
+        SettingsPage.Main -> 1
+        SettingsPage.Family -> 3
+        else -> 2
+    }
+
+@Composable
+private fun Tabs(
+    nav: Nav,
+    saved: SaveableStateHolder,
+    pager: PagerState,
+    onSelect: (Tab) -> Unit,
+) = saved.SaveableStateProvider("tabs") {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val mini = App.app.prefs.miniPlayer
+        Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
+            HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { index ->
+                val tab = Tab.entries[index]
+                // A page opened slides in over the list; back slides it away.
+                AnimatedContent(nav.entry(tab), transitionSpec = { page(targetState.depth > initialState.depth) }, label = "page") { e ->
                     Box(Modifier.fillMaxSize()) {
-                        saved.SaveableStateProvider(nav.key(tab)) {
-                            when (val top = nav.top(tab)) {
+                        saved.SaveableStateProvider(e.key) {
+                            when (val top = e.page) {
                                 null -> TabRoot(tab, nav)
                                 else -> PageContent(tab, top, nav)
                             }
                         }
                     }
                 }
-                if (mini == MiniPlayerStyle.Floating && nav.tab != Tab.Now) FloatingPlayer { nav.tab = Tab.Now }
             }
-            HandoffBar()
-            if (mini == MiniPlayerStyle.Bar && nav.tab != Tab.Now) MiniPlayer { nav.tab = Tab.Now }
-            TabBar(nav.tab, onSelect = { t ->
-                // Tapping the tab you are on goes back to its own list.
-                if (t == nav.tab) while (nav.canPop(t)) nav.pop(t)
-                nav.tab = t
-                scope.launch { pager.scrollToPage(t.ordinal) }
-            }, onSettings = { nav.settings = SettingsPage.Main })
+            FloatingPlayer(mini == MiniPlayerStyle.Floating && nav.tab != Tab.Now) { nav.tab = Tab.Now }
         }
+        HandoffBar()
+        AnimatedVisibility(
+            mini == MiniPlayerStyle.Bar && nav.tab != Tab.Now,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+        ) { MiniPlayer { nav.tab = Tab.Now } }
+        TabBar(nav.tab, { pager.currentPage + pager.currentPageOffsetFraction }, onSelect, onSettings = { nav.settings = SettingsPage.Main })
     }
 }
 
@@ -309,6 +373,7 @@ private fun PageContent(
 @Composable
 private fun TabBar(
     current: Tab,
+    position: () -> Float,
     onSelect: (Tab) -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -316,9 +381,24 @@ private fun TabBar(
     val app = App.app
     Column(Modifier.background(c.surfaceContainer).windowInsetsPadding(WindowInsets.navigationBars)) {
         HorizontalDivider(color = c.outlineVariant)
-        Row(Modifier.fillMaxWidth().height(60.dp)) {
+        // The mark over the tab follows the pages as they are swiped, and slides to a tab tapped.
+        val at by animateFloatAsState(position(), spring(stiffness = Spring.StiffnessMedium), label = "tab")
+        val mark = c.primary
+        Row(
+            Modifier.fillMaxWidth().height(60.dp).drawBehind {
+                val cell = size.width / (Tab.entries.size + 1)
+                val w = 32.dp.toPx()
+                drawRoundRect(
+                    mark,
+                    Offset(cell * at + (cell - w) / 2, -2.dp.toPx()),
+                    Size(w, 5.dp.toPx()),
+                    CornerRadius(2.dp.toPx()),
+                )
+            },
+        ) {
             for (t in Tab.entries) {
                 val selected = t == current
+                val tint by animateColorAsState(if (selected) c.primary else c.onSurfaceVariant.copy(alpha = 0.8f), tween(Motion.MEDIUM), label = "tint")
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     Tip(t.label) {
                         // A circle round the icon when pressed, as on the icon buttons, not the whole cell.
@@ -326,17 +406,7 @@ private fun TabBar(
                             Modifier.fillMaxSize().clickable(interactionSource = null, indication = ripple(bounded = false, radius = 28.dp)) { onSelect(t) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (selected) {
-                                Box(
-                                    Modifier
-                                        .align(
-                                            Alignment.TopCenter,
-                                        ).width(32.dp)
-                                        .height(3.dp)
-                                        .background(c.primary, RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)),
-                                )
-                            }
-                            Icon(t.icon, t.label, Modifier.size(24.dp), tint = if (selected) c.primary else c.onSurfaceVariant.copy(alpha = 0.8f))
+                            Icon(t.icon, t.label, Modifier.size(24.dp), tint = tint)
                         }
                     }
                 }
@@ -433,7 +503,13 @@ enum class MiniPlayerStyle(
  * rotation and can never end up off the screen.
  */
 @Composable
-private fun FloatingPlayer(onOpen: () -> Unit) {
+private fun FloatingPlayer(
+    shown: Boolean,
+    onOpen: () -> Unit,
+) = AnimatedVisibility(shown, Modifier.fillMaxSize(), fadeIn(), fadeOut()) { FloatingPill(onOpen) }
+
+@Composable
+private fun FloatingPill(onOpen: () -> Unit) {
     val app = App.app
     val song by app.playback.current.collectAsState()
     val playing by app.playback.playing.collectAsState()
@@ -522,8 +598,23 @@ private fun FloatingPlayer(onOpen: () -> Unit) {
 private fun HandoffBar() {
     val app = App.app
     val offer by app.playback.handoff.collectAsState()
-    val np = offer ?: return
-    val song = app.catalog.value.byId[np.song] ?: return
+    val catalog by app.catalog.collectAsState()
+    val now = offer?.let { o -> catalog.byId[o.song]?.let { o to it } }
+    // The last offer stays drawn while the bar folds away.
+    var last by remember { mutableStateOf(now) }
+    if (now != null) last = now
+    AnimatedVisibility(now != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        val (np, song) = last ?: return@AnimatedVisibility
+        HandoffRow(np, song)
+    }
+}
+
+@Composable
+private fun HandoffRow(
+    np: NowPlaying,
+    song: Song,
+) {
+    val app = App.app
     val c = MaterialTheme.colorScheme
     Row(
         Modifier.fillMaxWidth().background(c.primaryContainer).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),

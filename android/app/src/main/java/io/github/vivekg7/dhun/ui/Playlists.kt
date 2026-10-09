@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -148,13 +149,10 @@ fun PlaylistsScreen(nav: Nav) {
         if (q.isEmpty()) {
             item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PinnedCard(
-                        ListKind.Favorites,
-                        lists(ListKind.Favorites),
-                        filled = true,
-                        Modifier.weight(1f),
-                    ) { nav.open(Tab.Playlists, Page.ListPage(ListKind.Favorites)) }
-                    PinnedCard(ListKind.ListenLater, lists(ListKind.ListenLater), filled = false, Modifier.weight(1f)) {
+                    PinnedCard(ListKind.Favorites, lists(ListKind.Favorites), Modifier.weight(1f)) {
+                        nav.open(Tab.Playlists, Page.ListPage(ListKind.Favorites))
+                    }
+                    PinnedCard(ListKind.ListenLater, lists(ListKind.ListenLater), Modifier.weight(1f)) {
                         nav.open(Tab.Playlists, Page.ListPage(ListKind.ListenLater))
                     }
                 }
@@ -181,24 +179,23 @@ fun PlaylistsScreen(nav: Nav) {
 private fun PinnedCard(
     kind: ListKind,
     songs: List<Song>,
-    filled: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
-    val fg = if (filled) c.onPrimary else c.onSurface
+    // As the Downloads card under it: the three are one kind of thing.
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(if (filled) c.primary else c.surfaceContainer)
+            .background(c.surfaceContainer)
             .clickable(onClick = onClick)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(kind.icon, null, Modifier.size(26.dp), tint = if (filled) fg else c.secondary)
+        Icon(kind.icon, null, Modifier.size(26.dp), tint = c.secondary)
         Column {
-            Text(kind.label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = fg)
-            Text(summary(songs), style = MaterialTheme.typography.bodySmall, color = if (filled) fg.copy(alpha = 0.85f) else c.onSurfaceVariant)
+            Text(kind.label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+            Text(summary(songs), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
 }
@@ -268,7 +265,7 @@ fun PlaylistScreen(
     val playlists by app.store.playlists.collectAsState(emptyList())
     val catalog by app.catalog.collectAsState()
     // One made on this phone is replaced by the server's copy after a sync.
-    val p = playlists.firstOrNull { it.id == id } ?: playlists.firstOrNull { it.id == app.sync.replaced[id] } ?: return Empty("")
+    val p = playlists.firstOrNull { it.id == id } ?: playlists.firstOrNull { it.id == app.sync.replaced[id] } ?: return Empty("", page = true)
     // 0 is an entry the server could not match to a song; it is kept in the
     // file but not shown. Rows remember their place in the file, for edits.
     val rows = remember(p.songs, catalog) { songIds(p.songs).withIndex().mapNotNull { (i, sid) -> catalog.byId[sid]?.let { i to it } } }
@@ -277,8 +274,14 @@ fun PlaylistScreen(
     val editable = p.editable()
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
-    val reorder = rememberReorder { from, to -> app.scope.launch { app.store.moveInPlaylist(p, rows[from].first, rows[to].first) } }
-    LazyColumn(Modifier.fillMaxSize()) {
+    val list = rememberLazyListState()
+    val reorder =
+        rememberReorder(
+            list,
+            rows,
+            { (raw, s) -> "$raw/${s.id}" },
+        ) { from, to -> app.scope.launch { app.store.moveInPlaylist(p, rows[from].first, rows[to].first) } }
+    LazyColumn(Modifier.fillMaxSize(), state = list) {
         item {
             PageHeader(
                 p.name,
@@ -290,13 +293,13 @@ fun PlaylistScreen(
                 actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
             ) { shuffleList(p.name, source, songs) }
         }
-        itemsIndexed(rows, key = { _, (raw, s) -> "$raw/${s.id}" }) { i, (raw, s) ->
+        itemsIndexed(reorder.shown, key = { _, (raw, s) -> "$raw/${s.id}" }) { i, (raw, s) ->
             val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
-            Box(reorder.row(i)) {
+            Box(with(reorder) { row("$raw/${s.id}") }) {
                 SongRow(
                     s,
                     onClick = { playList(p.name, source, songs, i) },
-                    leading = if (editable) ({ reorder.Handle(i, rows.size) }) else null,
+                    leading = if (editable) ({ reorder.Handle("$raw/${s.id}") }) else null,
                     menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
                 )
             }

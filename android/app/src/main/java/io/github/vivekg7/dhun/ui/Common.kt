@@ -158,7 +158,8 @@ fun PageHeader(
             }
         }
         Text(subtitle, Modifier.padding(start = 56.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (onPlay != null) {
+        // An empty list has nothing to play: no buttons that do nothing.
+        if (onPlay != null && songs.isNotEmpty()) {
             Row(Modifier.padding(start = 56.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onPlay) {
                     Icon(Icons.Play, null, Modifier.size(18.dp))

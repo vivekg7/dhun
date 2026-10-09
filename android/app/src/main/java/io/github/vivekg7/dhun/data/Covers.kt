@@ -92,6 +92,22 @@ object Covers {
     }
 
     /**
+     * What memory already holds for [song] at [px], else its thumbnail if
+     * that is there: for a view's first frame, so a cover seen before shows
+     * at once instead of the empty note.
+     */
+    fun cached(
+        song: Song,
+        px: Int,
+    ): Bitmap? {
+        if (!song.hasArt) return null
+        val thumb = if (song.onPhone) "p${song.id}/$THUMB" else "${song.art}/t"
+        if (px <= THUMB) return memory.get(thumb)
+        val size = SIZES.firstOrNull { it >= px } ?: SIZES.last()
+        return memory.get(if (song.onPhone) "p${song.id}/$size" else "${key(song)}/$size") ?: memory.get(thumb)
+    }
+
+    /**
      * [song]'s thumbnail, from the database: what a list row shows, and a
      * larger view until its cover arrives. Null until it has been fetched.
      */
