@@ -38,6 +38,8 @@ struct QueuesView: View {
                 app.playback.moveQueue(from: f, to: to > f ? to - 1 : to)
             }
         }
+        .listStyle(.plain)  // as a queue's, for the drop above the first row
+        .padding(.horizontal, 8)
         .overlay {
             if queues.isEmpty {
                 ContentUnavailableView(
@@ -206,6 +208,9 @@ struct QueueSongs: View {
                 .focused($listFocused)
                 .defaultFocus($listFocused, true)
                 .onDeleteCommand { app.playback.removeFrom(queue.id, selection) }
+                // Plain: the inset style leaves a margin above the first row, and a
+                // song dropped there went to the end of the list, not the top.
+                .listStyle(.plain)
                 .onAppear { if let currentId { proxy.scrollTo(currentId, anchor: .center) } }
                 .id(queue.id)
             }
@@ -399,6 +404,8 @@ struct PlaylistPage: View {
                     app.playback.play(name: p.name, source: "playlist:\(p.id)", songs: songs, start: i)
                 }
                 .onDeleteCommand { if editable { remove(p, selection) } }
+                .listStyle(.plain)  // as a queue's, for the drop above the first row
+                .padding(.horizontal, 8)
                 .id(p.id)
             }
             .navigationTitle(p.name)

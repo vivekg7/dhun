@@ -94,6 +94,12 @@ Left over from that testing, and fixed after 0.2.0:
   pointer is on it. Hiding only the buttons left the strip, at the bottom.
   A window without a title bar never becomes the key window, so ⌘W does
   not reach it.
+- **A song dropped just above a list went to its end.** The inset list
+  style leaves a margin above the first row, and SwiftUI reports a drop
+  there as one past the last row, as it does below it. The lists that
+  reorder by drag (a queue's songs, the queues, a playlist) use the plain
+  style, which has no such margin; a drop on the divider above does
+  nothing.
 
 Tested by driving the app with real clicks and keys on the owner's Mac: a
 walk through every sidebar section, playlists, a queue's page, album and
