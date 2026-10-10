@@ -76,6 +76,11 @@ Open source under GPL-3.0.
 
 ## How to work here
 
+- **One version for every platform.** The server and both apps share one
+  sequence. A release for only some platforms takes the next patch number,
+  and the others skip it; minor and major releases bump every platform
+  together ([README](README.md#versions)).
+
 - **Plan before you build.** Anything larger than a bug fix gets a numbered
   plan in [`docs/plans/`](docs/plans/README.md): the problem, the options,
   the decision and why, and the alternatives rejected. Read the index first,

@@ -24,7 +24,7 @@ playable without signing in, with downloads kept through a sign-out
 ([plan 026](docs/plans/026_without_an_account.md));
 there is no GitHub release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
-control, a floating mini player and Open With from Finder; 0.3.0 is in
+control, a floating mini player and Open With from Finder; 0.12.0 is in
 daily use on the owner's Mac, with no GitHub release yet. The web client
 comes after it.
 
@@ -62,6 +62,30 @@ contract is [`api/openapi.yaml`](api/openapi.yaml). The Android app needs a
 JDK (Android Studio's is found on its own) and `android/local.properties`
 pointing at an Android SDK with platform 37. The macOS app needs Xcode for
 its toolchain only: it is a Swift package, built from the command line.
+
+### Versions
+
+The server, the Android app and the Mac app share **one sequence of
+version numbers**:
+
+- A release that changes only some platforms takes the next **patch**
+  number, for those platforms alone. The others skip that number for
+  good: after an Android-only 0.12.1, the next server or Mac release is
+  0.12.2 at the earliest.
+- A **minor** or **major** release is for every platform together, all
+  taking the same new number.
+
+So a number belongs to one release only, and a server and an app with
+the same number came out together.
+
+Until 0.12.0 each platform counted on its own: the server reached
+`server-v0.1.5`, the Android app 0.11.0 and the Mac app 0.3.0, and the
+numbers said nothing about which builds went together. All three jumped
+to 0.12.0, the first number none had used (owner, 2026-10-10).
+
+The Android version is in `android/app/build.gradle.kts` (raise
+`versionCode` too), the Mac's in `macos/Info.plist` (raise
+`CFBundleVersion` too), and the server's is its tag, `server-vX.Y.Z`.
 
 ### Release builds
 
