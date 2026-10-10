@@ -229,8 +229,26 @@ checked again:
   only the sleep timer. That is for a Mac plan to fix.
 
 **Not checked yet:** Safari and Firefox (headless Firefox would not start
-here), a real phone, the owner's NAS, and the Picture-in-Picture mini
-player, which headless Chrome cannot open.
+here), a real phone, and the Picture-in-Picture mini player, which
+headless Chrome cannot open.
+
+**On the owner's NAS** (server-v0.12.2, Chrome over Tailscale, 13,188
+songs and 2,850 albums), a bug the local server could not show:
+
+- **Plain http is not a secure context**, and localhost is, so the local
+  checks missed it. `crypto.randomUUID` is absent there, and every edit
+  threw before reaching the outbox. Ids now come from `getRandomValues`.
+  The same rule takes away the screen wake lock and Document PiP, so over
+  plain http the lyrics let the screen sleep and there is no mini window.
+  Both were already feature-detected. Serving the NAS over HTTPS (for
+  example `tailscale serve`) brings them back.
+
+With that patched into the page, the rest held: playing and its state
+reaching the server, a favourite set and unset, the system's now-playing
+controls, a warm reload from the cache (no library or thumbnail fetch),
+and search at 7 to 21 ms a keystroke, drawing included, with typos,
+Devanagari and a lyric line in either script. The first sign-in fetches
+the library (8 MB) and 3,500 thumbnails in 71 batches, once.
 
 ## Open questions
 

@@ -341,6 +341,8 @@ plan for an Android feature also says what the Mac does —
   Mac, is kept for them.
 - The media keys, the system's now-playing controls and a phone's lock
   screen; a Picture-in-Picture mini player where the browser has one.
+  Browsers give that mini player, and keeping the screen on under the
+  lyrics, only to an HTTPS page, so over plain http both are absent.
 - Served by the server at its own address, so there is nothing to install.
 
 A plan for an Android feature also says what the web does —

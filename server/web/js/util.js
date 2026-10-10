@@ -67,7 +67,18 @@ export const summary = (songs) =>
 export const nowMs = () => Date.now();
 export const parseTime = (s) => (s ? Date.parse(s) || 0 : 0);
 export const formatTime = (ms) => new Date(ms).toISOString();
-export const uuid = () => crypto.randomUUID();
+/**
+ * A random (v4) UUID. Not crypto.randomUUID: it exists only in a secure
+ * context, and the NAS is usually reached over plain http on the LAN or
+ * Tailscale. getRandomValues works everywhere.
+ */
+export function uuid() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const x = [...b].map((v) => v.toString(16).padStart(2, "0")).join("");
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
 
 const digit = /\p{Nd}/u;
 

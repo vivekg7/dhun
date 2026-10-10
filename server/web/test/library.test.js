@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Catalog, song, allSongs } from "../js/catalog.js";
-import { natural } from "../js/util.js";
+import { natural, uuid } from "../js/util.js";
 import { parseLyrics, lineAt } from "../js/lyrics.js";
 import { orderOf, playOrder, nextIn, tempoOf, formatSpeed } from "../js/queue.js";
 
@@ -185,4 +185,16 @@ test("repeat decides what follows the last song", () => {
   assert.equal(nextIn([1, 2, 3], 3, "queue"), 1);
   assert.equal(nextIn([1, 2, 3], 2, "song"), 2);
   assert.equal(nextIn([1, 2, 3], 9, "off"), null);
+});
+
+test("ids are made without crypto.randomUUID, which a plain-http page lacks", (t) => {
+  crypto.randomUUID = undefined;
+  t.after(() => delete crypto.randomUUID);
+  const ids = new Set(Array.from({ length: 100 }, uuid));
+  assert.equal(ids.size, 100);
+  for (const id of ids)
+    assert.match(
+      id,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
 });
