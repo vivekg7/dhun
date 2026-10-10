@@ -280,6 +280,11 @@ public final class DB: @unchecked Sendable {
         Set((try? sql.query("SELECT song FROM lyrics") { $0.int(0) }) ?? [])
     }
 
+    /// Every song's kept lyrics, for searching them offline.
+    public func allLyrics() -> [(song: Int, text: String)] {
+        (try? sql.query("SELECT song, text FROM lyrics") { ($0.int(0), $0.text(1)) }) ?? []
+    }
+
     public func putLyrics(_ song: Int, _ text: String) {
         try? sql.run(
             "INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", [.int(song), .text(text), .int(nowMs())])

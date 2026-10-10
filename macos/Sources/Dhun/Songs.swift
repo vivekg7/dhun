@@ -14,6 +14,8 @@ struct SongTable: View {
     let source: String
     var showTrack = false
     var showAlbum = true
+    /// The page's filter: the rows shown, while a song plays the whole list from there.
+    var query = ""
     /// Extra menu items for this list (remove from a playlist, from Favorites).
     var extraMenu: ((Set<Int>) -> AnyView)?
     @State private var selection = Set<Int>()
@@ -23,7 +25,8 @@ struct SongTable: View {
         // Values, not the environment, for the rows and menus built later (see `Thumb`).
         let app = self.app
         let nav = self.nav
-        let rows = sort.isEmpty ? songs : songs.sorted(using: sort)
+        let all = sort.isEmpty ? songs : songs.sorted(using: sort)
+        let rows = app.catalog.filter(all, query)
         Table(of: Song.self, selection: $selection, sortOrder: $sort) {
             if showTrack {
                 TableColumn("#", value: \.track) { s in
@@ -67,7 +70,7 @@ struct SongTable: View {
         .contextMenu(forSelectionType: Int.self) { ids in
             let chosen = rows.filter { ids.contains($0.id) }
             Group {
-                SongMenu(songs: chosen, queueName: name, source: source, all: rows)
+                SongMenu(songs: chosen, queueName: name, source: source, all: all)
                 if let extraMenu, !ids.isEmpty {
                     Divider()
                     extraMenu(ids)
@@ -77,10 +80,18 @@ struct SongTable: View {
             .environment(nav)
         } primaryAction: { ids in
             // The top one in the list: a set has no order.
-            guard let i = rows.firstIndex(where: { ids.contains($0.id) }) else { return }
-            app.playback.play(name: name, source: source, songs: rows, start: i)
+            guard let s = rows.first(where: { ids.contains($0.id) }), let i = all.firstIndex(of: s) else {
+                return
+            }
+            app.playback.play(name: name, source: source, songs: all, start: i)
         }
-        .overlay { if songs.isEmpty { Empty() } }
+        .overlay {
+            if songs.isEmpty {
+                Empty()
+            } else if rows.isEmpty {
+                ContentUnavailableView.search(text: query)
+            }
+        }
         // A table of its own per list: reusing one for another list's rows is
         // where the environment went missing, and selection and sort are the
         // list's own.
@@ -288,32 +299,16 @@ struct SongsPage: View {
     let songs: [Song]
     let source: String
     var pin: (String, String)?
+    @State private var query = ""
 
     var body: some View {
         VStack(spacing: 0) {
             ListHeader(
                 title: title, subtitle: subtitle, songs: songs, source: source, song: songs.first, pin: pin)
-            SongTable(songs: songs, name: title, source: source)
+            SongTable(songs: songs, name: title, source: source, query: query)
         }
         .navigationTitle(title)
-    }
-}
-
-struct SearchResults: View {
-    @Environment(AppModel.self) private var app
-    let query: String
-
-    var body: some View {
-        let hits = app.catalog.search(query)
-        if hits.isEmpty {
-            ContentUnavailableView.search(text: query)
-        } else {
-            // "Search: …", as on the phone: a bare query could name, and refill, an album's queue.
-            SongTable(
-                songs: hits, name: "Search: \(query.trimmingCharacters(in: .whitespaces))", source: "search"
-            )
-            .navigationTitle("Search")
-        }
+        .filterBox($query, rows: songs.count)
     }
 }
 

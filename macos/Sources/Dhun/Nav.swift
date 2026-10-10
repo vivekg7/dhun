@@ -18,6 +18,8 @@ enum Route: Hashable {
     case genre(String)
     case folder(String)
     case queue(String)
+    /// From search results; the sidebar opens a playlist as a section.
+    case playlist(Int)
 }
 
 /// The automatic views and special lists (plan 010).

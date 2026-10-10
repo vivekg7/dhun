@@ -104,7 +104,8 @@ struct QueueSongs: View {
         let songs = ids.compactMap { app.catalog.byId[$0] }
         let currentId = isActive ? app.playback.current?.id : queue.currentSong
         let numbered = Array(songs.enumerated())
-        let shown = filter.isEmpty ? numbered : numbered.filter { matches($0.element, filter) }
+        let found = Set(app.catalog.filter(songs, filter).map(\.id))
+        let shown = filter.isEmpty ? numbered : numbered.filter { found.contains($0.element.id) }
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 // Two rows, so the controls fit the narrow inspector as well as the Queues page.
@@ -217,11 +218,6 @@ struct QueueSongs: View {
         }
     }
 
-    private func matches(_ s: Song, _ q: String) -> Bool {
-        let q = fold(q)
-        return fold(s.title).contains(q) || fold(s.displayArtist).contains(q) || fold(s.album).contains(q)
-    }
-
     /// "3 / 40 · 1:02 left of 2:30": where the queue is, and how much is left of it.
     private func place(_ songs: [Song], _ currentId: Int?, _ isActive: Bool) -> String {
         let total = songs.reduce(0) { $0 + $1.durationMs }
@@ -313,6 +309,7 @@ struct PlaylistPage: View {
     @Environment(Nav.self) private var nav
     let id: Int
     @State private var selection = Set<Int>()
+    @State private var query = ""
 
     var body: some View {
         // Values, not the environment, for the rows and menus built later (see `Thumb`).
@@ -320,8 +317,9 @@ struct PlaylistPage: View {
         let nav = self.nav
         if let p = app.playlists.first(where: { $0.id == id }) {
             let editable = p.editable
-            let entries = Array(p.songs.enumerated())
             let songs = app.catalog.songsOf(p.songs)
+            let found = Set(app.catalog.filter(songs, query).map(\.id))
+            let entries = Array(p.songs.enumerated()).filter { query.isEmpty || found.contains($0.element) }
             VStack(spacing: 0) {
                 ListHeader(
                     title: p.name, subtitle: (p.shared ? "Shared · " : "") + count(songs.count),
@@ -379,8 +377,10 @@ struct PlaylistPage: View {
                             Text("Unavailable").foregroundStyle(.secondary).italic().tag(i)
                         }
                     }
+                    // Not while filtered: moving a song among the matches would put it
+                    // in the wrong place in the whole playlist.
                     .onMove(
-                        perform: editable
+                        perform: editable && query.isEmpty
                             ? { from, to in
                                 guard let f = from.first else { return }
                                 app.store.moveInPlaylist(p, from: f, to: to > f ? to - 1 : to)
@@ -407,8 +407,12 @@ struct PlaylistPage: View {
                 .listStyle(.plain)  // as a queue's, for the drop above the first row
                 .padding(.horizontal, 8)
                 .id(p.id)
+                .overlay {
+                    if entries.isEmpty && !query.isEmpty { ContentUnavailableView.search(text: query) }
+                }
             }
             .navigationTitle(p.name)
+            .filterBox($query, rows: p.songs.count)
         } else {
             Missing()
         }

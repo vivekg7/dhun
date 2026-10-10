@@ -34,7 +34,8 @@ class SearchTest {
 
     private fun find(q: String) = index.search(SearchQuery(q)).map { it.first.id }
 
-    // The server's copy (server/internal/library/search.go) reads the same file.
+    // The server's and the Mac's copies read the same file: server/internal/library/search.go,
+    // macos/Sources/DhunKit/Data/Search.swift.
     @Test
     fun foldsAsTheServerDoes() {
         val lines = File("../../api/search-fold.tsv").readLines().filter { it.isNotBlank() && !it.startsWith("#") }

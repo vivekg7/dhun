@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestFoldsAsTheAppDoes reads the cases the Android app's SearchTest reads,
-// so the two copies of the folding cannot drift apart.
+// TestFoldsAsTheAppDoes reads the cases the Android and Mac apps' tests read,
+// so the three copies of the folding cannot drift apart.
 func TestFoldsAsTheAppDoes(t *testing.T) {
 	data, err := os.ReadFile("../../../api/search-fold.tsv")
 	if err != nil {

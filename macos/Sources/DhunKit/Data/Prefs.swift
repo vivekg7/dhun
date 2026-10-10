@@ -100,6 +100,11 @@ public final class Prefs: @unchecked Sendable {
         get { str("openListen") }
         set { d.set(newValue, forKey: "openListen") }
     }
+    /// The last searches, newest first (plan 029).
+    public var recentSearches: [String] {
+        get { d.stringArray(forKey: "recentSearches") ?? [] }
+        set { d.set(newValue, forKey: "recentSearches") }
+    }
     public func queueSource(_ queue: String) -> String { str("source.\(queue)") }
     public func setQueueSource(_ queue: String, _ source: String) { d.set(source, forKey: "source.\(queue)") }
 

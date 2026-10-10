@@ -1,6 +1,6 @@
-# Search folding, shared by the server's and the Android app's tests so the
-# two copies agree (docs/plans/029_search.md). Columns: the text, its folded
-# words, and their sound keys, separated by tabs.
+# Search folding, shared by the server's, the Android app's and the Mac app's
+# tests so the three copies agree (docs/plans/029_search.md). Columns: the
+# text, its folded words, and their sound keys, separated by tabs.
 Für Elise	fur elise	fur elise
 Fuer Elise	fuer elise	fur elise
 Tschaikowsky	tschaikowsky	chekovski

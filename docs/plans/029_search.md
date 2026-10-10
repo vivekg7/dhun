@@ -1,6 +1,6 @@
 # 029 — Search that forgives spelling, scripts and word order
 
-**Status:** `MERGED` — not yet on the owner's phone or the NAS
+**Status:** `MERGED` — not yet on the owner's phone, Mac or the NAS
 **Started:** 2026-10-10
 
 ## Problem
@@ -145,10 +145,39 @@ when its row changed or its `.lrc` file's size or time did, so a refresh
 costs one directory listing per folder. The first search after a start
 waits for the first refresh.
 
-Go and Kotlin each have their own copy of the folding, about eighty
-lines each. `api/search-fold.tsv` lists inputs with their expected words
-and keys, and **both test suites read it**, so the two copies cannot
-drift apart.
+Go, Kotlin and Swift each have their own copy of the folding, about
+eighty lines each. `api/search-fold.tsv` lists inputs with their expected
+words and keys, and **all three test suites read it**, so the copies
+cannot drift apart.
+
+### On the Mac
+
+The Mac app has the same search (owner, 2026-10-10), in
+`DhunKit/Data/Search.swift`, a line-for-line port with the phone's tests.
+Where the window differs from the phone's tabs:
+
+- **The window's search field is the Search tab.** Its results come in
+  the same sections, with three each and "Show all". A click opens an
+  artist, album, genre, folder or playlist over the results, and Back
+  returns to them. Double-click or Return plays a song, as in every Mac
+  list, and the right click has the song menu. Typing again shows the
+  results over any page opened from them.
+- **Recent searches are the field's suggestions** when it is empty, as
+  in Music and Safari, with "Clear Recent Searches". They are this Mac's
+  own, like a phone's.
+- **The filters sit in the toolbar**, as the Mac's tab filters already
+  did, not at the foot of the page. A text field in the page would take
+  the focus, and Space must play and pause. Pages get one past 12 rows,
+  as on the phone. The queue keeps its own field.
+- **A page's songs are filtered through the catalog's index**, not an
+  index of the page: the songs the query finds in the whole library,
+  kept in the page's order. Building an index per page on each keystroke
+  would cost more than it saves. The one difference is that "matches
+  nothing better" for typos is judged over the library, not the page.
+- **Words are compared as bytes** (`memcmp`, `memmem`). With Swift's own
+  string search, one keystroke over 7,000 songs took up to 0.2 s, and
+  the filters run on the main thread. As bytes it takes 1 to 2 ms. Typos
+  still count letters as the phone does.
 
 ## Rejected
 
@@ -163,5 +192,3 @@ drift apart.
   same. Hindi lyrics depend on those vowels.
 - **Typos on every word.** See above: common words would match a crowd.
 - **Syncing recent searches.** Nothing would use them on another device.
-- **The macOS app.** It keeps its substring search for now. It can take
-  the same rules and the lyrics endpoint when the owner asks.

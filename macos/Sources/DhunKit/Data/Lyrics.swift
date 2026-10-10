@@ -48,6 +48,19 @@ public final class Lyrics {
         }
     }
 
+    /// Songs whose lyrics hold `q`'s words: the server's answer, or else,
+    /// offline or from a server without the endpoint, the lyrics kept here.
+    public func search(_ q: SearchQuery) async -> [LyricsHit] {
+        do {
+            return try await app.api.searchLyrics(q.lyrics)
+        } catch {
+            if Task.isCancelled { return [] }
+            // Kept lyrics are a few megabytes at most.
+            let rows = app.db.allLyrics()
+            return await Task.detached { searchKept(rows, q) }.value
+        }
+    }
+
     /// For downloads: the lyrics of `songs` not yet kept. Lyrics are small, so this runs on any network.
     func keep(_ songs: [Song]) async {
         let kept = app.db.lyricsSongs()

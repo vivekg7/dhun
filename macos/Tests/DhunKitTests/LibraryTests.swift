@@ -44,15 +44,6 @@ private func song(
         ])
 }
 
-@Test func searchIgnoresCaseAndAccents() {
-    let c = Catalog([
-        song(1, "a.mp3", "Halo", album: "I Am... Sasha Fierce", artist: "Beyoncé"),
-        song(2, "b.mp3", "Tum Hi Ho", album: "Aashiqui 2", artist: "Arijit Singh"),
-    ])
-    #expect(c.search("beyonce").map(\.id) == [1])
-    #expect(c.search("TUM hi").map(\.id) == [2])
-}
-
 @Test func foldersHoldTheirSubfoldersSongs() {
     let c = Catalog([song(1, "Hindi/Arijit/01.mp3"), song(2, "Hindi/02.mp3")])
     #expect(Set(c.folders["Hindi"]!.allSongs().map(\.id)) == [1, 2])

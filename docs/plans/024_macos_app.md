@@ -204,8 +204,12 @@ built as described above. Technical defaults, which the owner can override:
   - A `NavigationSplitView` sidebar with Queues; the library (Folders,
     Albums, Artists, Genres); Favorites, Listen Later and the automatic
     views (010); the user's playlists; and Downloads.
-  - The list in the middle has a search field. Lists support multiple
-    selection and drag to reorder.
+  - The window's search field finds songs, artists, albums, genres,
+    folders, playlists and lyrics, as the phone's Search tab does. The
+    tabs' lists and every page past 12 rows have a filter that matches the
+    same way
+    ([029](029_search.md)). Lists support multiple selection and drag to
+    reorder.
   - A Now playing bar runs along the bottom: cover, title, controls, seek,
     favourite, speed, sleep and the lyrics toggle. The hand-off bar sits
     above it.

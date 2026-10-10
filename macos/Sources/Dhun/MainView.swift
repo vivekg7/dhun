@@ -43,9 +43,13 @@ struct MainView: View {
                     }
                     .frame(minWidth: 400)
                 }
-                .searchable(text: $nav.search, placement: .toolbar, prompt: "Title, album or artist")
+                .searchable(text: $nav.search, placement: .toolbar, prompt: "Songs, albums, artists, lyrics")
+                .searchSuggestions { RecentSearches() }
                 .searchFocused($searching)
                 .onChange(of: nav.findRequests) { searching = true }
+                // Typing shows the results again, over any page opened from them. Not when
+                // `nav.open` empties the field: the page it opens stays.
+                .onChange(of: nav.search) { _, s in if !s.isEmpty && !nav.path.isEmpty { nav.path = [] } }
                 if nav.inspector {
                     Divider()
                     // Opened from Now playing's queue and lyrics buttons, or ⌥⌘U and ⌥⌘L.
@@ -74,7 +78,7 @@ struct Detail: View {
             switch nav.section {
             case .queues: QueuesView()
             case .folders: FolderView(path: "")
-            case .albums: AlbumsGrid(albums: app.catalog.albums, title: "Albums")
+            case .albums: AlbumsGrid()
             case .artists: GroupsList(kind: .artist)
             case .genres: GroupsList(kind: .genre)
             case .list(let k): ListPage(kind: k)
@@ -114,6 +118,7 @@ struct RouteView: View {
                 Missing()
             }
         case .folder(let path): FolderView(path: path)
+        case .playlist(let id): PlaylistPage(id: app.sync.replaced[id] ?? id)
         case .queue(let id):
             if let q = app.queues.first(where: { $0.id == id }) {
                 QueueSongs(queue: q).navigationTitle(q.name)

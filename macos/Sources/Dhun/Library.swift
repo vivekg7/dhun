@@ -69,15 +69,11 @@ struct Placeholder: View {
 
 struct AlbumsGrid: View {
     @Environment(AppModel.self) private var app
-    let albums: [Album]
-    let title: String
     @State private var filter = ""
 
     var body: some View {
-        let shown =
-            filter.isEmpty
-            ? albums
-            : albums.filter { fold($0.name).contains(fold(filter)) || fold($0.artist).contains(fold(filter)) }
+        let albums = app.catalog.albums
+        let shown = filter.isEmpty ? albums : app.catalog.albumIndex.filter(SearchQuery(filter))
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 18)], spacing: 22) {
                 ForEach(shown) { a in
@@ -105,8 +101,14 @@ struct AlbumsGrid: View {
             }
             .padding(20)
         }
-        .overlay { if albums.isEmpty { Empty() } }
-        .navigationTitle(title)
+        .overlay {
+            if albums.isEmpty {
+                Empty()
+            } else if shown.isEmpty {
+                ContentUnavailableView.search(text: filter)
+            }
+        }
+        .navigationTitle("Albums")
         .toolbar { FilterField(text: $filter, prompt: "Filter albums") }
     }
 }
@@ -124,8 +126,9 @@ struct Empty: View {
 }
 
 /// The phone has a search box on every list; here it filters the list in
-/// place. In the toolbar, not the page: the window's first text field
-/// takes the focus, and Space must play and pause, not type.
+/// place, matching as search does (plan 029). In the toolbar, not the page:
+/// the window's first text field takes the focus, and Space must play and
+/// pause, not type.
 struct FilterField: ToolbarContent {
     @Binding var text: String
     let prompt: String
@@ -136,8 +139,19 @@ struct FilterField: ToolbarContent {
     }
 }
 
+/// Pages get a filter only past this many rows: a shorter list fits on about one screen.
+let filterOver = 12
+
+extension View {
+    /// The filter of a page opened from a list (an album, a folder, a playlist), once it is long (plan 011).
+    func filterBox(_ text: Binding<String>, rows: Int, prompt: String = "Filter songs") -> some View {
+        toolbar { if rows > filterOver { FilterField(text: text, prompt: prompt) } }
+    }
+}
+
 struct AlbumPage: View {
     let album: Album
+    @State private var query = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -149,15 +163,17 @@ struct AlbumPage: View {
                 pin: (Downloads.album, album.id))
             SongTable(
                 songs: album.songs, name: album.name, source: "album:\(album.id)", showTrack: true,
-                showAlbum: false)
+                showAlbum: false, query: query)
         }
         .navigationTitle(album.name)
+        .filterBox($query, rows: album.songs.count)
     }
 }
 
 struct ArtistPage: View {
     @Environment(AppModel.self) private var app
     let group: DhunKit.Group
+    @State private var query = ""
 
     var body: some View {
         let albums = app.catalog.albums.filter { a in
@@ -187,9 +203,10 @@ struct ArtistPage: View {
                 }
                 .frame(height: 130)
             }
-            SongTable(songs: songs, name: group.name, source: "artist:\(group.name)")
+            SongTable(songs: songs, name: group.name, source: "artist:\(group.name)", query: query)
         }
         .navigationTitle(group.name)
+        .filterBox($query, rows: songs.count)
     }
 }
 
@@ -228,7 +245,10 @@ struct GroupsList: View {
     var body: some View {
         let app = self.app
         let all = kind == .artist ? app.catalog.artists : app.catalog.genres
-        let shown = filter.isEmpty ? all : all.filter { fold($0.name).contains(fold(filter)) }
+        let shown =
+            filter.isEmpty
+            ? all
+            : (kind == .artist ? app.catalog.artistIndex : app.catalog.genreIndex).filter(SearchQuery(filter))
         List(shown) { g in
             NavigationLink(value: kind == .artist ? Route.artist(g.name) : Route.genre(g.name)) {
                 HStack(spacing: 10) {
@@ -255,7 +275,13 @@ struct GroupsList: View {
                     kind: kind == .artist ? Downloads.artist : Downloads.genre, ref: g.name, name: g.name)
             }
         }
-        .overlay { if all.isEmpty { Empty() } }
+        .overlay {
+            if all.isEmpty {
+                Empty()
+            } else if shown.isEmpty {
+                ContentUnavailableView.search(text: filter)
+            }
+        }
         .navigationTitle(kind == .artist ? "Artists" : "Genres")
         .toolbar { FilterField(text: $filter, prompt: kind == .artist ? "Filter artists" : "Filter genres") }
     }
@@ -265,6 +291,7 @@ struct GroupsList: View {
 struct FolderView: View {
     @Environment(AppModel.self) private var app
     let path: String
+    @State private var query = ""
 
     var body: some View {
         if let f = app.catalog.folders[path] {
@@ -278,8 +305,12 @@ struct FolderView: View {
                         source: "folder:\(f.path)",
                         pin: (Downloads.folder, f.path))
                 }
-                if !f.children.isEmpty {
-                    List(f.children) { c in
+                let children =
+                    query.isEmpty
+                    ? f.children
+                    : SearchIndex.names(f.children, "folder") { $0.name }.filter(SearchQuery(query))
+                if !children.isEmpty {
+                    List(children) { c in
                         NavigationLink(value: Route.folder(c.path)) {
                             HStack(spacing: 4) {
                                 Label(c.name, systemImage: "folder")
@@ -298,11 +329,14 @@ struct FolderView: View {
                     .frame(minHeight: 120, idealHeight: f.songs.isEmpty ? .infinity : 220)
                 }
                 if !f.songs.isEmpty {
-                    if !f.children.isEmpty { Divider() }
-                    SongTable(songs: f.songs, name: name, source: "folder:\(f.path)")
+                    if !children.isEmpty { Divider() }
+                    SongTable(songs: f.songs, name: name, source: "folder:\(f.path)", query: query)
+                } else if children.isEmpty && !query.isEmpty {
+                    ContentUnavailableView.search(text: query)
                 }
             }
             .navigationTitle(name)
+            .filterBox($query, rows: f.children.count + f.songs.count, prompt: "Filter folder")
         } else {
             Empty()
         }
@@ -313,6 +347,7 @@ struct FolderView: View {
 struct ListPage: View {
     @Environment(AppModel.self) private var app
     let kind: ListKind
+    @State private var query = ""
 
     var body: some View {
         let songs = kind.songs(app)
@@ -321,7 +356,7 @@ struct ListPage: View {
                 title: kind.title, subtitle: summary(songs), songs: songs, source: kind.source,
                 pin: kind.mark.map { (Downloads.list, $0) })
             SongTable(
-                songs: songs, name: kind.title, source: kind.source,
+                songs: songs, name: kind.title, source: kind.source, query: query,
                 extraMenu: kind.mark.map { mark in
                     { ids in
                         AnyView(
@@ -332,11 +367,13 @@ struct ListPage: View {
                 })
         }
         .navigationTitle(kind.title)
+        .filterBox($query, rows: songs.count)
     }
 }
 
 struct DownloadsView: View {
     @Environment(AppModel.self) private var app
+    @State private var query = ""
 
     var body: some View {
         let st = app.downloads.status
@@ -367,7 +404,11 @@ struct DownloadsView: View {
                 }
             }
             .padding(16)
-            List(app.pins) { p in
+            // Kept albums, playlists and folders by name; songs as search finds them.
+            let pins =
+                query.isEmpty
+                ? app.pins : SearchIndex.names(app.pins, "name") { $0.name }.filter(SearchQuery(query))
+            List(pins) { p in
                 HStack {
                     Image(systemName: icon(p.kind)).foregroundStyle(.tint).frame(width: 22)
                     VStack(alignment: .leading) {
@@ -395,10 +436,11 @@ struct DownloadsView: View {
                 Divider()
                 ListHeader(
                     title: "Songs on this Mac", subtitle: summary(songs), songs: songs, source: "downloads")
-                SongTable(songs: songs, name: "Downloads", source: "downloads")
+                SongTable(songs: songs, name: "Downloads", source: "downloads", query: query)
             }
         }
         .navigationTitle("Downloads")
+        .filterBox($query, rows: app.pins.count + songs.count, prompt: "Filter downloads")
     }
 
     private func icon(_ kind: String) -> String {

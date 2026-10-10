@@ -47,6 +47,13 @@ public final class Api: @unchecked Sendable {
     public func lyrics(_ song: Int) async throws -> LyricsDTO {
         try await call("GET", "/api/v1/lyrics/\(song)")
     }
+    /// Songs whose lyrics hold the words, with the line (plan 029).
+    public func searchLyrics(_ q: String) async throws -> [LyricsHit] {
+        let r: LyricsHitsDTO = try await call(
+            "GET",
+            "/api/v1/search/lyrics?q=" + q.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!)
+        return r.hits ?? []
+    }
     public func me() async throws -> Me { try await call("GET", "/api/v1/me") }
     public func nowPlaying() async throws -> NowPlaying? {
         let r: NowPlayingDTO = try await call("GET", "/api/v1/now-playing")
@@ -259,6 +266,7 @@ struct PlaysDTO: Decodable { var plays: [PlayDTO]? }
 struct ThumbsDTO: Decodable { var thumbs: [String: String]? }
 struct NowPlayingDTO: Decodable { var nowPlaying: NowPlaying? }
 struct MembersDTO: Decodable { var users: [Member]? }
+struct LyricsHitsDTO: Decodable { var hits: [LyricsHit]? }
 
 public struct LyricsDTO: Decodable, Sendable {
     public var source: String?

@@ -64,6 +64,22 @@ public final class AppModel {
             cache.poke()
         }
     }
+    /// The last ten searches, newest first: this Mac's own, as each phone keeps its own (plan 029).
+    public private(set) var recentSearches: [String] = []
+
+    /// Kept when something it found is opened or played, not on every keystroke.
+    public func keepSearch(_ query: String) {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        recentSearches = Array(([q] + recentSearches.filter { $0.lowercased() != q.lowercased() }).prefix(10))
+        prefs.recentSearches = recentSearches
+    }
+
+    public func forgetSearches() {
+        recentSearches = []
+        prefs.recentSearches = []
+    }
+
     public var user: String { prefs.user }
     public var admin: Bool { prefs.admin }
 
@@ -76,6 +92,7 @@ public final class AppModel {
         api = Api(prefs: prefs)
         signedIn = !prefs.token.isEmpty
         appearance = Appearance(theme: prefs.theme, palette: prefs.palette)
+        recentSearches = prefs.recentSearches
         storage = Storage(
             downloadLimitGb: prefs.downloadLimitGb, cacheLimitGb: prefs.cacheLimitGb,
             downloadOnExpensive: prefs.downloadOnExpensive)

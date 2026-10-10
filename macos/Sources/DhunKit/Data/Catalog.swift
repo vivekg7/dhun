@@ -72,19 +72,53 @@ public final class Catalog: Sendable {
 
     public func songsOf(_ ids: [Int]) -> [Song] { ids.compactMap { byId[$0] } }
 
-    /// Title, album and artist, ignoring case and accents; titles that start with the query first.
-    public func search(_ query: String) -> [Song] {
-        let q = fold(query.trimmingCharacters(in: .whitespaces))
-        guard !q.isEmpty else { return [] }
-        let hits = songs.filter {
-            fold($0.title).contains(q) || fold($0.album).contains(q) || fold($0.artist).contains(q)
+    // Search indexes (plan 029), each built on first use: most catalogs are never searched.
+    public var songIndex: SearchIndex<Song> { indexes.get(\.songs) { SearchIndex.songs(songs) } }
+    public var albumIndex: SearchIndex<Album> {
+        indexes.get(\.albums) {
+            SearchIndex(
+                albums, [SearchField("album", 0) { $0.name }, SearchField("artist", 1) { $0.artist }])
         }
-        func rank(_ s: Song) -> Int {
-            let t = fold(s.title)
-            return t.hasPrefix(q) ? 0 : t.contains(q) ? 1 : 2
+    }
+    public var artistIndex: SearchIndex<Group> {
+        indexes.get(\.artists) { SearchIndex.names(artists, "artist") { $0.name } }
+    }
+    public var genreIndex: SearchIndex<Group> {
+        indexes.get(\.genres) { SearchIndex.names(genres, "genre") { $0.name } }
+    }
+    public var folderIndex: SearchIndex<Folder> {
+        indexes.get(\.folders) {
+            let all = folders.values.filter { !$0.path.isEmpty }.sorted { natural($0.path, $1.path) < 0 }
+            return SearchIndex.names(all, "folder") { $0.name }
         }
-        return hits.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }.map(
-            \.element)
+    }
+
+    /// The songs of `list` that `query` finds, in the list's order: what a page's filter box shows.
+    public func filter(_ list: [Song], _ query: String) -> [Song] {
+        let q = SearchQuery(query)
+        if q.isEmpty { return list }
+        let found = Set(songIndex.filter(q).map(\.id))
+        return list.filter { found.contains($0.id) }
+    }
+
+    private let indexes = Indexes()
+
+    private final class Indexes: @unchecked Sendable {
+        let lock = NSLock()
+        var songs: SearchIndex<Song>?
+        var albums: SearchIndex<Album>?
+        var artists: SearchIndex<Group>?
+        var genres: SearchIndex<Group>?
+        var folders: SearchIndex<Folder>?
+
+        func get<T>(_ at: ReferenceWritableKeyPath<Indexes, T?>, _ make: () -> T) -> T {
+            lock.withLock {
+                if let built = self[keyPath: at] { return built }
+                let built = make()
+                self[keyPath: at] = built
+                return built
+            }
+        }
     }
 
     private static func group(_ songs: [Song], _ keys: (Song) -> [String]) -> [Group] {
@@ -163,10 +197,6 @@ public func natural(_ a: String, _ b: String) -> Int {
         }
     }
     return (a.count - i) - (b.count - j)
-}
-
-public func fold(_ s: String) -> String {
-    s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
 }
 
 private func mostCommon(_ names: [String]) -> String {
