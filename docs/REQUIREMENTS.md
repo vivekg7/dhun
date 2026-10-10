@@ -159,6 +159,43 @@ and anything undecided is under [Open questions](#open-questions).
   songs **on the phone only** (owner, 2026-10-08;
   [plan 025](plans/025_phone_local_songs.md)).
 
+### Podcasts and audiobooks
+
+Owner, 2026-10-10; how it is built is in
+[plan 031](plans/031_podcasts_and_audiobooks.md).
+
+- **Two collections of their own,** from the NAS's `Podcasts/` and
+  `Audiobooks/` folders, beside `Music/`, each mounted read-only. Their
+  `_inbox`, `_meta` and `_trash` folders are skipped, as in `Music/`.
+- **Each has its own section in every app.** Their files never appear in
+  song lists, Albums, Artists, Genres, Folders, shuffle-all, most and
+  recently played, or play counts. Search finds them, under their own
+  headings.
+- **Dhun does not fetch podcasts.** The owner's own tool downloads episodes
+  into the NAS; Dhun only reads what is there. No feeds, no subscriptions.
+- **Files and their tags are the only source.** Dhun reads standard tags
+  (title, album as the show or book, artist, date, comment as the show
+  notes) and never another tool's logs, such as `_meta/*.jsonl`.
+- **What counts as one audiobook:** the files of a folder that share an
+  album tag are one book, read in disc, track and file-name order. Part
+  markers such as `pt 2` or `(2 of 3)` are ignored when comparing albums,
+  and part folders such as `… (1 of 3)` or `CD 2` roll up into their
+  parent. Untagged files make one book per folder, named after it. A
+  single file whose album differs from its neighbours is a book of its own.
+- **A podcast show** is the album tag, else the folder, and its episodes
+  are newest first by date, else by file name.
+- **Progress like Musicolet's long files, plus played marks:** an episode
+  or a book file is marked played when a listen reaches 90% into it, and can
+  be marked played or unplayed by hand. A show can hide played episodes; a
+  book shows how far into it the user is. Played marks follow the user to
+  every device. Every listen is still logged in the listening history.
+- **Chapters** show on Now playing, with skip to the next and previous
+  chapter: chapters stored inside a file, or a book's files as its chapters.
+- **Transcripts** show the way lyrics do, from a `.transcript.md` or a
+  `.vtt` subtitle file beside the episode.
+- **Speed** can be set for all podcasts and for all audiobooks, as well as
+  for one file ([plan 016](plans/016_speed_and_pitch.md)).
+
 ### Offline storage: Downloads and Cache
 
 Two independent local stores, each with its **own storage limit** set by the
