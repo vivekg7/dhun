@@ -17,6 +17,8 @@ export function thumb(s, cls = "thumb") {
 /**
  * A larger cover: the thumbnail at once, then the cover itself fades in
  * over it when it arrives, so a page never shows an empty square first.
+ * Lazily: the albums grid holds every album, thousands of covers, and only
+ * those near the screen should be fetched.
  */
 export function cover(s, px, cls = "cover") {
   const el = h("span", { class: cls });
@@ -25,7 +27,7 @@ export function cover(s, px, cls = "cover") {
   else el.append(h("span.placeholder", icon("note")));
   const url = s && ctx.app.cover(s, px);
   if (url) {
-    const img = h("img.over", { alt: "", decoding: "async" });
+    const img = h("img.over", { alt: "", decoding: "async", loading: "lazy" });
     img.addEventListener("load", () => img.classList.add("loaded"));
     img.addEventListener("error", () => img.remove());
     img.src = url;

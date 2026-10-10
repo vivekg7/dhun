@@ -233,7 +233,7 @@ here), a real phone, and the Picture-in-Picture mini player, which
 headless Chrome cannot open.
 
 **On the owner's NAS** (server-v0.12.2, Chrome over Tailscale, 13,188
-songs and 2,850 albums), a bug the local server could not show:
+songs and 2,850 albums), two bugs the local server could not show:
 
 - **Plain http is not a secure context**, and localhost is, so the local
   checks missed it. `crypto.randomUUID` is absent there, and every edit
@@ -242,8 +242,11 @@ songs and 2,850 albums), a bug the local server could not show:
   plain http the lyrics let the screen sleep and there is no mini window.
   Both were already feature-detected. Serving the NAS over HTTPS (for
   example `tailscale serve`) brings them back.
+- **The albums grid fetched every cover at once**: 2,852 requests, about
+  36 MB, on opening the default page. The covers over the thumbnails are
+  now `loading="lazy"`: 40 fetched at first, more as the grid scrolls.
 
-With that patched into the page, the rest held: playing and its state
+With those patched into the page, the rest held: playing and its state
 reaching the server, a favourite set and unset, the system's now-playing
 controls, a warm reload from the cache (no library or thumbnail fetch),
 and search at 7 to 21 ms a keystroke, drawing included, with typos,
