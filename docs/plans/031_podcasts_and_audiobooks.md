@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `IN PROGRESS` — server side built and tested, not yet released; the apps are next
+**Status:** `IN PROGRESS` — server side in `server-v0.12.5` on the NAS (2026-10-11); the apps are next
 **Started:** 2026-10-10
 
 ## Problem
