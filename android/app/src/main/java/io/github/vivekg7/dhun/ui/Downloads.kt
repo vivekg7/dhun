@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -29,12 +28,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Downloads.State
 import io.github.vivekg7.dhun.data.Pin
@@ -162,48 +163,58 @@ fun DownloadsScreen(
     val songs = remember(files, catalog) { catalog.songs.filter { it.id in files } }
     var removing by remember { mutableStateOf<Pin?>(null) }
     val limit = app.prefs.downloadLimitGb
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            PageHeader(
-                "Downloads",
-                "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
-                onBack,
-                { playList(nav, "Downloads", "downloads", songs, 0) },
-                songs = songs,
-            ) { shuffleList(nav, "Downloads", "downloads", songs) }
-        }
-        // Idle, the header already says it all.
-        if (status.state != State.Idle) {
+    val searchable = pins.size + songs.size > SEARCH_OVER
+    var query by rememberSaveable { mutableStateOf("") }
+    val q = if (searchable) Catalog.fold(query) else ""
+    val shownPins = remember(pins, q) { if (q.isEmpty()) pins else pins.filter { Catalog.fold(it.name).contains(q) } }
+    // A song found still plays every download from it.
+    val hits = remember(songs, q) { songs.withIndex().filter { matches(it.value, q) } }
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f)) {
             item {
-                Text(
-                    describe(status),
-                    Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (status.state in STOPPED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                PageHeader(
+                    "Downloads",
+                    "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
+                    onBack,
+                    { playList(nav, "Downloads", "downloads", songs, 0) },
+                    songs = songs,
+                ) { shuffleList(nav, "Downloads", "downloads", songs) }
             }
-        }
-        if (status.state == State.Full) {
-            item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
-        }
-        item { SectionLabel("Kept in step with the library") }
-        items(pins, key = { it.key }) { p ->
-            Row(
-                Modifier.padding(start = 20.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                    Text(kindLabel(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Idle, the header already says it all.
+            if (status.state != State.Idle) {
+                item {
+                    Text(
+                        describe(status),
+                        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (status.state in STOPPED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
             }
+            if (status.state == State.Full) {
+                item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
+            }
+            if (q.isEmpty() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
+            items(shownPins, key = { it.key }) { p ->
+                Row(
+                    Modifier.padding(start = 20.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        Text(kindLabel(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
+                }
+            }
+            if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
+            if (hits.isNotEmpty()) item { SectionLabel("Songs") }
+            items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
+            }
+            if (q.isNotEmpty() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
-        if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
-        if (songs.isNotEmpty()) item { SectionLabel("Songs") }
-        itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
-        }
+        if (searchable) SearchField(query, { query = it }, "Search in Downloads…", bottom = true)
     }
     removing?.let { p -> RemoveDialog(p.name, { removing = null }) { app.scope.launch { app.downloads.unpin(p.key) } } }
 }
