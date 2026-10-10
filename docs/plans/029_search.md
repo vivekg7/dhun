@@ -1,6 +1,6 @@
 # 029 — Search that forgives spelling, scripts and word order
 
-**Status:** `MERGED` — in 0.12.0 on the owner's Mac (2026-10-10); not yet on the phone or the NAS
+**Status:** `MERGED` — Mac 0.12.0 and phone 0.12.1 on the owner's devices; server side in `server-v0.12.0` on the NAS (2026-10-10)
 **Started:** 2026-10-10
 
 ## Problem
