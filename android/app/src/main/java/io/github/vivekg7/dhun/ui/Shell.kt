@@ -72,8 +72,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -278,6 +282,11 @@ fun Shell() {
         }
     }
 
+    // A search box keeps focus off screen, in a tab the pager keeps or under a page,
+    // and coming back to it would bring the keyboard up again: leaving lets it go.
+    val focus = LocalFocusManager.current
+    LaunchedEffect(nav.tab, nav.key(nav.tab), nav.settings) { focus.clearFocus() }
+
     BackHandler(nav.settings != null) { nav.settingsBack() }
     BackHandler(nav.settings == null && nav.canPop(nav.tab)) { nav.pop(nav.tab) }
 
@@ -323,7 +332,21 @@ private fun Tabs(
 ) = saved.SaveableStateProvider("tabs") {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val mini = App.app.prefs.miniPlayer
-        Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars)) {
+        // Scrolling a list, or swiping between tabs, puts the keyboard away; only a tap on a search box brings it.
+        val focus = LocalFocusManager.current
+        val dropFocus =
+            remember(focus) {
+                object : NestedScrollConnection {
+                    override fun onPreScroll(
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ): Offset {
+                        if (source == NestedScrollSource.UserInput) focus.clearFocus()
+                        return Offset.Zero
+                    }
+                }
+            }
+        Box(Modifier.weight(1f).windowInsetsPadding(WindowInsets.statusBars).nestedScroll(dropFocus)) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { it }) { index ->
                 val tab = Tab.entries[index]
                 // A page opened slides in over the list; back slides it away.

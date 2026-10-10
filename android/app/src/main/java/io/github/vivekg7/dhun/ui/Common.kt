@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,7 +47,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,7 +84,11 @@ fun SectionLabel(
     )
 }
 
-/** Musicolet's per-tab quick search box; at the [bottom] of the queue, as there. */
+/**
+ * Musicolet's per-tab quick search box; at the [bottom] of the queue, as there.
+ * Only a tap focuses it; the keyboard's Search key, a scroll, a tapped song or
+ * leaving the page puts the keyboard away and keeps the query.
+ */
 @Composable
 fun SearchField(
     value: String,
@@ -89,6 +97,7 @@ fun SearchField(
     bottom: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
+    val focus = LocalFocusManager.current
     Column {
         if (bottom) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -109,6 +118,8 @@ fun SearchField(
                     onChange,
                     Modifier.fillMaxWidth(),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 )
@@ -238,6 +249,7 @@ fun SongRow(
     val downloaded = song.id in files
     val playable = song.onPhone || downloaded || song.id in cached
     val outline = if (live) c.primary else c.outline
+    val focus = LocalFocusManager.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -258,8 +270,10 @@ fun SongRow(
                 } else {
                     Modifier
                 },
-            ).combinedClickable(onLongClick = onLongClick, onClick = onClick)
-            .height(64.dp)
+            ).combinedClickable(onLongClick = onLongClick) {
+                focus.clearFocus()
+                onClick()
+            }.height(64.dp)
             // Offline, what is not on the phone cannot play (docs/plans/012_downloads.md).
             .alpha(if (reachable || playable) 1f else 0.38f)
             .padding(start = if (leading == null) 16.dp else 0.dp),
