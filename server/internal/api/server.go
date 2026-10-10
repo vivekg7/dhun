@@ -22,6 +22,7 @@ type Server struct {
 	Root    string // media root
 	DataDir string // Dhun's own state (DHUN_DATA): art cache, kept playlist copies
 	Scanner *library.Scanner
+	Lyrics  *library.LyricsIndex // refreshed by main after each scan
 	Log     *slog.Logger
 	// Rescan starts a scan in the background; set by main.
 	Rescan func()
@@ -53,6 +54,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/stream/{id}", s.media(s.stream)},
 		{"GET /api/v1/art/{id}", s.media(s.art)},
 		{"GET /api/v1/lyrics/{id}", s.media(s.lyrics)},
+		{"GET /api/v1/search/lyrics", s.authed(s.searchLyrics)},
 		{"POST /api/v1/thumbs", s.authed(s.thumbs)},
 
 		{"GET /api/v1/sync", s.authed(s.pullSync)},

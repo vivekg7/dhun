@@ -244,6 +244,41 @@ paths:
                   text: { type: string }
         "404": { $ref: "#/components/responses/Error" }
 
+  /api/v1/search/lyrics:
+    get:
+      summary: Songs whose lyrics hold a search, with the line that does
+      description: |
+        A line matches when it holds every word of `q`, folded as
+        api/search-fold.tsv shows: by the whole word, its start, inside it,
+        or the start of its sound key. Lines holding the words as typed come
+        first; at most 50 songs, one line each. Everything else is searched
+        on the device (docs/plans/029_search.md).
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        song: { type: integer, format: int64 }
+                        line:
+                          {
+                            type: string,
+                            description: The line as written,
+                            without LRC times,
+                          }
+
   /api/v1/sync:
     get:
       summary: The caller's queues, special lists, resume points, settings and now-playing changed since a cursor

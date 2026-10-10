@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -39,7 +40,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { db.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sc := &library.Scanner{DB: db, Root: root, Log: log}
-	s := &Server{DB: db, Root: root, DataDir: data, Scanner: sc, Log: log}
+	s := &Server{DB: db, Root: root, DataDir: data, Scanner: sc, Lyrics: &library.LyricsIndex{DB: db, Root: root}, Log: log}
 	s.Rescan = func() { sc.Scan(context.Background()) }
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
@@ -249,6 +250,43 @@ func TestArtIsScaledAndLyricsPreferLrc(t *testing.T) {
 	e.do("GET", "/api/v1/lyrics/1", tok, nil, 200, &l)
 	if l.Source != "lrc" || !l.Synced || l.Text != "[00:00.50]Saans (from lrc)\n" {
 		t.Errorf("lyrics = %+v", l)
+	}
+}
+
+func TestLyricsSearchFindsTheLineAndSeesAnEditedLrc(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", false)
+	e.file("Library/A/01.mp3", fixture(t, "a.mp3"))
+	e.file("Library/A/01.lrc", []byte("[ar:Someone]\n[00:01.00]Hum tere bin ab reh nahi sakte\n[00:05.00]Tere bina kya wajood mera\n"))
+	e.file("Library/B/02.opus", fixture(t, "c.opus"))
+	e.file("Library/B/02.lrc", []byte("Kabhi kabhi mere dil mein\n"))
+	e.scan()
+	tok := e.login("vivek")
+
+	search := func(q string) []library.LyricsHit {
+		var got struct{ Hits []library.LyricsHit }
+		e.do("GET", "/api/v1/search/lyrics?q="+url.QueryEscape(q), tok, nil, 200, &got)
+		return got.Hits
+	}
+	if h := search("tere bina"); len(h) != 1 || h[0].Line != "Tere bina kya wajood mera" {
+		t.Errorf("tere bina: %+v", h)
+	}
+	// Spelling and script are forgiven: Kabhie, and दिल for dil.
+	if h := search("kabhie दिल"); len(h) != 1 || h[0].Line != "Kabhi kabhi mere dil mein" {
+		t.Errorf("kabhie dil: %+v", h)
+	}
+	// Words on different lines are not a match.
+	if h := search("hum wajood"); len(h) != 0 {
+		t.Errorf("hum wajood: %+v", h)
+	}
+
+	// An edited .lrc leaves the song's row alone; the refresh still sees it.
+	e.file("Library/B/02.lrc", []byte("Ek pyaar ka nagma hai, mauj ki ravani hai\n"))
+	if err := e.s.Lyrics.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h := search("pyar nagma"); len(h) != 1 {
+		t.Errorf("after the edit: %+v", h)
 	}
 }
 

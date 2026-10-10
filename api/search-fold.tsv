@@ -1,0 +1,37 @@
+# Search folding, shared by the server's and the Android app's tests so the
+# two copies agree (docs/plans/029_search.md). Columns: the text, its folded
+# words, and their sound keys, separated by tabs.
+Für Elise	fur elise	fur elise
+Fuer Elise	fuer elise	fur elise
+Tschaikowsky	tschaikowsky	chekovski
+Tchaikovsky	tchaikovsky	chekovski
+Kabhi Kabhie	kabhi kabhie	kabi kabi
+Main Mein	main mein	men men
+Pyaar प्यार	pyaar pyaar	piar piar
+दिल	dil	dil
+धड़कन	dhadkan	dadkan
+धड़कन	dhadkan	dadkan
+समझना	samajhnaa	samajna
+तुम ही हो	tum hii ho	tum hi ho
+Tum Hi Ho	tum hi ho	tum hi ho
+मोहब्बत	mohabbat	mohabat
+दीवाना Deewana	diivaanaa deewana	divana divana
+है हैं	hai hain	he hen
+हूँ	huun	hun
+आपकी	aapkii	apki
+कमल	kamal	kamal
+लड़की Ladki	ladkii ladki	ladki ladki
+मित्र	mitr	mitr
+न	na	na
+हंस	hans	hans
+क़ैद	qaid	ked
+ॐ २०१५	om 2015	om 2015
+AC/DC	ac dc	ak dk
+Don’t Stop	dont stop	dont stop
+Simon & Garfunkel	simon and garfunkel	simon and garfunkel
+Straße	strasse	strase
+Ishq Ishk	ishq ishk	ishk ishk
+Allah	allah	ala
+Beyoncé	beyonce	beonke
+Æon Flux	aeon flux	aeon flux
+Chopin Schubert	chopin schubert	chopin shubert

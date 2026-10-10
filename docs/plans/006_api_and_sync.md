@@ -52,7 +52,9 @@ under 0.5 MB gzipped) is small enough for each client to **keep a full copy**:
 - The Android app then **browses folders, albums, artists and genres, and
   searches, entirely locally**. Every screen works offline and opens
   instantly, and the server needs no paging, sorting or search endpoints.
-  This is the biggest simplification in the design.
+  This is the biggest simplification in the design. The one exception is
+  lyrics, which only the NAS holds:
+  `GET /api/v1/search/lyrics?q=` ([029](029_search.md)).
 - Cover art (`GET /api/v1/art/{song_id}?size=…`) and lyrics
   (`GET /api/v1/lyrics/{song_id}`, from a `.lrc` file or embedded) are
   fetched on demand and cached.

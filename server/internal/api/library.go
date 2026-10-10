@@ -365,6 +365,17 @@ func cacheArt(dir, file, id string, version int64, data []byte) {
 	}
 }
 
+// searchLyrics is the one search the apps cannot do alone: the lyrics are
+// on the NAS (docs/plans/029_search.md).
+func (s *Server) searchLyrics(w http.ResponseWriter, r *http.Request, _ session) {
+	hits, err := s.Lyrics.Search(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, r, map[string]any{"hits": hits})
+}
+
 func (s *Server) lyrics(w http.ResponseWriter, r *http.Request, _ session) {
 	f, _, err := s.songFile(r)
 	if err != nil {

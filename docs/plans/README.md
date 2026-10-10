@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                               | Status                                                                                  |
 | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [029 — Search that forgives spelling, scripts and word order](029_search.md)       | `IN PROGRESS` — the server's lyrics search merged; Android next                         |
 | [028 — The Mac app's layout crash, motion and polish](028_mac_crash_and_polish.md) | `MERGED` — in 0.2.1 on the owner's Mac                                                  |
 | [027 — Motion and polish on Android](027_motion_and_polish.md)                     | `MERGED` — in 0.11.0 on the owner's phone                                               |
 | [026 — Using the Android app without an account](026_without_an_account.md)        | `MERGED` — in 0.10.0 on the owner's phone                                               |
