@@ -1,6 +1,6 @@
 # 030 — The web client, at the other apps' level
 
-**Status:** `MERGED` — checked in Chrome; not yet in Safari, Firefox, on a phone or on the NAS
+**Status:** `RELEASED` — `server-v0.12.3` on the NAS since 2026-10-10, checked in Chrome; not yet in Safari, Firefox or on a phone
 **Started:** 2026-10-10
 
 ## Problem
@@ -252,6 +252,12 @@ controls, a warm reload from the cache (no library or thumbnail fetch),
 and search at 7 to 21 ms a keystroke, drawing included, with typos,
 Devanagari and a lyric line in either script. The first sign-in fetches
 the library (8 MB) and 3,500 thumbnails in 71 batches, once.
+
+Both fixes shipped in `server-v0.12.3` and were checked on the NAS the same
+day: a favourite set and unset reached the server with nothing patched in,
+and a reload of the albums grid fetched 46 covers from the NAS. Chrome
+still served the rest from its disk cache, filled by the old version; a
+cached image is shown at once, lazy or not.
 
 ## Open questions
 
