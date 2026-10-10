@@ -168,9 +168,9 @@ fun DownloadsScreen(
                 "Downloads",
                 "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
                 onBack,
-                { playList("Downloads", "downloads", songs, 0) },
+                { playList(nav, "Downloads", "downloads", songs, 0) },
                 songs = songs,
-            ) { shuffleList("Downloads", "downloads", songs) }
+            ) { shuffleList(nav, "Downloads", "downloads", songs) }
         }
         // Idle, the header already says it all.
         if (status.state != State.Idle) {
@@ -202,7 +202,7 @@ fun DownloadsScreen(
         if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
         if (songs.isNotEmpty()) item { SectionLabel("Songs") }
         itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList("Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
+            SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
         }
     }
     removing?.let { p -> RemoveDialog(p.name, { removing = null }) { app.scope.launch { app.downloads.unpin(p.key) } } }

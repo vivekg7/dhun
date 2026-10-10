@@ -220,6 +220,20 @@ class Nav(
         tab = t
     }
 
+    /** Set by [played], so the pager slides to Now playing however far away it is. */
+    var slide = false
+
+    /**
+     * A list started playing. With no mini player nothing on screen would say
+     * so, so Now playing comes to show it (docs/plans/022_mini_player_styles.md).
+     * The new queue then holds the rest of the list, to carry on from there.
+     */
+    fun played() {
+        if (App.app.prefs.miniPlayer != MiniPlayerStyle.None || tab == Tab.Now) return
+        slide = true
+        tab = Tab.Now
+    }
+
     companion object {
         /**
          * Android recreates the activity on a rotation, a dark-mode or font
@@ -252,9 +266,11 @@ fun Shell() {
     LaunchedEffect(pager.settledPage) { nav.tab = Tab.entries[pager.settledPage] }
     LaunchedEffect(nav.tab) {
         val to = nav.tab.ordinal
+        val slide = nav.slide.also { nav.slide = false }
         // Next door slides over, as a swipe; further jumps there, as tapping a tab does.
+        // A play going to Now playing slides however far it is: the pager snaps most of a long way first.
         if (pager.currentPage != to) {
-            if (abs(pager.currentPage - to) == 1) {
+            if (abs(pager.currentPage - to) == 1 || slide) {
                 pager.animateScrollToPage(to)
             } else {
                 pager.scrollToPage(to)

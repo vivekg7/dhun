@@ -243,10 +243,10 @@ fun ListScreen(
             kind.label,
             summary(songs),
             onBack,
-            { playList(kind.label, kind.source, songs, 0) },
+            { playList(nav, kind.label, kind.source, songs, 0) },
             markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) },
             songs = songs,
-        ) { shuffleList(kind.label, kind.source, songs) }
+        ) { shuffleList(nav, kind.label, kind.source, songs) }
     }
 }
 
@@ -287,18 +287,18 @@ fun PlaylistScreen(
                 p.name,
                 summary(songs) + if (p.shared) " · shared" else "",
                 onBack,
-                { playList(p.name, source, songs, 0) },
+                { playList(nav, p.name, source, songs, 0) },
                 DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
                 songs = songs,
                 actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
-            ) { shuffleList(p.name, source, songs) }
+            ) { shuffleList(nav, p.name, source, songs) }
         }
         itemsIndexed(reorder.shown, key = { _, (raw, s) -> "$raw/${s.id}" }) { i, (raw, s) ->
             val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
             Box(with(reorder) { row("$raw/${s.id}") }) {
                 SongRow(
                     s,
-                    onClick = { playList(p.name, source, songs, i) },
+                    onClick = { playList(nav, p.name, source, songs, i) },
                     leading = if (editable) ({ reorder.Handle("$raw/${s.id}") }) else null,
                     menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
                 )

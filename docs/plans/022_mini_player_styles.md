@@ -42,6 +42,15 @@ was decided while building, and the owner may override it:
 - **None** is Musicolet's way. The hand-off bar
   ([017](017_handoff.md)) keeps its place above the tab row whichever is
   chosen.
+- **With None, playing from a list slides to Now playing** (owner,
+  2026-10-10). Nothing else on screen would show that the tap worked.
+  This covers a song tapped in a list, and Play or Shuffle on an album,
+  a folder, a playlist, Downloads or the search results. It is a slide
+  however far away the tab is, not the jump a tapped tab makes. Picking a
+  song in the Queues tab stays put: that tab already marks the song
+  playing. Working through an album costs no extra trips either. The
+  first play puts the whole album in a queue, and you carry on from
+  there.
 - **A cover alone cannot say whether the song plays**, so it shows it:
   paused, the cover is dimmed under a play icon, asking to be pressed;
   playing, it is clear, inside a thin ring that fills with the song's

@@ -41,19 +41,23 @@ import io.github.vivekg7.dhun.data.Song
 
 /** Plays [songs] from [index] in a new queue named after the list (AGENTS.md). */
 fun playList(
+    nav: Nav,
     name: String,
     source: String,
     songs: List<Song>,
     index: Int,
-) = App.app.playback.play(name, source, songs, index)
+) {
+    if (songs.isEmpty()) return
+    App.app.playback.play(name, source, songs, index)
+    nav.played()
+}
 
 fun shuffleList(
+    nav: Nav,
     name: String,
     source: String,
     songs: List<Song>,
-) {
-    if (songs.isNotEmpty()) App.app.playback.play(name, source, songs.shuffled(), 0)
-}
+) = playList(nav, name, source, songs.shuffled(), 0)
 
 /** A list of songs where tapping one plays the whole list from there. */
 @Composable
@@ -67,7 +71,7 @@ fun SongList(
     LazyColumn(Modifier.fillMaxSize()) {
         item { header() }
         itemsIndexed(songs, key = { i, s -> "$i/${s.id}" }) { i, s ->
-            SongRow(s, onClick = { playList(name, source, songs, i) }, menu = SongMenu(nav = nav))
+            SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
         }
         if (songs.isEmpty()) item { Empty("Nothing here yet") }
     }
@@ -131,11 +135,11 @@ fun FolderScreen(
                     folder.name,
                     path.replace("/", " › "),
                     onBack,
-                    { playList(folder.name, "folder:$path", folder.allSongs(), 0) },
+                    { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
                     DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
                     songs = folder.allSongs(),
                 ) {
-                    shuffleList(folder.name, "folder:$path", folder.allSongs())
+                    shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
                 }
             }
         }
@@ -145,7 +149,7 @@ fun FolderScreen(
         }
         val songs = folder.songs
         itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList(folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
+            SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
         }
     }
 }
@@ -216,11 +220,11 @@ fun AlbumScreen(
                 album.name,
                 facts,
                 onBack,
-                { playList(album.name, "album:${album.name}", album.songs, 0) },
+                { playList(nav, album.name, "album:${album.name}", album.songs, 0) },
                 DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs),
                 songs = album.songs,
             ) {
-                shuffleList(album.name, "album:${album.name}", album.songs)
+                shuffleList(nav, album.name, "album:${album.name}", album.songs)
             }
         }
     }
@@ -269,10 +273,10 @@ fun GroupScreen(
             group.name,
             summary(songs),
             onBack,
-            { playList(group.name, source, songs, 0) },
+            { playList(nav, group.name, source, songs, 0) },
             DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
             songs = songs,
-        ) { shuffleList(group.name, source, songs) }
+        ) { shuffleList(nav, group.name, source, songs) }
     }
 }
 
@@ -284,7 +288,7 @@ fun SearchScreen(nav: Nav) {
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, "Search songs, albums, artists") }
         itemsIndexed(hits, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList("Search: ${query.trim()}", "search", hits, i) }, menu = SongMenu(nav = nav))
+            SongRow(s, onClick = { playList(nav, "Search: ${query.trim()}", "search", hits, i) }, menu = SongMenu(nav = nav))
         }
         if (query.isNotBlank() && hits.isEmpty()) item { Empty("No songs match “${query.trim()}”") }
         // Not a blank page before typing: what the box searches.
