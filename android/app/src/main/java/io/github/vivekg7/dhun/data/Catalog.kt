@@ -1,7 +1,5 @@
 package io.github.vivekg7.dhun.data
 
-import java.text.Normalizer
-
 /**
  * The library as the tabs show it, derived from the song list in memory.
  * About 7,000 songs group in a few milliseconds, which is simpler and faster
@@ -57,20 +55,13 @@ class Catalog(
     /** False until the NAS songs are read: phone songs alone are not the library loaded. */
     val hasNas: Boolean by lazy { songs.any { !it.onPhone } }
 
-    /** Title, album and artist, ignoring case and accents; titles that start with the query first. */
-    fun search(query: String): List<Song> {
-        val q = fold(query.trim())
-        if (q.isEmpty()) return emptyList()
-        val hits = songs.filter { s -> fold(s.title).contains(q) || fold(s.album).contains(q) || fold(s.artist).contains(q) }
-        return hits.sortedBy {
-            if (fold(it.title).startsWith(q)) {
-                0
-            } else if (fold(it.title).contains(q)) {
-                1
-            } else {
-                2
-            }
-        }
+    // Built on first use, with the catalog, so a keystroke folds nothing (docs/plans/029_search.md).
+    val songIndex by lazy { SearchIndex.songs(songs) }
+    val albumIndex by lazy { SearchIndex(albums, listOf(Field<Album>("album", 0) { it.name }, Field("artist", 1) { it.artist })) }
+    val artistIndex by lazy { SearchIndex.names(artists, "artist") { it.name } }
+    val genreIndex by lazy { SearchIndex.names(genres, "genre") { it.name } }
+    val folderIndex by lazy {
+        SearchIndex.names(folders.values.filter { it.path.isNotEmpty() }.sortedWith(compareBy(TITLE) { it.path }), "folder") { it.name }
     }
 
     private fun group(keys: (Song) -> List<String>): List<Group> {
@@ -118,10 +109,6 @@ class Catalog(
             }
             return (a.length - i) - (b.length - j)
         }
-
-        private val MARKS = Regex("\\p{Mn}+")
-
-        fun fold(s: String) = MARKS.replace(Normalizer.normalize(s, Normalizer.Form.NFD), "").lowercase()
 
         private fun mostCommon(names: List<String>) =
             names

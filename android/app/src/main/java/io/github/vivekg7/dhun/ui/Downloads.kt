@@ -35,10 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
-import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Downloads.State
 import io.github.vivekg7.dhun.data.Pin
+import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.bytes
 import kotlinx.coroutines.launch
@@ -165,10 +165,10 @@ fun DownloadsScreen(
     val limit = app.prefs.downloadLimitGb
     val searchable = pins.size + songs.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
-    val q = if (searchable) Catalog.fold(query) else ""
-    val shownPins = remember(pins, q) { if (q.isEmpty()) pins else pins.filter { Catalog.fold(it.name).contains(q) } }
+    val q = if (searchable) query else ""
+    val shownPins = rememberFound(pins, q) { SearchIndex.names(it, "name") { p -> p.name } }.map { it.value }
     // A song found still plays every download from it.
-    val hits = remember(songs, q) { songs.withIndex().filter { matches(it.value, q) } }
+    val hits = rememberFound(songs, q) { SearchIndex.songs(it) }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f)) {
             item {
@@ -194,7 +194,7 @@ fun DownloadsScreen(
             if (status.state == State.Full) {
                 item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
             }
-            if (q.isEmpty() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
+            if (q.isBlank() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
             items(shownPins, key = { it.key }) { p ->
                 Row(
                     Modifier.padding(start = 20.dp, end = 4.dp),
@@ -212,7 +212,7 @@ fun DownloadsScreen(
             items(hits, key = { (_, s) -> s.id }) { (i, s) ->
                 SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
             }
-            if (q.isNotEmpty() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
+            if (q.isNotBlank() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in Downloads…", bottom = true)
     }

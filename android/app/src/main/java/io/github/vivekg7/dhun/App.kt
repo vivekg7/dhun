@@ -173,6 +173,27 @@ class Prefs(
     var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.DullOrange))
         private set
 
+    /**
+     * The Search tab's last searches, newest first (docs/plans/029_search.md).
+     * A search is kept when something it found is tapped, so half-typed
+     * words are not. This phone's, like everything else in the box.
+     */
+    var recentSearches by mutableStateOf(sp.getString("recentSearches", "")!!.lines().filter { it.isNotBlank() })
+        private set
+
+    fun keepSearch(query: String) {
+        val q = query.trim()
+        if (q.isNotEmpty()) saveSearches(listOf(q) + recentSearches.filterNot { it.equals(q, ignoreCase = true) })
+    }
+
+    /** Forgets [query], or every search when null. */
+    fun forgetSearch(query: String?) = saveSearches(if (query == null) emptyList() else recentSearches - query)
+
+    private fun saveSearches(list: List<String>) {
+        recentSearches = list.take(10)
+        sp.edit { putString("recentSearches", recentSearches.joinToString("\n")) }
+    }
+
     /** Which mini player shows over the tabs (docs/plans/022_mini_player_styles.md). */
     var miniPlayer by mutableStateOf(enumOr(sp.getString("miniPlayer", null), MiniPlayerStyle.Bar))
         private set

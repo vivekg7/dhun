@@ -2,8 +2,10 @@ package io.github.vivekg7.dhun.data
 
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 
 /**
  * Lyrics (docs/plans/015_lyrics.md), as the server stores them: a sibling
@@ -64,12 +66,49 @@ class Lyrics(
         return text
     }
 
+    /**
+     * Songs whose lyrics hold [q], from the server, which has every song's
+     * (docs/plans/029_search.md). Offline, or from a server without the
+     * search, the lyrics kept on the phone are searched the same way.
+     */
+    suspend fun search(q: SearchQuery): List<LyricsHit> {
+        try {
+            return app.api.searchLyrics(q.lyrics)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Kept lyrics are a few megabytes at most.
+            return withContext(Dispatchers.Default) { searchKept(dao.allLyrics(), q) }
+        }
+    }
+
     /** For downloads: the lyrics of [songs] not yet kept. Lyrics are small, so this runs on any network. */
     suspend fun keep(songs: List<Song>) {
         val kept = dao.lyricsSongs().toSet()
         for (s in songs) if (s.hasLyrics && s.id !in kept) fetch(s.id)
     }
 }
+
+/** The first matching line of each song, songs whose line holds the words as typed first, as the server ranks them. */
+fun searchKept(
+    rows: List<LyricsRow>,
+    q: SearchQuery,
+): List<LyricsHit> {
+    if (q.lyrics.isEmpty()) return emptyList()
+    val hits = mutableListOf<Pair<LyricsHit, Boolean>>()
+    for (r in rows) {
+        for (l in parseLyrics(r.text).lines) {
+            val words = Fold.words(l.text)
+            if (!q.inLine(words)) continue
+            hits += LyricsHit(r.song, l.text.trim()) to words.joinToString(" ").contains(q.lyrics)
+            break
+        }
+    }
+    return hits.sortedByDescending { it.second }.take(LYRICS_HITS).map { it.first }
+}
+
+/** At most this many songs found in lyrics, here and on the server. */
+const val LYRICS_HITS = 50
 
 /** One line; [ms] is where it starts, or -1 in lyrics without times. */
 data class LyricLine(

@@ -228,6 +228,7 @@ fun SongRow(
     onLongClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     menu: SongMenu = SongMenu(),
+    detail: String = song.displayArtist,
 ) {
     val c = MaterialTheme.colorScheme
     val app = App.app
@@ -276,7 +277,7 @@ fun SongRow(
                 fontStyle = if (current && !live) FontStyle.Italic else null,
             )
             Text(
-                song.displayArtist,
+                detail,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

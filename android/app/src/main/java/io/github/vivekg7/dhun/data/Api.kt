@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -135,6 +136,20 @@ class Api(
     }
 
     suspend fun lyrics(song: Long): LyricsDto = call(Request.Builder().url("${prefs.server}/api/v1/lyrics/$song").build())
+
+    /** Songs whose lyrics hold every word of [q], each with the line that does (docs/plans/029_search.md). */
+    suspend fun searchLyrics(q: String): List<LyricsHit> =
+        call<LyricsHits>(
+            Request
+                .Builder()
+                .url(
+                    "${prefs.server}/api/v1/search/lyrics"
+                        .toHttpUrl()
+                        .newBuilder()
+                        .addQueryParameter("q", q)
+                        .build(),
+                ).build(),
+        ).hits
 
     suspend fun me(): Me = call(Request.Builder().url("${prefs.server}/api/v1/me").build())
 
@@ -394,6 +409,15 @@ data class SyncState(
     val source: String = "",
     val synced: Boolean = false,
     val text: String = "",
+)
+
+@Serializable data class LyricsHit(
+    val song: Long = 0,
+    val line: String = "",
+)
+
+@Serializable data class LyricsHits(
+    val hits: List<LyricsHit> = emptyList(),
 )
 
 typealias Op = JsonObject

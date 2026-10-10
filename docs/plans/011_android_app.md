@@ -38,6 +38,8 @@ and Downloads), has it at the bottom, as the queue does. The bottom box
 shows only when the list has more than 12 rows, as in Musicolet, because a
 shorter list fits on about one screen and needs no search (owner,
 2026-10-10). A song found there still plays the whole list from that song.
+Every box matches the same way, forgiving spelling, script and word order
+([029](029_search.md)).
 While a playlist is being searched, its songs cannot be dragged: moving one
 among the matches would drop it in the wrong place in the full playlist.
 Every icon-only control, the tabs included, shows its name

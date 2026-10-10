@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.QueueRow
+import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import io.github.vivekg7.dhun.play.SleepTimer
@@ -116,13 +117,7 @@ fun QueuesScreen(nav: Nav) {
             list.animateScrollToItem((index - visible / 2).coerceAtLeast(0))
         }
     }
-    val rows =
-        remember(songs, query) {
-            val q = query.trim()
-            songs.withIndex().filter { (_, s) ->
-                q.isEmpty() || s.title.contains(q, true) || s.displayArtist.contains(q, true) || s.album.contains(q, true)
-            }
-        }
+    val rows = rememberFound(songs, query) { SearchIndex.songs(it) }
     // Select multiple: null when not selecting.
     var selected by remember(shown.id) { mutableStateOf<Set<Long>?>(null) }
     BackHandler(selected != null) { selected = null }

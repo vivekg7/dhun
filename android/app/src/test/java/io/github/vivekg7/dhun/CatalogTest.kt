@@ -50,13 +50,6 @@ class CatalogTest {
     }
 
     @Test
-    fun searchIgnoresCaseAndAccents() {
-        val c = Catalog(listOf(song(1, "a.mp3", "Halo", "I Am... Sasha Fierce", "Beyoncé"), song(2, "b.mp3", "Tum Hi Ho", "Aashiqui 2", "Arijit Singh")))
-        assertEquals(listOf(1L), c.search("beyonce").map { it.id })
-        assertEquals(listOf(2L), c.search("TUM hi").map { it.id })
-    }
-
-    @Test
     fun foldersHoldTheirSubfoldersSongs() {
         val c = Catalog(listOf(song(1, "Hindi/Arijit/01.mp3", "One"), song(2, "Hindi/02.mp3", "Two")))
         assertEquals(

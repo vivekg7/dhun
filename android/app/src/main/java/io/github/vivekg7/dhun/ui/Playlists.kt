@@ -36,6 +36,7 @@ import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Mark
 import io.github.vivekg7.dhun.data.PlayStat
 import io.github.vivekg7.dhun.data.Resume
+import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.songIds
@@ -133,7 +134,7 @@ fun PlaylistsScreen(nav: Nav) {
     val playlists by app.store.playlists.collectAsState(emptyList())
     val catalog by app.catalog.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
-    val q = Catalog.fold(query)
+    val q = query.trim()
     val lists = rememberLists()
     val context = androidx.compose.ui.platform.LocalContext.current
     var naming by remember { mutableStateOf(false) }
@@ -143,6 +144,7 @@ fun PlaylistsScreen(nav: Nav) {
             naming = false
         }
     }
+    val shown = rememberFound(playlists, query) { SearchIndex.names(it, "playlist") { p -> p.name } }.map { it.value }
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, "Search playlists…") }
         if (q.isEmpty()) {
@@ -164,7 +166,6 @@ fun PlaylistsScreen(nav: Nav) {
             item { SectionLabel("Playlists") }
             item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
         }
-        val shown = playlists.filter { q.isEmpty() || Catalog.fold(it.name).contains(q) }
         items(shown, key = { it.id }) { p ->
             val count = songIds(p.songs).count { it != 0L && catalog.byId.containsKey(it) }
             NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count", pinned(Downloads.PLAYLIST, p.id.toString())) {
@@ -271,9 +272,9 @@ fun PlaylistScreen(
     val songs = rows.map { it.second }
     val searchable = rows.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
-    val q = if (searchable) Catalog.fold(query) else ""
+    val q = if (searchable) query else ""
     // Rows found keep their place in the playlist, so a song found plays the whole playlist from it.
-    val hits = remember(rows, q) { rows.withIndex().filter { matches(it.value.second, q) } }
+    val hits = rememberFound(songs, q) { SearchIndex.songs(it) }.map { IndexedValue(it.index, rows[it.index]) }
     val source = "playlist:${p.id}"
     val editable = p.editable()
     var renaming by remember { mutableStateOf(false) }
@@ -286,7 +287,7 @@ fun PlaylistScreen(
             { (_, r) -> "${r.first}/${r.second.id}" },
         ) { from, to -> app.scope.launch { app.store.moveInPlaylist(p, hits[from].value.first, hits[to].value.first) } }
     // Moving among the songs found would put them in the wrong places, so dragging waits until the search is cleared.
-    val canDrag = editable && q.isEmpty()
+    val canDrag = editable && q.isBlank()
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f), state = list) {
             item {

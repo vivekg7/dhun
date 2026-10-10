@@ -249,7 +249,13 @@ Proposed. Awaiting the owner's confirmation.
   and resume points, and queues made only of phone songs, are the phone's
   and survive signing out.
 - Browse **Folders** (the real NAS folder tree), Albums, Artists, Genres and
-  Playlists. Search by title, album or artist.
+  Playlists. Search finds songs by title, artist, album, composer, genre,
+  year or lyrics, and finds artists, albums, genres, folders and playlists
+  too. The query's words may be in any order and any field. It forgives
+  romanised spelling (Kabhi and Kabhie), Devanagari against Latin letters
+  (दिल and dil), accents, and a typo where nothing better matches. Recent
+  searches are kept (owner, 2026-10-10;
+  [plans/029](plans/029_search.md)).
 - **Multiple queues.** Playing from any list starts a new queue instead of
   replacing the current one. You can:
   - switch to or resume a queue, rename it, remove it;

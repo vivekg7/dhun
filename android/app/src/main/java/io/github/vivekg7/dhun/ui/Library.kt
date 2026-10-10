@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,9 +33,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
-import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.LocalSongs
+import io.github.vivekg7.dhun.data.SearchIndex
+import io.github.vivekg7.dhun.data.SearchQuery
 import io.github.vivekg7.dhun.data.Song
 
 /** Plays [songs] from [index] in a new queue named after the list (AGENTS.md). */
@@ -66,11 +66,24 @@ fun shuffleList(
  */
 const val SEARCH_OVER = 12
 
-/** Whether [s] matches [q], already folded: the same fields wherever a list of songs is searched. */
-fun matches(
-    s: Song,
-    q: String,
-) = q.isEmpty() || Catalog.fold(s.title).contains(q) || Catalog.fold(s.artist).contains(q) || Catalog.fold(s.album).contains(q)
+/**
+ * What [query] finds in [items], each with its place in the list, in the
+ * list's own order; everything while the box is empty. Every box matches
+ * the same way (docs/plans/029_search.md); [index] is built the first time
+ * this list is searched.
+ */
+@Composable
+fun <T> rememberFound(
+    items: List<T>,
+    query: String,
+    index: (List<T>) -> SearchIndex<T>,
+): List<IndexedValue<T>> {
+    val built = remember(items) { lazy { index(items) } }
+    return remember(items, query) {
+        val q = SearchQuery(query)
+        if (q.isEmpty) items.withIndex().toList() else built.value.filter(q)
+    }
+}
 
 /**
  * A list of songs where tapping one plays the whole list from there, a song
@@ -86,8 +99,7 @@ fun SongList(
 ) {
     val searchable = songs.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
-    val q = if (searchable) Catalog.fold(query) else ""
-    val hits = remember(songs, q) { songs.withIndex().filter { matches(it.value, q) } }
+    val hits = rememberFound(songs, if (searchable) query else "") { SearchIndex.songs(it) }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f)) {
             item { header() }
@@ -152,13 +164,10 @@ fun FolderScreen(
     }
     val searchable = folder.children.size + folder.songs.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
-    val q = if (searchable) Catalog.fold(query) else ""
-    val children = remember(folder, q) { if (q.isEmpty()) folder.children else folder.children.filter { Catalog.fold(it.name).contains(q) } }
+    val q = if (searchable) query else ""
+    val children = rememberFound(folder.children, q) { SearchIndex.names(it, "folder") { f -> f.name } }.map { it.value }
     val songs = folder.songs
-    val hits =
-        remember(folder, q) {
-            songs.withIndex().filter { matches(it.value, q) }
-        }
+    val hits = rememberFound(songs, q) { SearchIndex.songs(it) }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f)) {
             item {
@@ -179,13 +188,13 @@ fun FolderScreen(
             }
             items(children, key = { "f/" + it.path }) { f ->
                 val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
-                NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
+                NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
             }
             // A song found still plays the whole folder from it, as in the queue's search.
             items(hits, key = { (_, s) -> s.id }) { (i, s) ->
                 SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
             }
-            if (q.isNotEmpty() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
+            if (q.isNotBlank() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in this folder…", bottom = true)
     }
@@ -195,11 +204,7 @@ fun FolderScreen(
 fun AlbumsScreen(nav: Nav) {
     val catalog by App.app.catalog.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
-    val albums =
-        remember(catalog, query) {
-            val q = Catalog.fold(query)
-            if (q.isEmpty()) catalog.albums else catalog.albums.filter { Catalog.fold(it.name).contains(q) || Catalog.fold(it.artist).contains(q) }
-        }
+    val albums = rememberFound(catalog.albums, query) { catalog.albumIndex }.map { it.value }
     Column(Modifier.fillMaxSize()) {
         SearchField(query, { query = it }, "Search ${catalog.albums.size} albums…")
         LazyVerticalGrid(
@@ -276,11 +281,7 @@ fun GroupsScreen(
     val catalog by App.app.catalog.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     val all = if (artists) catalog.artists else catalog.genres
-    val shown =
-        remember(all, query) {
-            val q = Catalog.fold(query)
-            if (q.isEmpty()) all else all.filter { Catalog.fold(it.name).contains(q) }
-        }
+    val shown = rememberFound(all, query) { if (artists) catalog.artistIndex else catalog.genreIndex }.map { it.value }
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, if (artists) "Search ${all.size} artists…" else "Search ${all.size} genres…") }
         items(shown, key = { it.name }) { g ->
@@ -314,21 +315,5 @@ fun GroupScreen(
             DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
             songs = songs,
         ) { shuffleList(nav, group.name, source, songs) }
-    }
-}
-
-@Composable
-fun SearchScreen(nav: Nav) {
-    val catalog by App.app.catalog.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
-    val hits = remember(catalog, query) { catalog.search(query).take(300) }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item { SearchField(query, { query = it }, "Search songs, albums, artists") }
-        itemsIndexed(hits, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList(nav, "Search: ${query.trim()}", "search", hits, i) }, menu = SongMenu(nav = nav))
-        }
-        if (query.isNotBlank() && hits.isEmpty()) item { Empty("No songs match “${query.trim()}”") }
-        // Not a blank page before typing: what the box searches.
-        if (query.isBlank() && catalog.songs.isNotEmpty()) item { Empty("Search ${catalog.songs.size} songs by title, artist or album.") }
     }
 }

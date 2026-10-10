@@ -330,6 +330,9 @@ interface DbDao {
     @Query("SELECT * FROM lyrics WHERE song = :song")
     suspend fun lyrics(song: Long): LyricsRow?
 
+    @Query("SELECT * FROM lyrics")
+    suspend fun allLyrics(): List<LyricsRow>
+
     @Query("SELECT song FROM lyrics")
     suspend fun lyricsSongs(): List<Long>
 

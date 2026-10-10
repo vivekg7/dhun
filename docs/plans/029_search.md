@@ -1,6 +1,6 @@
 # 029 — Search that forgives spelling, scripts and word order
 
-**Status:** `IN PROGRESS` — the server's lyrics search merged; Android next
+**Status:** `MERGED` — not yet on the owner's phone or the NAS
 **Started:** 2026-10-10
 
 ## Problem
