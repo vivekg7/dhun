@@ -15,7 +15,9 @@ file holds the part no program can decide.
 
 A self-hosted music system for one family: a Go backend on a Synology NAS,
 and native clients. The **Android** client is primary and has to be complete;
-**macOS** and **web** clients are minimal, and **Linux** is optional. The bar
+the **macOS** and **web** clients match it as far as each platform allows
+(plans [024](docs/plans/024_macos_app.md) and [030](docs/plans/030_web_client.md)),
+and **Linux** is optional. The bar
 for the Android client is **Musicolet**, which the owner has used daily for
 ten years. Its full feature list is in
 [`docs/research/musicolet-feature-inventory.md`](docs/research/musicolet-feature-inventory.md).

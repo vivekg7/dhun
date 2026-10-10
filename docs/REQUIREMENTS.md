@@ -118,12 +118,12 @@ and anything undecided is under [Open questions](#open-questions).
 
 ### Platforms
 
-| Platform             | Scope                                                                                          |
-| -------------------- | ---------------------------------------------------------------------------------------------- |
-| Android 12 and newer | **Full feature set, no compromise.** Primary target.                                           |
-| macOS 26 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)). |
-| Web                  | Minimal features are fine. **Online-only**; served by the backend itself.                      |
-| Linux                | Optional.                                                                                      |
+| Platform             | Scope                                                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Android 12 and newer | **Full feature set, no compromise.** Primary target.                                                                                     |
+| macOS 26 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)).                                           |
+| Web                  | **The other apps' features, online-only**, on a computer or a phone ([plan 030](plans/030_web_client.md)); served by the backend itself. |
+| Linux                | Optional.                                                                                                                                |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native
@@ -329,11 +329,22 @@ Open With from Finder. No Mac-local library: the Mac plays NAS songs. A
 plan for an Android feature also says what the Mac does —
 [plan 024](plans/024_macos_app.md).
 
-**Web (minimal)**
+**Web** — what the Android and Mac apps have, as far as a browser allows
+(owner, 2026-10-10; it was "minimal" until then):
 
-- Sign in, browse, search, play, switch between queues, and play playlists.
-- Hand-off (resume), so a session started on the phone continues here, and
-  long files resume where they were left on any device.
+- **Online-only.** No downloads and no song cache; an edit not yet sent
+  survives a reload.
+- **A computer or a phone.** The Mac's sidebar window on a wide screen, the
+  phone's tabs and mini player on a narrow one.
+- **Speed, but not pitch.** A browser keeps the pitch as the speed changes,
+  and cannot shift it alone. A song's own pitch, set on the phone or the
+  Mac, is kept for them.
+- The media keys, the system's now-playing controls and a phone's lock
+  screen; a Picture-in-Picture mini player where the browser has one.
+- Served by the server at its own address, so there is nothing to install.
+
+A plan for an Android feature also says what the web does —
+[plan 030](plans/030_web_client.md).
 
 **Later (not v1)** — The web admin panel (moves, upgrades, `_inbox` review;
 the current curation tool runs until then), uploads into that review, live hand-off ("Play

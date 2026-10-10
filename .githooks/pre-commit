@@ -24,8 +24,8 @@ if [ -n "$swift" ]; then
     || die "staged Swift is not swift-format-ted" "Run: make fmt"
 fi
 
-docs=$(staged '\.(md|ya?ml|json)$' | while IFS= read -r f; do [ ! -L "$f" ] && echo "$f"; done || true)
+docs=$(staged '\.(md|ya?ml|json|html|css|js)$' | while IFS= read -r f; do [ ! -L "$f" ] && echo "$f"; done || true)
 if [ -n "$docs" ]; then
   run_on "$docs" npx --yes --prefer-offline prettier@latest --check >/dev/null 2>&1 \
-    || die "staged Markdown/YAML/JSON is not formatted" "Run: make fmt"
+    || die "staged Markdown/YAML/JSON or web client is not formatted" "Run: make fmt"
 fi

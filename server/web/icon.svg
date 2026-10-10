@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- Dhun's mark, as the apps draw it (android/app/src/main/res/drawable/ic_glyph.xml):
+       the play triangle cut into three slices, on the brand colour. -->
+  <rect width="108" height="108" rx="24" fill="#C27B45" />
+  <clipPath id="slices">
+    <rect width="108" height="45.05" />
+    <rect y="49.55" width="108" height="8.9" />
+    <rect y="62.95" width="108" height="45.05" />
+  </clipPath>
+  <path
+    d="M44 34L76 54L44 74Z"
+    fill="#fff"
+    stroke="#fff"
+    stroke-width="6"
+    stroke-linejoin="round"
+    clip-path="url(#slices)"
+  />
+</svg>

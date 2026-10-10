@@ -1,6 +1,6 @@
 # 007 — Client architecture and repo layout
 
-**Status:** `IN PROGRESS` — Android built ([011](011_android_app.md)); macOS replaced by [024](024_macos_app.md); web not started
+**Status:** `IN PROGRESS` — Android built ([011](011_android_app.md)); macOS replaced by [024](024_macos_app.md), web by [030](030_web_client.md)
 **Started:** 2026-10-06
 
 ## Problem
@@ -97,14 +97,15 @@ shared core) still stands, for the reasons in 024.
 
 ## Web
 
-Plain HTML, CSS and JavaScript ES modules: no framework and no build step.
-The files are **embedded in the Go binary** (`embed`) and served by the
-backend from the same origin, so the cookie auth works and there is nothing
-extra to deploy. The admin panel lives here, where a large screen suits
-reviewing an inbox; its curation screens ([004](004_curation_workflow.md))
-follow after v1. Its first screen was to be **Users**, in v1. That moved to
-the Android app (2026-10-08, [023](023_users_on_android.md)): a short list
-and a form need no large screen, and it should not wait on this client.
+**Replaced by [030](030_web_client.md)** (2026-10-10). The owner wants the
+web client as refined as the other two, on a computer and on a phone. It
+stays online-only, in plain HTML, CSS and JavaScript with no build step,
+embedded in the Go binary and served from the API's origin, as decided
+here. It now keeps the apps' logic (queues, listens, resume points, an
+outbox), not just a thin view. The admin panel's curation screens
+([004](004_curation_workflow.md)) are still to come after v1, and the
+Users screen moved to the apps (2026-10-08, [023](023_users_on_android.md)),
+where the web client has it too.
 
 ## Repo layout
 

@@ -22,6 +22,9 @@ info:
       release ("dev" for a local build), for the apps to show. Requests
       without a valid token are not told.
     - Errors are `{"code": "...", "message": "..."}` with a matching status.
+    - Every other GET outside `/api/` is the web client's files
+      (docs/plans/030_web_client.md); an unknown `/api/` path is still a
+      JSON 404.
 servers:
   - url: http://{host}:8585
     variables:

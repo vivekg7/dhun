@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/vivekg7/dhun/server/internal/library"
+	"github.com/vivekg7/dhun/server/web"
 )
 
 // Server holds what the handlers need.
@@ -81,6 +82,10 @@ func (s *Server) Handler() http.Handler {
 	for _, rt := range s.routes() {
 		mux.Handle(rt.pattern, rt.handler)
 	}
+	// The web client takes every GET the API does not (docs/plans/030_web_client.md);
+	// an unknown API path stays a JSON 404, not the page.
+	mux.Handle("GET /", web.Handler())
+	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) { s.fail(w, r, errNotFound("endpoint")) })
 	protected := http.NewCrossOriginProtection().Handler(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()

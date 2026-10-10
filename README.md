@@ -26,7 +26,9 @@ there is no GitHub release yet. The macOS app (`macos/`, [plan 024](docs/plans/0
 is built to the Android app's level, offline included, with a menu bar
 control, a floating mini player and Open With from Finder; 0.12.0 is in
 daily use on the owner's Mac, with no GitHub release yet. The web client
-comes after it.
+(`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
+server itself, at `http://<nas>:8585/`: the apps' features in a browser,
+online-only, on a computer or a phone.
 
 ## Run the server
 
@@ -44,8 +46,9 @@ On the NAS (Synology Container Manager or any Docker host):
    Then delete the password line; it is never read again.
 4. The apps connect to `http://<nas>:8585` at home, or the NAS's Tailscale
    address away.
-5. Add each family member: today with `curl`, later from the web app's
-   Users screen. Their playlists go in `Music/Playlists/<name>/`.
+5. Add each family member from Settings → Family members, signed in as the
+   admin, in any of the apps or the web client. Their playlists go in
+   `Music/Playlists/<name>/`.
 
 Every step in detail, for Synology:
 [`docs/plans/003_deployment.md#install`](docs/plans/003_deployment.md#install).
@@ -62,11 +65,16 @@ contract is [`api/openapi.yaml`](api/openapi.yaml). The Android app needs a
 JDK (Android Studio's is found on its own) and `android/local.properties`
 pointing at an Android SDK with platform 37. The macOS app needs Xcode for
 its toolchain only: it is a Swift package, built from the command line.
+The web client needs nothing to build: it is plain HTML, CSS and
+JavaScript, embedded in the server. While working on it, run the server
+with `DHUN_WEB_DIR=server/web`, so a reload shows an edit without a
+rebuild; `make test-web` runs its tests with Node's own runner.
 
 ### Versions
 
 The server, the Android app and the Mac app share **one sequence of
-version numbers**:
+version numbers**. The web client is part of the server and takes the
+server's number:
 
 - A release that changes only some platforms takes the next **patch**
   number, for those platforms alone. The others skip that number for

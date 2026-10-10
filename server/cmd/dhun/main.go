@@ -13,6 +13,8 @@
 //	DHUN_RESCAN          interval between automatic rescans    (1h)
 //	DHUN_ADMIN_USER      the admin, created on first start while there are
 //	DHUN_ADMIN_PASSWORD  no users; ignored after that
+//	DHUN_WEB_DIR         serve the web client from this folder, not the
+//	                     binary: for working on server/web
 package main
 
 import (

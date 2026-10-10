@@ -12,13 +12,13 @@ GRADLE = cd android && ./gradlew -q
 SWIFT_SRC = macos/Package.swift macos/make-icon.swift macos/Sources macos/Tests
 SWIFT_FORMAT = xcrun swift-format
 
-.PHONY: help init fmt lint test check image apk mac lint-server lint-android lint-macos test-server test-android test-macos
+.PHONY: help init fmt lint test check image apk mac lint-server lint-android lint-macos test-server test-web test-android test-macos
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
 	@echo 'fmt    rewrite files -- the only target that edits anything'
 	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint, swift-format'
-	@echo 'test   the server suite (race detector), the Android and the macOS unit tests'
+	@echo 'test   the server suite (race detector), the web, Android and macOS unit tests'
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
 	@echo 'apk    build the signed release APK and archive it in local/'
@@ -52,7 +52,8 @@ fmt:
 
 lint: lint-server lint-android lint-macos
 
-# The docs are linted here too: the server's CI job is the one that runs on every push.
+# The docs and the web client are linted here too: the server's CI job is the
+# one that runs on every push, and the web client is part of the server.
 lint-server:
 	$(PRETTIER) --check .
 	@out=$$(gofmt -l server); [ -z "$$out" ] || { echo "gofmt needed:"; echo "$$out"; exit 1; }
@@ -64,10 +65,14 @@ lint-android:
 lint-macos:
 	$(SWIFT_FORMAT) lint --strict -r $(SWIFT_SRC)
 
-test: test-server test-android test-macos
+test: test-server test-web test-android test-macos
 
 test-server:
 	cd server && go test -race -count=1 ./...
+
+# Node's own test runner: no packages (docs/plans/030_web_client.md).
+test-web:
+	node --test server/web/test/*.test.js
 
 test-android:
 	$(GRADLE) :app:testDebugUnitTest

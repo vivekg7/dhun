@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/vivekg7/dhun/server/internal/library"
@@ -404,6 +405,53 @@ func TestCookieOnlyFetchesMedia(t *testing.T) {
 	}
 	if got := send("POST", "/api/v1/login", "text/plain", "", `{"username":"vivek","password":"correct horse","device":"x"}`); got != 415 {
 		t.Errorf("text/plain body: %d, want 415", got)
+	}
+}
+
+// The web client takes every GET the API does not (docs/plans/030_web_client.md).
+// It must never swallow an API path: a client that mistypes one should get a
+// JSON error, not a page of HTML it then fails to parse.
+func TestWebClientNeverShadowsTheAPI(t *testing.T) {
+	e := newEnv(t)
+	get := func(path string, gzip bool) *http.Response {
+		req, _ := http.NewRequest("GET", e.srv.URL+path, nil)
+		if gzip {
+			req.Header.Set("Accept-Encoding", "gzip")
+		} else {
+			// Go's client asks for gzip by itself, then hides it; ask for nothing.
+			req.Header.Set("Accept-Encoding", "identity")
+		}
+		resp, err := http.DefaultTransport.RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	page := get("/", false)
+	if page.StatusCode != 200 || !strings.HasPrefix(page.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("/: %d %s", page.StatusCode, page.Header.Get("Content-Type"))
+	}
+	if csp := page.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") {
+		t.Errorf("page CSP = %q", csp)
+	}
+	if js := get("/js/main.js", true); js.Header.Get("Content-Type") != "text/javascript; charset=utf-8" || js.Header.Get("Content-Encoding") != "gzip" {
+		t.Errorf("main.js: %s, %q", js.Header.Get("Content-Type"), js.Header.Get("Content-Encoding"))
+	}
+	// Revalidation: an unchanged file is not sent again.
+	req, _ := http.NewRequest("GET", e.srv.URL+"/app.css", nil)
+	req.Header.Set("If-None-Match", get("/app.css", false).Header.Get("ETag"))
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 304 {
+		t.Errorf("app.css with its ETag: %v %v, want 304", resp.StatusCode, err)
+	}
+	if got := get("/api/v1/library", false).StatusCode; got != 401 {
+		t.Errorf("library without a token: %d, want 401", got)
+	}
+	if r := get("/api/v1/nothing", false); r.StatusCode != 404 || r.Header.Get("Content-Type") != "application/json" {
+		t.Errorf("unknown API path: %d %s, want a JSON 404", r.StatusCode, r.Header.Get("Content-Type"))
+	}
+	if got := get("/somewhere", false).StatusCode; got != 404 {
+		t.Errorf("unknown page: %d, want 404", got)
 	}
 }
 
