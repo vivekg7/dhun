@@ -24,7 +24,7 @@ playable without signing in, with downloads kept through a sign-out
 ([plan 026](docs/plans/026_without_an_account.md));
 there is no GitHub release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
-control, a floating mini player and Open With from Finder; 0.12.0 is in
+control, a floating mini player and Open With from Finder; 0.12.4 is in
 daily use on the owner's Mac, with no GitHub release yet. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
