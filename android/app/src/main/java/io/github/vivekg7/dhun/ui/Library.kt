@@ -59,7 +59,23 @@ fun shuffleList(
     songs: List<Song>,
 ) = playList(nav, name, source, songs.shuffled(), 0)
 
-/** A list of songs where tapping one plays the whole list from there. */
+/**
+ * Musicolet's search box at the bottom of a long list of songs shows
+ * only past this many rows: a shorter list fits about a screen and is read
+ * at a glance.
+ */
+const val SEARCH_OVER = 12
+
+/** Whether [s] matches [q], already folded: the same fields wherever a list of songs is searched. */
+fun matches(
+    s: Song,
+    q: String,
+) = q.isEmpty() || Catalog.fold(s.title).contains(q) || Catalog.fold(s.artist).contains(q) || Catalog.fold(s.album).contains(q)
+
+/**
+ * A list of songs where tapping one plays the whole list from there, a song
+ * found by its search box included.
+ */
 @Composable
 fun SongList(
     name: String,
@@ -68,12 +84,20 @@ fun SongList(
     nav: Nav,
     header: @Composable () -> Unit = {},
 ) {
-    LazyColumn(Modifier.fillMaxSize()) {
-        item { header() }
-        itemsIndexed(songs, key = { i, s -> "$i/${s.id}" }) { i, s ->
-            SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
+    val searchable = songs.size > SEARCH_OVER
+    var query by rememberSaveable { mutableStateOf("") }
+    val q = if (searchable) Catalog.fold(query) else ""
+    val hits = remember(songs, q) { songs.withIndex().filter { matches(it.value, q) } }
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f)) {
+            item { header() }
+            items(hits, key = { (i, s) -> "$i/${s.id}" }) { (i, s) ->
+                SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
+            }
+            if (songs.isEmpty()) item { Empty("Nothing here yet") }
+            if (songs.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
-        if (songs.isEmpty()) item { Empty("Nothing here yet") }
+        if (searchable) SearchField(query, { query = it }, "Search in $name…", bottom = true)
     }
 }
 
@@ -126,31 +150,44 @@ fun FolderScreen(
         )
         return
     }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            if (root) {
-                SectionLabel("Music · ${catalog.songs.size} songs")
-            } else {
-                PageHeader(
-                    folder.name,
-                    path.replace("/", " › "),
-                    onBack,
-                    { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
-                    DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
-                    songs = folder.allSongs(),
-                ) {
-                    shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
+    val searchable = folder.children.size + folder.songs.size > SEARCH_OVER
+    var query by rememberSaveable { mutableStateOf("") }
+    val q = if (searchable) Catalog.fold(query) else ""
+    val children = remember(folder, q) { if (q.isEmpty()) folder.children else folder.children.filter { Catalog.fold(it.name).contains(q) } }
+    val songs = folder.songs
+    val hits =
+        remember(folder, q) {
+            songs.withIndex().filter { matches(it.value, q) }
+        }
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f)) {
+            item {
+                if (root) {
+                    SectionLabel("Music · ${catalog.songs.size} songs")
+                } else {
+                    PageHeader(
+                        folder.name,
+                        path.replace("/", " › "),
+                        onBack,
+                        { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
+                        DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
+                        songs = folder.allSongs(),
+                    ) {
+                        shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
+                    }
                 }
             }
+            items(children, key = { "f/" + it.path }) { f ->
+                val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
+                NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
+            }
+            // A song found still plays the whole folder from it, as in the queue's search.
+            items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
+            }
+            if (q.isNotEmpty() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
-        items(folder.children, key = { "f/" + it.path }) { f ->
-            val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
-            NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(Tab.Folders, Page.FolderPage(f.path)) }
-        }
-        val songs = folder.songs
-        itemsIndexed(songs, key = { _, s -> s.id }) { i, s ->
-            SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
-        }
+        if (searchable) SearchField(query, { query = it }, "Search in this folder…", bottom = true)
     }
 }
 

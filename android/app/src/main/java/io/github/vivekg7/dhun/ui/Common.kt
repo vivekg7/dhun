@@ -95,7 +95,15 @@ fun SearchField(
             Icon(Icons.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f)) {
-                if (value.isEmpty()) Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                if (value.isEmpty()) {
+                    Text(
+                        hint,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 BasicTextField(
                     value,
                     onChange,

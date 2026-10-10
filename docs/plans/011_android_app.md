@@ -31,7 +31,16 @@ dense, and the accent colour marks only the current song and the active tab.
 Dhun keeps that structure tab for tab. Each tab keeps its place: a page
 opened in it (an album, an artist), and the search and scroll of whatever
 that page covers, until you go back. Rotation or Android reclaiming the app
-loses none of it. Every icon-only control, the tabs included, shows its name
+loses none of it. Albums, Artists, Genres and Playlists have their search
+box at the top. Every folder, and every page a tab opens (an album, an
+artist, a genre, a playlist, Favorites, Listen Later and the automatic
+lists), has it at the bottom, as the queue does. The bottom box shows only
+when the list has more than 12 rows, as in Musicolet, because a shorter
+list fits on about one screen and needs no search (owner, 2026-10-10). A
+song found there still plays the whole list from that song. While a
+playlist is being searched, its songs cannot be dragged: moving one among
+the matches would drop it in the wrong place in the full playlist. Every
+icon-only control, the tabs included, shows its name
 when long-pressed ("Add to Favorites"), the same words TalkBack reads, as
 Android's own icon buttons do (the owner's request, 2026-10-07). Plain bottom navigation (four or five
 labelled tabs) was rejected because it would hide Folders and Genres, which

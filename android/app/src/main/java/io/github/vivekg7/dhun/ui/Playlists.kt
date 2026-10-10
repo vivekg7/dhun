@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -270,6 +269,11 @@ fun PlaylistScreen(
     // file but not shown. Rows remember their place in the file, for edits.
     val rows = remember(p.songs, catalog) { songIds(p.songs).withIndex().mapNotNull { (i, sid) -> catalog.byId[sid]?.let { i to it } } }
     val songs = rows.map { it.second }
+    val searchable = rows.size > SEARCH_OVER
+    var query by rememberSaveable { mutableStateOf("") }
+    val q = if (searchable) Catalog.fold(query) else ""
+    // Rows found keep their place in the playlist, so a song found plays the whole playlist from it.
+    val hits = remember(rows, q) { rows.withIndex().filter { matches(it.value.second, q) } }
     val source = "playlist:${p.id}"
     val editable = p.editable()
     var renaming by remember { mutableStateOf(false) }
@@ -278,33 +282,40 @@ fun PlaylistScreen(
     val reorder =
         rememberReorder(
             list,
-            rows,
-            { (raw, s) -> "$raw/${s.id}" },
-        ) { from, to -> app.scope.launch { app.store.moveInPlaylist(p, rows[from].first, rows[to].first) } }
-    LazyColumn(Modifier.fillMaxSize(), state = list) {
-        item {
-            PageHeader(
-                p.name,
-                summary(songs) + if (p.shared) " · shared" else "",
-                onBack,
-                { playList(nav, p.name, source, songs, 0) },
-                DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
-                songs = songs,
-                actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
-            ) { shuffleList(nav, p.name, source, songs) }
-        }
-        itemsIndexed(reorder.shown, key = { _, (raw, s) -> "$raw/${s.id}" }) { i, (raw, s) ->
-            val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
-            Box(with(reorder) { row("$raw/${s.id}") }) {
-                SongRow(
-                    s,
-                    onClick = { playList(nav, p.name, source, songs, i) },
-                    leading = if (editable) ({ reorder.Handle("$raw/${s.id}") }) else null,
-                    menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
-                )
+            hits,
+            { (_, r) -> "${r.first}/${r.second.id}" },
+        ) { from, to -> app.scope.launch { app.store.moveInPlaylist(p, hits[from].value.first, hits[to].value.first) } }
+    // Moving among the songs found would put them in the wrong places, so dragging waits until the search is cleared.
+    val canDrag = editable && q.isEmpty()
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f), state = list) {
+            item {
+                PageHeader(
+                    p.name,
+                    summary(songs) + if (p.shared) " · shared" else "",
+                    onBack,
+                    { playList(nav, p.name, source, songs, 0) },
+                    DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
+                    songs = songs,
+                    actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
+                ) { shuffleList(nav, p.name, source, songs) }
             }
+            items(reorder.shown, key = { (_, r) -> "${r.first}/${r.second.id}" }) { (i, r) ->
+                val (raw, s) = r
+                val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
+                Box(with(reorder) { row("$raw/${s.id}") }) {
+                    SongRow(
+                        s,
+                        onClick = { playList(nav, p.name, source, songs, i) },
+                        leading = if (canDrag) ({ reorder.Handle("$raw/${s.id}") }) else null,
+                        menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
+                    )
+                }
+            }
+            if (rows.isEmpty()) item { Empty(if (editable) "Empty. Add songs with “Add to playlist” in any song's menu." else "Nothing here yet") }
+            if (rows.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
-        if (rows.isEmpty()) item { Empty(if (editable) "Empty. Add songs with “Add to playlist” in any song's menu." else "Nothing here yet") }
+        if (searchable) SearchField(query, { query = it }, "Search in this playlist…", bottom = true)
     }
     if (renaming) {
         NameDialog("Rename playlist", p.name, "Rename") { name ->
