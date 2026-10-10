@@ -225,8 +225,8 @@ checked again:
   kept in the same IndexedDB record.
 - A listener added on every layout change, and a wake lock never let go.
 - The playing queue did not follow another device's edits, so a sort here
-  undid them. **The Mac has the same gap**: its `queuesSynced` updates
-  only the sleep timer. That is for a Mac plan to fix.
+  undid them. **The Mac had the same gap**: its `queuesSynced` updated
+  only the sleep timer. It now follows the same way.
 
 **Not checked yet:** Safari and Firefox (headless Firefox would not start
 here), a real phone, and the Picture-in-Picture mini player, which

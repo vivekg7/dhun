@@ -526,7 +526,27 @@ public final class Playback {
         if current == nil, let q = active { load(q, play: false) }
     }
 
-    func queuesSynced() { sleep.update() }
+    /// Another device's queue edits arrived. The playing queue may be gone
+    /// (deleted elsewhere), or hold other songs (added on the phone): the
+    /// player follows, so a later edit here does not undo theirs.
+    func queuesSynced() {
+        guard !activeId.isEmpty, restored else { return }
+        guard let q = active else {
+            guard current != nil else { return setActive("") }
+            close("stopped")
+            stopAll()
+            notice = "The queue that was playing was removed on another device"
+            return
+        }
+        let fresh = app.catalog.songsOf(q.songs).map(\.id)
+        // Removing the playing song elsewhere does not stop it here.
+        if fresh != items, current.map({ fresh.contains($0.id) }) ?? true {
+            items = fresh
+            rebuildOrder(keepingShuffle: true)
+        }
+        // Even with the same songs: the repeat mode may have changed.
+        sleep.update()
+    }
 
     private func load(_ q: QueueRow, play: Bool, position: Int? = nil) {
         close("switched")
