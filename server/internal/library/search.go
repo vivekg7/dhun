@@ -240,7 +240,7 @@ func (x *LyricsIndex) Refresh(ctx context.Context) error {
 
 func (x *LyricsIndex) refresh(ctx context.Context) error {
 	rows, err := x.DB.QueryContext(ctx, `SELECT id, path, version, embedded_lyrics, lrc FROM songs
-		WHERE missing_since IS NULL AND (embedded_lyrics OR lrc)`)
+		WHERE kind = 'music' AND missing_since IS NULL AND (embedded_lyrics OR lrc)`)
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,8 @@ func (x *LyricsIndex) refresh(ctx context.Context) error {
 			songs[r.id] = old
 			continue
 		}
-		l, err := ReadLyrics(x.Root, r.f)
+		r.f.Root = x.Root
+		l, err := ReadLyrics(r.f)
 		if err != nil {
 			continue // unreadable or gone: found again by the next refresh
 		}

@@ -32,6 +32,10 @@ services:
       - /volume1/homes/you/Media/Music:/media:ro
       # ...except Playlists/, which Dhun edits (EDIT path, same folder).
       - /volume1/homes/you/Media/Music/Playlists:/media/Playlists
+      # Optional, READ-ONLY: podcasts and audiobooks, each in its own section
+      # of the apps. Leave a line out if you have no such folder (EDIT paths).
+      - /volume1/homes/you/Media/Podcasts:/podcasts:ro
+      - /volume1/homes/you/Media/Audiobooks:/audiobooks:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       - TZ=Asia/Kolkata

@@ -109,6 +109,7 @@ Operations and how each merges:
 | `playlist.insert`, `playlist.remove`, `playlist.move`   | Same as queues. Playlists may contain duplicates, so they address an item by `(song, occurrence)`.                                                      |
 | `favorite.set`, `favorite.unset`                        | The latest `at` wins.                                                                                                                                   |
 | `listen_later.add`, `listen_later.remove`               | The latest `at` wins. A `play` that reaches 90% into a listed song removes it ([010](010_special_playlists.md)).                                        |
+| `played.set`, `played.unset`                            | The latest `at` wins. A `play` that reaches 90% into a podcast or audiobook file sets it ([031](031_podcasts_and_audiobooks.md)).                       |
 | `resume.set`, `resume.unset`, `setting.set`             | The latest `at` wins, as for favorites ([009](009_resume_long_files.md)).                                                                               |
 | `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                                |
 | `playback.state`                                        | Updates `now_playing` if newer. Sent on play and pause, on each new song, and every 30 s while playing; one kept in the outbox ([017](017_handoff.md)). |

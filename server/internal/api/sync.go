@@ -203,6 +203,8 @@ func (a *applier) apply(o op) error {
 		return a.mark("favorites", o.Song, o.Type == "favorite.unset", a.at)
 	case "listen_later.add", "listen_later.remove":
 		return a.mark("listen_later", o.Song, o.Type == "listen_later.remove", a.at)
+	case "played.set", "played.unset":
+		return a.mark("played", o.Song, o.Type == "played.unset", a.at)
 	case "play":
 		return a.play(o)
 	case "playback.state":
@@ -246,7 +248,29 @@ func (a *applier) play(o op) error {
 	if err != nil {
 		return err
 	}
-	return a.finishListenLater(o, ended)
+	if err := a.finishListenLater(o, ended); err != nil {
+		return err
+	}
+	return a.markPlayed(o, ended)
+}
+
+// playedPercent is how far into an episode or a book's file a listen must
+// reach for it to be marked played: Listen Later's threshold (plan 031).
+const playedPercent = 90
+
+// markPlayed marks a podcast or audiobook file played once a listen reached
+// far enough into it. Music has play counts instead.
+func (a *applier) markPlayed(o op, ended string) error {
+	var kind string
+	var dur int64
+	var played bool
+	err := a.tx.QueryRowContext(a.ctx, `SELECT s.kind, s.duration_ms, COALESCE(NOT p.deleted, 0) FROM songs s
+		LEFT JOIN played p ON p.song_id = s.id AND p.user_id = ? WHERE s.id = ?`, a.sess.UserID, o.Song).Scan(&kind, &dur, &played)
+	if err != nil || kind == library.KindMusic || played || dur <= 0 || o.ToMS*100 < dur*playedPercent {
+		return err
+	}
+	// As of the listen's end: marking it unplayed later still wins.
+	return a.mark("played", o.Song, false, ended)
 }
 
 // finishListenLater takes a song off Listen Later once a listen reached far
@@ -764,10 +788,15 @@ func (a *applier) songEntries(ids []int64) ([]library.WriteEntry, error) {
 	}
 	out := make([]library.WriteEntry, len(ids))
 	for i, id := range ids {
-		var p, t, ar string
+		var kind, p, t, ar string
 		var d int64
-		if err := a.tx.QueryRowContext(a.ctx, `SELECT path, title, artist, duration_ms FROM songs WHERE id = ?`, id).Scan(&p, &t, &ar, &d); err != nil {
+		if err := a.tx.QueryRowContext(a.ctx, `SELECT kind, path, title, artist, duration_ms FROM songs WHERE id = ?`, id).Scan(&kind, &p, &t, &ar, &d); err != nil {
 			return nil, err
+		}
+		// A playlist is a file in Music/ and its paths are relative to it; an
+		// episode is under another root the file cannot point at (plan 031).
+		if kind != library.KindMusic {
+			return nil, rejected("only music can go in a playlist")
 		}
 		out[i] = songEntry(p, t, ar, d)
 	}
@@ -961,6 +990,10 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	if err != nil {
 		return nil, err
 	}
+	played, err := marks(ctx, tx, "played", userID, since)
+	if err != nil {
+		return nil, err
+	}
 
 	type resumeJSON struct {
 		Song       int64  `json:"song"`
@@ -1006,7 +1039,7 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"version": version, "queues": queues, "favorites": favs, "listenLater": later, "resume": resume,
+	return map[string]any{"version": version, "queues": queues, "favorites": favs, "listenLater": later, "played": played, "resume": resume,
 		"settings": settings, "nowPlaying": np}, nil
 }
 
@@ -1079,11 +1112,12 @@ func (s *Server) getNowPlaying(w http.ResponseWriter, r *http.Request, sess sess
 const countedPercent = 50
 
 // playCounts returns the caller's play count and last counted play per song,
-// for sorting by most / recently played on the client.
+// for sorting by most / recently played on the client. Music only: an
+// episode or a book has played marks instead (plan 031).
 func (s *Server) playCounts(w http.ResponseWriter, r *http.Request, sess session) {
 	rows, err := s.DB.QueryContext(r.Context(), `SELECT p.song_id, count(*), max(p.at)
 		FROM plays p JOIN songs s ON s.id = p.song_id
-		WHERE p.user_id = ? AND p.ms_played > 0 AND p.ms_played * 100 >= s.duration_ms * ?
+		WHERE p.user_id = ? AND s.kind = 'music' AND p.ms_played > 0 AND p.ms_played * 100 >= s.duration_ms * ?
 		GROUP BY p.song_id`, sess.UserID, countedPercent)
 	if err != nil {
 		s.fail(w, r, err)

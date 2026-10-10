@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,47 +22,81 @@ import (
 	"github.com/vivekg7/dhun/server/internal/store"
 )
 
-// Scanner reconciles the database with the media root. One scan runs at a time.
+// Kinds of file, each under its own root (docs/plans/031_podcasts_and_audiobooks.md).
+const (
+	KindMusic     = "music"
+	KindPodcast   = "podcast"
+	KindAudiobook = "audiobook"
+)
+
+// Scanner reconciles the database with the media roots. One scan runs at a time.
 type Scanner struct {
 	DB   *sql.DB
 	Root string // absolute media root (DHUN_MEDIA, mounted at /media)
-	Log  *slog.Logger
+	// The podcast and audiobook roots; "" or a folder that is not there is
+	// not scanned.
+	Podcasts, Audiobooks string
+	Log                  *slog.Logger
 
 	mu sync.Mutex
 }
 
+type root struct{ kind, dir string }
+
+func (s *Scanner) roots() []root {
+	return []root{{KindMusic, s.Root}, {KindPodcast, s.Podcasts}, {KindAudiobook, s.Audiobooks}}
+}
+
+// RootOf returns the folder a kind's paths are relative to.
+func (s *Scanner) RootOf(kind string) string {
+	for _, r := range s.roots() {
+		if r.kind == kind {
+			return r.dir
+		}
+	}
+	return s.Root
+}
+
+// fileKey names a file across roots: a path is unique within its kind.
+type fileKey struct{ kind, path string }
+
 // Stats summarises one scan.
 type Stats struct {
 	Added, Updated, Moved, Missing, Unchanged, Failed int
+	Regrouped                                         int // podcast and audiobook files whose book, show or place changed
 	Playlists                                         int
 }
 
 func (s Stats) String() string {
-	return fmt.Sprintf("added=%d updated=%d moved=%d missing=%d unchanged=%d failed=%d playlists=%d",
-		s.Added, s.Updated, s.Moved, s.Missing, s.Unchanged, s.Failed, s.Playlists)
+	return fmt.Sprintf("added=%d updated=%d moved=%d missing=%d unchanged=%d failed=%d regrouped=%d playlists=%d",
+		s.Added, s.Updated, s.Moved, s.Missing, s.Unchanged, s.Failed, s.Regrouped, s.Playlists)
 }
 
 type songRow struct {
-	id        int64
-	path      string
-	size      int64
-	mtimeNS   int64
-	hash      string
-	missing   bool
-	folderArt string
-	lrc       bool
-	art       string
-	embedded  bool // embedded art: its key changes only when the file does
+	id         int64
+	kind       string
+	path       string
+	size       int64
+	mtimeNS    int64
+	hash       string
+	missing    bool
+	folderArt  string
+	lrc        bool
+	art        string
+	embedded   bool // embedded art: its key changes only when the file does
+	transcript string
 }
 
 type seenFile struct {
-	rel       string
-	abs       string
-	size      int64
-	mtimeNS   int64
-	folderArt string
-	folderKey string // the folder cover's art key, if it has one
-	lrc       bool
+	kind       string
+	rel        string
+	abs        string
+	size       int64
+	mtimeNS    int64
+	folderArt  string
+	folderKey  string // the folder cover's art key, if it has one
+	lrc        bool
+	transcript string
 
 	existing *songRow // nil for a path the database has never seen
 	read     bool     // tags and hash were read in this scan
@@ -101,32 +136,45 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 		return st, err
 	}
 
-	var files []*seenFile
-	if err := s.walk(ctx, "", known, &files); err != nil {
-		return st, err
-	}
 	// A mistyped or unmounted path gives Docker an empty folder. Marking the
 	// whole collection missing would be undone by the next good scan, but the
-	// apps would see an empty library meanwhile; refuse instead.
-	present := 0
-	for _, r := range known {
-		if !r.missing {
-			present++
+	// apps would see an empty library meanwhile; refuse instead. Each root
+	// is checked on its own: an unmounted Podcasts leaves its episodes as
+	// they were and the music is still scanned.
+	var files []*seenFile
+	skipped := map[string]bool{}
+	for _, r := range s.roots() {
+		var got []*seenFile
+		err := s.walk(ctx, r, "", known, &got)
+		if err != nil && (r.kind == KindMusic || ctx.Err() != nil) {
+			return st, err
 		}
-	}
-	if len(files) == 0 && present > 0 {
-		return st, fmt.Errorf("no audio files under %s, but %d songs are known: is the Music folder mounted? Nothing was changed", s.Root, present)
+		present := 0
+		for _, k := range known {
+			if k.kind == r.kind && !k.missing {
+				present++
+			}
+		}
+		if len(got) == 0 && present > 0 {
+			msg := fmt.Sprintf("no audio files under %s, but %d %s files are known: is the folder mounted? Nothing was changed", r.dir, present, r.kind)
+			if r.kind == KindMusic {
+				return st, errors.New(msg)
+			}
+			s.Log.Error("scan: " + msg)
+			skipped[r.kind] = true
+		}
+		files = append(files, got...)
 	}
 
-	seen := make(map[string]bool, len(files))
+	seen := make(map[fileKey]bool, len(files))
 	var toRead []*seenFile
 	for _, f := range files {
-		seen[f.rel] = true
+		seen[fileKey{f.kind, f.rel}] = true
 		r := f.existing
 		// A song with embedded art scanned before art keys existed is read
 		// once more, to hash its image.
 		if r != nil && !r.missing && r.size == f.size && r.mtimeNS == f.mtimeNS && (r.art != "" || !r.embedded) {
-			continue // unchanged audio; sibling flags are compared in apply
+			continue // unchanged audio; sibling files are compared in apply
 		}
 		f.read = true
 		toRead = append(toRead, f)
@@ -145,10 +193,11 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 
 	// Candidates for "this new path is a file we already know": songs whose
 	// path vanished in this scan, and songs already marked missing.
+	// Within a kind: a file never moves between collections.
 	byHash := map[string][]*songRow{}
 	for _, r := range known {
-		if !seen[r.path] {
-			byHash[r.hash] = append(byHash[r.hash], r)
+		if !seen[fileKey{r.kind, r.path}] {
+			byHash[r.kind+r.hash] = append(byHash[r.kind+r.hash], r)
 		}
 	}
 	matched := map[int64]bool{}
@@ -163,16 +212,17 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 				matched[f.existing.id] = true // keep it as it was rather than mark it missing
 			}
 		case !f.read:
-			// Unchanged audio: only the sibling .lrc or cover may have changed.
+			// Unchanged audio: only the sibling .lrc, transcript or cover may
+			// have changed.
 			r := f.existing
 			art := f.folderKey
 			if r.embedded {
 				art = r.art
 			}
-			if r.folderArt != f.folderArt || r.lrc != f.lrc || r.art != art {
+			if r.folderArt != f.folderArt || r.lrc != f.lrc || r.art != art || r.transcript != f.transcript {
 				if _, err := tx.ExecContext(ctx,
-					`UPDATE songs SET folder_art = ?, lrc = ?, art = ?, updated_at = ?, version = ? WHERE id = ?`,
-					f.folderArt, f.lrc, art, now, version, r.id); err != nil {
+					`UPDATE songs SET folder_art = ?, lrc = ?, art = ?, transcript = ?, updated_at = ?, version = ? WHERE id = ?`,
+					f.folderArt, f.lrc, art, f.transcript, now, version, r.id); err != nil {
 					return st, err
 				}
 				st.Updated++
@@ -185,7 +235,7 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 			}
 			st.Updated++
 		default:
-			if r := takeMatch(byHash[f.hash], matched); r != nil {
+			if r := takeMatch(byHash[f.kind+f.hash], matched); r != nil {
 				if err := updateSong(ctx, tx, r.id, f, now, version); err != nil {
 					return st, err
 				}
@@ -200,7 +250,7 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 	}
 
 	for _, r := range known {
-		if !seen[r.path] && !r.missing && !matched[r.id] {
+		if !seen[fileKey{r.kind, r.path}] && !r.missing && !matched[r.id] && !skipped[r.kind] {
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE songs SET missing_since = ?, version = ? WHERE id = ?`, now, version, r.id); err != nil {
 				return st, err
@@ -209,13 +259,24 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 		}
 	}
 
+	for _, kind := range []string{KindPodcast, KindAudiobook} {
+		if skipped[kind] {
+			continue
+		}
+		n, err := regroup(ctx, tx, kind, version)
+		if err != nil {
+			return st, err
+		}
+		st.Regrouped += n
+	}
+
 	n, err := indexPlaylists(ctx, tx, s.Root, version)
 	if err != nil {
 		return st, err
 	}
 	st.Playlists = n
 
-	if st.Added+st.Updated+st.Moved+st.Missing+st.Playlists == 0 {
+	if st.Added+st.Updated+st.Moved+st.Missing+st.Regrouped+st.Playlists == 0 {
 		return st, nil // nothing changed: roll back, so the version is not burned
 	}
 	return st, tx.Commit()
@@ -234,31 +295,34 @@ func takeMatch(cands []*songRow, matched map[int64]bool) *songRow {
 	return nil
 }
 
-func (s *Scanner) loadSongs(ctx context.Context) (map[string]*songRow, error) {
+func (s *Scanner) loadSongs(ctx context.Context) (map[fileKey]*songRow, error) {
 	rows, err := s.DB.QueryContext(ctx,
-		`SELECT id, path, size, mtime_ns, hex(quick_hash), missing_since IS NOT NULL, folder_art, lrc, art, embedded_art FROM songs`)
+		`SELECT id, kind, path, size, mtime_ns, hex(quick_hash), missing_since IS NOT NULL, folder_art, lrc, art, embedded_art, transcript FROM songs`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	known := map[string]*songRow{}
+	known := map[fileKey]*songRow{}
 	for rows.Next() {
 		r := &songRow{}
-		if err := rows.Scan(&r.id, &r.path, &r.size, &r.mtimeNS, &r.hash, &r.missing, &r.folderArt, &r.lrc, &r.art, &r.embedded); err != nil {
+		if err := rows.Scan(&r.id, &r.kind, &r.path, &r.size, &r.mtimeNS, &r.hash, &r.missing, &r.folderArt, &r.lrc, &r.art, &r.embedded, &r.transcript); err != nil {
 			return nil, err
 		}
-		known[r.path] = r
+		known[fileKey{r.kind, r.path}] = r
 	}
 	return known, rows.Err()
 }
 
-// walk lists one directory at a time, so each file's sibling cover and .lrc
-// come from the same listing instead of extra stat calls.
-func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRow, out *[]*seenFile) error {
+// walk lists one directory at a time, so each file's sibling cover, .lrc
+// and transcript come from the same listing instead of extra stat calls.
+func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKey]*songRow, out *[]*seenFile) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(filepath.Join(s.Root, filepath.FromSlash(rel)))
+	if r.dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(r.dir, filepath.FromSlash(rel)))
 	if err != nil {
 		if rel == "" {
 			return err
@@ -277,6 +341,21 @@ func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRo
 			break
 		}
 	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	if folderArt == "" && r.kind != KindMusic {
+		// A book's folder often holds one image under the book's own name
+		// ("The Three-Body Problem.jpg"): with nothing better, that is its
+		// cover. Not for music, whose folders hold scans and booklets.
+		for _, n := range names { // ReadDir sorts by name
+			if ext := strings.ToLower(path.Ext(n)); ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
+				folderArt = n
+				break
+			}
+		}
+	}
 	for _, e := range entries {
 		if e.Name() == folderArt {
 			// Not the bytes: that would read every cover on every scan.
@@ -289,7 +368,7 @@ func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRo
 		childRel := path.Join(rel, e.Name())
 		if e.IsDir() {
 			if !skipDir(childRel, e.Name()) {
-				if err := s.walk(ctx, childRel, known, out); err != nil {
+				if err := s.walk(ctx, r, childRel, known, out); err != nil {
 					return err
 				}
 			}
@@ -304,15 +383,21 @@ func (s *Scanner) walk(ctx context.Context, rel string, known map[string]*songRo
 		}
 		base := strings.TrimSuffix(e.Name(), path.Ext(e.Name()))
 		_, hasLrc := lower[strings.ToLower(base)+".lrc"]
+		transcript := ""
+		if r.kind != KindMusic {
+			transcript = transcriptName(names, e.Name())
+		}
 		*out = append(*out, &seenFile{
-			rel:       childRel,
-			abs:       filepath.Join(s.Root, filepath.FromSlash(childRel)),
-			size:      info.Size(),
-			mtimeNS:   info.ModTime().UnixNano(),
-			folderArt: folderArt,
-			folderKey: folderKey,
-			lrc:       hasLrc,
-			existing:  known[childRel],
+			kind:       r.kind,
+			transcript: transcript,
+			rel:        childRel,
+			abs:        filepath.Join(r.dir, filepath.FromSlash(childRel)),
+			size:       info.Size(),
+			mtimeNS:    info.ModTime().UnixNano(),
+			folderArt:  folderArt,
+			folderKey:  folderKey,
+			lrc:        hasLrc,
+			existing:   known[fileKey{r.kind, childRel}],
 		})
 	}
 	return nil
@@ -353,7 +438,7 @@ func readOne(f *seenFile) {
 	if f.hash, f.err = hashHex(f.abs, f.size); f.err != nil {
 		return
 	}
-	if f.tags, f.err = readTags(f.abs, f.rel); f.err != nil {
+	if f.tags, f.err = readTags(f.abs, f.rel, f.kind != KindMusic); f.err != nil {
 		return
 	}
 	f.art = f.folderKey
@@ -384,36 +469,43 @@ func songArgs(f *seenFile) []any {
 	t := f.tags
 	artists, _ := json.Marshal(t.Artists)
 	genres, _ := json.Marshal(t.Genres)
+	chapters, _ := json.Marshal(t.Chapters)
+	if t.Chapters == nil {
+		chapters = []byte("[]")
+	}
 	return []any{
-		f.rel, f.size, f.mtimeNS, f.hash,
+		f.kind, f.rel, f.size, f.mtimeNS, f.hash,
 		t.Title, t.Artist, string(artists), t.Album, t.AlbumArtist, t.Composer, t.Genre, string(genres),
 		t.Year, t.Track, t.Disc,
 		t.DurationMS, t.Format, t.Codec, t.Bitrate, t.SampleRate, t.BitDepth, t.Channels,
 		t.EmbeddedArt, t.EmbeddedLyrics, f.folderArt, f.lrc, f.art,
+		t.Date, t.Notes, string(chapters), f.transcript,
 	}
 }
 
-const songCols = `path, size, mtime_ns, quick_hash,
+const songCols = `kind, path, size, mtime_ns, quick_hash,
 	title, artist, artists, album, album_artist, composer, genre, genres,
 	year, track, disc,
 	duration_ms, format, codec, bitrate, sample_rate, bit_depth, channels,
-	embedded_art, embedded_lyrics, folder_art, lrc, art`
+	embedded_art, embedded_lyrics, folder_art, lrc, art,
+	date, notes, chapters, transcript`
 
 func insertSong(ctx context.Context, tx *sql.Tx, f *seenFile, now string, version int64) error {
 	args := append(songArgs(f), now, now, version)
 	_, err := tx.ExecContext(ctx, `INSERT INTO songs (`+songCols+`, added_at, updated_at, version)
-		VALUES (?, ?, ?, unhex(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+		VALUES (?, ?, ?, ?, unhex(?)`+strings.Repeat(", ?", len(args)-5)+`)`, args...)
 	return err
 }
 
 func updateSong(ctx context.Context, tx *sql.Tx, id int64, f *seenFile, now string, version int64) error {
 	args := append(songArgs(f), now, version, id)
 	_, err := tx.ExecContext(ctx, `UPDATE songs SET
-		path = ?, size = ?, mtime_ns = ?, quick_hash = unhex(?),
+		kind = ?, path = ?, size = ?, mtime_ns = ?, quick_hash = unhex(?),
 		title = ?, artist = ?, artists = ?, album = ?, album_artist = ?, composer = ?, genre = ?, genres = ?,
 		year = ?, track = ?, disc = ?,
 		duration_ms = ?, format = ?, codec = ?, bitrate = ?, sample_rate = ?, bit_depth = ?, channels = ?,
 		embedded_art = ?, embedded_lyrics = ?, folder_art = ?, lrc = ?, art = ?,
+		date = ?, notes = ?, chapters = ?, transcript = ?,
 		updated_at = ?, version = ?, missing_since = NULL
 		WHERE id = ?`, args...)
 	return err

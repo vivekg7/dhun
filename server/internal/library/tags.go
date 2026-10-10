@@ -33,12 +33,17 @@ type tags struct {
 	Format, Codec                                      string
 	Bitrate, SampleRate, BitDepth, Channels            int
 	EmbeddedArt, EmbeddedLyrics                        bool
+
+	// Podcasts and audiobooks only (docs/plans/031_podcasts_and_audiobooks.md).
+	Date, Notes string
+	Chapters    []Chapter
 }
 
 // readTags reads tags and audio properties. A file taglib cannot read still
 // becomes a song (titled after its file name), so it stays visible and
-// playable rather than silently missing from the library.
-func readTags(abs, rel string) (tags, error) {
+// playable rather than silently missing from the library. spoken adds what
+// only podcasts and audiobooks keep: the full date, notes and chapters.
+func readTags(abs, rel string, spoken bool) (tags, error) {
 	var t tags
 	var m map[string][]string
 	var perr, terr error
@@ -83,6 +88,19 @@ func readTags(abs, rel string) (tags, error) {
 
 	if t.Title == "" {
 		t.Title = titleFromFileName(rel)
+	}
+	if spoken {
+		t.Date = first(taglib.Date, "ORIGINALDATE", "YEAR")
+		// ffmpeg writes an Ogg file's comment as DESCRIPTION.
+		t.Notes = first(taglib.Comment, "DESCRIPTION")
+		if len(t.Chapters) == 0 { // Matroska's came with its tags
+			t.Chapters = xiphChapters(m)
+		}
+		if len(t.Chapters) == 0 && strings.EqualFold(path.Ext(rel), ".mp3") {
+			t.Chapters = id3Chapters(abs)
+		}
+	} else {
+		t.Chapters = nil
 	}
 	if perr != nil && terr != nil {
 		return t, perr

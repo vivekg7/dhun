@@ -182,8 +182,11 @@ Owner, 2026-10-10; how it is built is in
   and part folders such as `… (1 of 3)` or `CD 2` roll up into their
   parent. Untagged files make one book per folder, named after it. A
   single file whose album differs from its neighbours is a book of its own.
-- **A podcast show** is the album tag, else the folder, and its episodes
-  are newest first by date, else by file name.
+- **A podcast show** is the folder its episodes are in, named by their
+  album tag, and its episodes are newest first by date, else by file name.
+- **Playlists hold music only.** A playlist is an `.m3u8` file in
+  `Music/Playlists/`; it cannot point at an episode in `Podcasts/`.
+  Favorites, Listen Later and queues take any kind.
 - **Progress like Musicolet's long files, plus played marks:** an episode
   or a book file is marked played when a listen reaches 90% into it, and can
   be marked played or unplayed by hand. A show can hide played episodes; a

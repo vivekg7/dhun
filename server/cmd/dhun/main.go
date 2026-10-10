@@ -8,6 +8,8 @@
 // image (docs/plans/003_deployment.md):
 //
 //	DHUN_MEDIA           media root, the mounted Music folder   (/media)
+//	DHUN_PODCASTS        the Podcasts folder, if mounted        (/podcasts)
+//	DHUN_AUDIOBOOKS      the Audiobooks folder, if mounted      (/audiobooks)
 //	DHUN_DATA            Dhun's own state, outside Music        (/data)
 //	DHUN_ADDR            listen address                        (:8585)
 //	DHUN_RESCAN          interval between automatic rescans    (1h)
@@ -129,7 +131,17 @@ func run(log *slog.Logger, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	scanner := &library.Scanner{DB: db, Root: media, Log: log}
+	// Podcasts and audiobooks are optional: a folder that is not mounted is
+	// not scanned (docs/plans/031_podcasts_and_audiobooks.md).
+	podcasts, err := filepath.Abs(env("DHUN_PODCASTS", "/podcasts"))
+	if err != nil {
+		return err
+	}
+	audiobooks, err := filepath.Abs(env("DHUN_AUDIOBOOKS", "/audiobooks"))
+	if err != nil {
+		return err
+	}
+	scanner := &library.Scanner{DB: db, Root: media, Podcasts: podcasts, Audiobooks: audiobooks, Log: log}
 	lyrics := &library.LyricsIndex{DB: db, Root: media}
 	// Rescan requests while a scan runs collapse into one follow-up scan.
 	trigger := make(chan struct{}, 1)

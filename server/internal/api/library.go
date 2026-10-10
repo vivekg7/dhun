@@ -42,6 +42,16 @@ type songJSON struct {
 	HasLyrics   bool            `json:"hasLyrics"`
 	AddedAt     string          `json:"addedAt"`
 	Missing     bool            `json:"missing,omitempty"`
+
+	// Podcasts and audiobooks only, so a music row reads as it always did
+	// (docs/plans/031_podcasts_and_audiobooks.md). No kind means music.
+	Kind       string          `json:"kind,omitempty"`
+	Date       string          `json:"date,omitempty"`
+	Notes      string          `json:"notes,omitempty"`
+	Chapters   json.RawMessage `json:"chapters,omitempty"`
+	Group      string          `json:"group,omitempty"`
+	GroupTitle string          `json:"groupTitle,omitempty"`
+	GroupIndex int             `json:"groupIndex,omitempty"`
 }
 
 type playlistJSON struct {
@@ -60,9 +70,12 @@ type playlistJSON struct {
 
 // library returns every song and visible playlist changed since the client's
 // cursor; the first call (since=0) returns everything. Clients keep the whole
-// catalogue and browse it locally (plan 006).
+// catalogue and browse it locally (plan 006). Podcasts and audiobooks come
+// only to a client that asks for them with kinds=all: an app released
+// before them would list every episode as a song (plan 031).
 func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	all := r.URL.Query().Get("kinds") == "all"
 	ctx := r.Context()
 
 	// One read transaction, so the version and the rows agree even if a scan
@@ -82,8 +95,9 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 
 	rows, err := tx.QueryContext(ctx, `SELECT id, path, title, artist, artists, album, album_artist, composer,
 		genre, genres, year, track, disc, duration_ms, format, codec, bitrate, sample_rate, bit_depth, size,
-		embedded_art OR folder_art != '', art, embedded_lyrics OR lrc, added_at, missing_since IS NOT NULL
-		FROM songs WHERE version > ? ORDER BY id`, since)
+		embedded_art OR folder_art != '', art, embedded_lyrics OR lrc OR transcript != '', added_at, missing_since IS NOT NULL,
+		kind, date, notes, chapters, group_key, group_title, group_index
+		FROM songs WHERE version > ? AND (? OR kind = 'music') ORDER BY id`, since, all)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -91,15 +105,21 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 	songs := []songJSON{}
 	for rows.Next() {
 		var x songJSON
-		var artists, genres string
+		var artists, genres, chapters string
 		if err := rows.Scan(&x.ID, &x.Path, &x.Title, &x.Artist, &artists, &x.Album, &x.AlbumArtist, &x.Composer,
 			&x.Genre, &genres, &x.Year, &x.Track, &x.Disc, &x.DurationMS, &x.Format, &x.Codec, &x.Bitrate,
-			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.Art, &x.HasLyrics, &x.AddedAt, &x.Missing); err != nil {
+			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.Art, &x.HasLyrics, &x.AddedAt, &x.Missing,
+			&x.Kind, &x.Date, &x.Notes, &chapters, &x.Group, &x.GroupTitle, &x.GroupIndex); err != nil {
 			rows.Close()
 			s.fail(w, r, err)
 			return
 		}
 		x.Artists, x.Genres = json.RawMessage(artists), json.RawMessage(genres)
+		if x.Kind == library.KindMusic {
+			x.Kind = ""
+		} else {
+			x.Chapters = json.RawMessage(chapters)
+		}
 		songs = append(songs, x)
 	}
 	rows.Close()
@@ -159,14 +179,16 @@ func (s *Server) songFile(r *http.Request) (library.SongFile, int64, error) {
 		return library.SongFile{}, 0, err
 	}
 	var f library.SongFile
+	var kind string
 	var missing bool
 	var version int64
-	err = s.DB.QueryRowContext(r.Context(), `SELECT path, embedded_art, embedded_lyrics, folder_art, lrc,
+	err = s.DB.QueryRowContext(r.Context(), `SELECT kind, path, embedded_art, embedded_lyrics, folder_art, lrc, transcript,
 		missing_since IS NOT NULL, version FROM songs WHERE id = ?`, id).
-		Scan(&f.Path, &f.EmbeddedArt, &f.EmbeddedLyrics, &f.FolderArt, &f.Lrc, &missing, &version)
+		Scan(&kind, &f.Path, &f.EmbeddedArt, &f.EmbeddedLyrics, &f.FolderArt, &f.Lrc, &f.Transcript, &missing, &version)
 	if errors.Is(err, sql.ErrNoRows) || missing {
 		return f, 0, errNotFound("song")
 	}
+	f.Root = s.Scanner.RootOf(kind)
 	return f, version, err
 }
 
@@ -184,7 +206,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, err)
 		return
 	}
-	file, err := os.Open(filepath.Join(s.Root, filepath.FromSlash(f.Path)))
+	file, err := os.Open(filepath.Join(f.Root, filepath.FromSlash(f.Path)))
 	if err != nil {
 		s.fail(w, r, errNotFound("song file"))
 		return
@@ -248,7 +270,7 @@ func (s *Server) scaledArt(id string, f library.SongFile, version int64, size in
 	if data, err := os.ReadFile(cache); err == nil {
 		return data, library.SniffImage(data), nil
 	}
-	data, mime, err := library.Art(s.Root, f, size)
+	data, mime, err := library.Art(f, size)
 	if err != nil {
 		return nil, "", err
 	}
@@ -286,7 +308,7 @@ func (s *Server) thumbs(w http.ResponseWriter, r *http.Request, _ session) {
 		args[i] = k
 		out[k] = ""
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT art, id, path, embedded_art, embedded_lyrics, folder_art, lrc, version
+	rows, err := s.DB.QueryContext(r.Context(), `SELECT art, id, kind, path, embedded_art, embedded_lyrics, folder_art, lrc, version
 		FROM songs WHERE missing_since IS NULL AND art IN (?`+strings.Repeat(", ?", len(args)-1)+`) ORDER BY id`, args...)
 	if err != nil {
 		s.fail(w, r, err)
@@ -299,13 +321,14 @@ func (s *Server) thumbs(w http.ResponseWriter, r *http.Request, _ session) {
 	}
 	found := map[string]song{}
 	for rows.Next() {
-		var key string
+		var key, kind string
 		var x song
-		if err := rows.Scan(&key, &x.id, &x.f.Path, &x.f.EmbeddedArt, &x.f.EmbeddedLyrics, &x.f.FolderArt, &x.f.Lrc, &x.version); err != nil {
+		if err := rows.Scan(&key, &x.id, &kind, &x.f.Path, &x.f.EmbeddedArt, &x.f.EmbeddedLyrics, &x.f.FolderArt, &x.f.Lrc, &x.version); err != nil {
 			rows.Close()
 			s.fail(w, r, err)
 			return
 		}
+		x.f.Root = s.Scanner.RootOf(kind)
 		if _, ok := found[key]; !ok {
 			found[key] = x // any song showing the cover will do
 		}
@@ -382,7 +405,7 @@ func (s *Server) lyrics(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, err)
 		return
 	}
-	l, err := library.ReadLyrics(s.Root, f)
+	l, err := library.ReadLyrics(f)
 	if errors.Is(err, library.ErrNone) {
 		s.fail(w, r, errNotFound("lyrics"))
 		return

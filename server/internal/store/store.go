@@ -41,21 +41,35 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(db); err != nil {
+	if err := migrate(db, 1<<31); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return db, nil
 }
 
+// fkOff marks a migration that rebuilds a table other tables refer to.
+// SQLite cannot change a column constraint in place, and dropping the old
+// table breaks every reference to it, even with the checks deferred. Its
+// documented procedure turns foreign keys off around the rebuild, which
+// only works outside a transaction, and checks them before committing.
+const fkOff = "-- foreign_keys: off\n"
+
 // migrate applies every migrations/NNNN_*.sql above the recorded version,
-// each in its own transaction.
-func migrate(db *sql.DB) error {
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
+// up to upTo (tests stop early), each in its own transaction, on one
+// connection so a pragma set for a migration applies to it.
+func migrate(db *sql.DB, upTo int) error {
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
 		return err
 	}
 	var current int
-	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
+	if err := conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
 		return err
 	}
 	names, err := migrations.ReadDir("migrations")
@@ -68,30 +82,54 @@ func migrate(db *sql.DB) error {
 		if _, err := fmt.Sscanf(e.Name(), "%04d_", &n); err != nil {
 			return fmt.Errorf("migration %s: name must start with NNNN_", e.Name())
 		}
-		if n <= current {
+		if n <= current || n > upTo {
 			continue
 		}
 		body, err := migrations.ReadFile("migrations/" + e.Name())
 		if err != nil {
 			return err
 		}
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(string(body)); err != nil {
-			tx.Rollback()
+		if err := migrateOne(ctx, conn, n, string(body)); err != nil {
 			return fmt.Errorf("migration %s: %w", e.Name(), err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_version (version) VALUES (?)`, n); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
 		}
 	}
 	return nil
+}
+
+func migrateOne(ctx context.Context, conn *sql.Conn, n int, body string) (err error) {
+	if strings.HasPrefix(body, fkOff) {
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return err
+		}
+		defer func() {
+			if _, ferr := conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err == nil {
+				err = ferr
+			}
+		}()
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, body); err != nil {
+		return err
+	}
+	// With the checks off, nothing stopped the migration breaking a
+	// reference; refuse to commit one that did.
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return err
+	}
+	broken := rows.Next()
+	rows.Close()
+	if broken {
+		return fmt.Errorf("it leaves a foreign key pointing at nothing")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_version (version) VALUES (?)`, n); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // NextLibraryVersion bumps and returns the library version inside tx.

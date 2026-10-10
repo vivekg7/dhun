@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                               | Status                                                                                  |
 | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [031 — Podcasts and audiobooks](031_podcasts_and_audiobooks.md)                    | `ACCEPTED` — behaviour decided by the owner; no code yet                                |
+| [031 — Podcasts and audiobooks](031_podcasts_and_audiobooks.md)                    | `IN PROGRESS` — server side built and tested, not yet released; the apps are next       |
 | [030 — The web client, at the other apps' level](030_web_client.md)                | `RELEASED` — `server-v0.12.3` on the NAS; not yet checked in Safari or on a phone       |
 | [029 — Search that forgives spelling, scripts and word order](029_search.md)       | `MERGED` — Mac 0.12.0, phone 0.12.1; server side in `server-v0.12.0` on the NAS         |
 | [028 — The Mac app's layout crash, motion and polish](028_mac_crash_and_polish.md) | `MERGED` — in 0.2.1 on the owner's Mac                                                  |

@@ -71,6 +71,12 @@ both raw and split, so browsing by artist works.
 
 Folders are not stored. A folder view comes from the path prefixes.
 
+**Podcasts and audiobooks are songs of another `kind`** (`podcast`,
+`audiobook`), each under its own root, with a path unique within its kind
+([031](031_podcasts_and_audiobooks.md)). They also keep their full date,
+notes, chapters, transcript file, and the book or show the server put them
+in.
+
 **Tag reader:** taglib through a pure-Go WebAssembly build
 (`go.senan.xyz/taglib`, by the author of Gonic). It covers MP3, M4A, Opus and
 FLAC, including duration, without cgo. To verify at implementation time; the
@@ -110,6 +116,7 @@ migration that marks the affected rows, not a full rescan of ~50 GB.
 | `favorites`          | `(user_id, song_id, at)`, newest first. Copied to `Playlists/<user>/Favorites.m3u8` nightly ([010](010_special_playlists.md)).                                                                                                                                                                                                              |
 | `plays`              | Append-only, one row per listen however short: `(user_id, song_id, device_id, at, ms_played)` and how the listen went ([008](008_listening_history.md)). Play counts, last played and most played are queries over it; nothing is stored twice.                                                                                             |
 | `listen_later`       | Same shape as `favorites`; an item is removed when a listen reaches 90% into it ([010](010_special_playlists.md)).                                                                                                                                                                                                                          |
+| `played`             | Shaped like `favorites`: the podcast and audiobook files a user has heard; `deleted` is "marked unplayed again" ([031](031_podcasts_and_audiobooks.md)).                                                                                                                                                                                    |
 | `resume_points`      | `(user_id, song_id, position_ms, at)`: where a long file was left, synced like favorites ([009](009_resume_long_files.md)).                                                                                                                                                                                                                 |
 | `settings`           | `(user_id, name, value)`: app settings that follow the user to every device, as JSON; the server reads only the Listen Later ones ([009](009_resume_long_files.md)).                                                                                                                                                                        |
 | `now_playing`        | One row per user: device, queue, song, position, playing or paused, `updated_at`. This is what hand-off reads ([002](002_sync_and_handoff.md)).                                                                                                                                                                                             |

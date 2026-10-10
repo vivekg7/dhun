@@ -141,10 +141,20 @@ paths:
         `version` next time to get only changes. Missing songs come back
         with `missing: true`; removed playlists as `{id, deleted: true}`.
         Playlists are the shared ones plus the caller's own.
+
+        Podcasts and audiobooks come only with `kinds=all`, so an app
+        released before them never lists an episode as a song
+        (docs/plans/031_podcasts_and_audiobooks.md). An app that starts
+        sending `kinds=all` must start again from `since=0`: episodes added
+        before its cursor would never reach it.
       parameters:
         - name: since
           in: query
           schema: { type: integer, default: 0 }
+        - name: kinds
+          in: query
+          description: "`all` adds podcasts and audiobooks; otherwise music only"
+          schema: { type: string, enum: [all] }
       responses:
         "200":
           description: OK
@@ -242,7 +252,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  source: { type: string, enum: [lrc, embedded] }
+                  source:
+                    type: string
+                    enum: [lrc, embedded, transcript, vtt]
+                    description: >
+                      A podcast episode's transcript, converted on the server
+                      to LRC: `transcript` from a .transcript.md beside it
+                      (each line "Speaker: words"), `vtt` from its subtitles.
                   synced: { type: boolean }
                   text: { type: string }
         "404": { $ref: "#/components/responses/Error" }
@@ -364,7 +380,8 @@ paths:
       summary: The caller's play count and last play per song
       description: |
         Counts only listens of at least half the song; every listen is
-        still logged (docs/plans/008_listening_history.md).
+        still logged (docs/plans/008_listening_history.md). Music only:
+        podcasts and audiobooks have played marks instead.
       responses:
         "200":
           description: OK
@@ -509,7 +526,8 @@ components:
         path:
           {
             type: string,
-            description: Relative to the Music folder; for folder browsing,
+            description: Relative to its kind's folder (Music,
+            Podcasts or Audiobooks); for folder browsing,
           }
         title: { type: string }
         artist: { type: string, description: Raw tag }
@@ -552,6 +570,35 @@ components:
         addedAt: { type: string, format: date-time }
         missing:
           { type: boolean, description: File gone; keep the song's data, hide it }
+        kind:
+          type: string
+          enum: [podcast, audiobook]
+          description: >
+            Omitted for music. Podcasts and audiobooks never appear in song
+            lists, albums, artists, genres, folders, shuffle-all or play
+            counts (docs/plans/031_podcasts_and_audiobooks.md). The fields
+            below are only ever set for them.
+        date: { type: string, description: The date tag as written, e.g. 2020-08-16 }
+        notes: { type: string, description: "The comment tag: an episode's show notes" }
+        chapters:
+          type: array
+          description: Chapters inside the file, by start
+          items:
+            type: object
+            properties:
+              startMs: { type: integer }
+              title: { type: string }
+        group:
+          type: string
+          description: >
+            Which audiobook or show the file belongs to, decided on the
+            server. Files with the same key are one book (or show).
+        groupTitle: { type: string, description: The book's or show's title }
+        groupIndex:
+          type: integer
+          description: >
+            Place in the group from 0: a book's files in reading order; a
+            show's episodes oldest first (undated ones before dated ones).
 
     Playlist:
       type: object
@@ -624,6 +671,13 @@ components:
           description: Same as favorites; the server removes an item a listen reached 90% into
           type: array
           items: { $ref: "#/components/schemas/ListItem" }
+        played:
+          description: >
+            Podcast and audiobook files the user has heard, newest first by
+            `at`; `deleted` = marked unplayed again. The server marks one when
+            a listen reaches 90% into it (docs/plans/031_podcasts_and_audiobooks.md).
+          type: array
+          items: { $ref: "#/components/schemas/ListItem" }
         resume:
           description: Where long files were left (docs/plans/009_resume_long_files.md)
           type: array
@@ -670,11 +724,12 @@ components:
         | queue.set_mode | queue, shuffle?, repeat? | |
         | favorite.set / favorite.unset | song | later `at` wins |
         | listen_later.add / listen_later.remove | song | later `at` wins |
+        | played.set / played.unset | song | later `at` wins; marks an episode or book file played or unplayed |
         | resume.set / resume.unset | song, positionMs | later `at` wins; where a long file was left |
         | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 1000 per user not counting nulls |
-        | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started; a `toMs` past 90% removes the song from Listen Later |
+        | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started; a `toMs` past 90% removes the song from Listen Later and marks a podcast or audiobook file played |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
-        | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8; "Favorites" and "Listen Later" are reserved |
+        | playlist.create | ref, name, songs | file Playlists/<user>/<name>.m3u8; "Favorites" and "Listen Later" are reserved; music only |
         | playlist.rename | playlist, name | renames the file |
         | playlist.delete | playlist | file removed after a copy is kept in the data folder |
         | playlist.insert | playlist, songs, after?, afterOccurrence? | duplicates allowed |
@@ -682,7 +737,8 @@ components:
         | playlist.move | playlist, song, occurrence?, after?, afterOccurrence? | |
         | playlist.replace | playlist, songs | |
 
-        Playlists: your own, or shared ones if you are the admin.
+        Playlists: your own, or shared ones if you are the admin. They hold
+        music only: an .m3u8 in Music/ cannot point at an episode.
       required: [id, type]
       properties:
         id: { type: string, description: Client-generated, unique per user }

@@ -20,11 +20,13 @@ re-creating the project in Container Manager loses nothing.
 **Music is mounted read-only, except `Playlists/`. Dhun's state lives in its
 project folder.**
 
-| Mount                                        | In the container   | Use                                                                                                                                      |
-| -------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `/volume1/docker/dhun/data`                  | `/data`, rw        | The database and its nightly backups, the art cache, kept copies of changed and deleted playlists, the tag reader's compiled code cache. |
-| `/volume1/homes/<you>/Media/Music`           | `/media`, **ro**   | The collection, scanned and streamed. The kernel refuses every write, whatever the code does.                                            |
-| `/volume1/homes/<you>/Media/Music/Playlists` | `/media/Playlists` | The `.m3u8` playlists, the only files in `Music` that Dhun edits.                                                                        |
+| Mount                                        | In the container      | Use                                                                                                                                      |
+| -------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `/volume1/docker/dhun/data`                  | `/data`, rw           | The database and its nightly backups, the art cache, kept copies of changed and deleted playlists, the tag reader's compiled code cache. |
+| `/volume1/homes/<you>/Media/Music`           | `/media`, **ro**      | The collection, scanned and streamed. The kernel refuses every write, whatever the code does.                                            |
+| `/volume1/homes/<you>/Media/Music/Playlists` | `/media/Playlists`    | The `.m3u8` playlists, the only files in `Music` that Dhun edits.                                                                        |
+| `/volume1/homes/<you>/Media/Podcasts`        | `/podcasts`, **ro**   | Optional: podcast episodes, scanned and streamed ([031](031_podcasts_and_audiobooks.md)). Left out, it is not scanned.                   |
+| `/volume1/homes/<you>/Media/Audiobooks`      | `/audiobooks`, **ro** | Optional: audiobooks, the same way.                                                                                                      |
 
 `deploy/docker-compose.yml` is the file to copy. Why each choice:
 
@@ -125,6 +127,8 @@ the Mac.
    - `user:` the two IDs from step 1;
    - both Music paths: `/volume1/homes/<you>/Media/Music`, and the same
      path with `/Playlists` (it must exist);
+   - the Podcasts and Audiobooks paths, or delete those two lines if you
+     have no such folder;
    - `DHUN_ADMIN_USER` (your name in Dhun, which is also your
      `Playlists/<name>/` folder) and `DHUN_ADMIN_PASSWORD` (long; it is
      removed again in step 6).

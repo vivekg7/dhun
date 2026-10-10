@@ -33,6 +33,10 @@ type syncResp struct {
 		Song    int64
 		Deleted bool
 	}
+	Played []struct {
+		Song    int64
+		Deleted bool
+	}
 	Resume []struct {
 		Song       int64
 		Deleted    bool

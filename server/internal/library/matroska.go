@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"math/bits"
+	"slices"
 	"strings"
 )
 
@@ -19,14 +20,16 @@ import (
 const EBMLMagic = "\x1a\x45\xdf\xa3"
 
 const (
-	idEBML, idDocType                              = 0x1A45DFA3, 0x4282
-	idSegment, idCluster                           = 0x18538067, 0x1F43B675
-	idSeekHead, idSeek, idSeekID, idSeekPosition   = 0x114D9B74, 0x4DBB, 0x53AB, 0x53AC
-	idInfo, idTimestampScale, idDuration, idTitle  = 0x1549A966, 0x2AD7B1, 0x4489, 0x7BA9
-	idTracks, idTrackEntry, idTrackType, idCodecID = 0x1654AE6B, 0xAE, 0x83, 0x86
-	idAudio, idSamplingFrequency, idChannels       = 0xE1, 0xB5, 0x9F
-	idTags, idTag, idSimpleTag, idTagName          = 0x1254C367, 0x7373, 0x67C8, 0x45A3
-	idTagString                                    = 0x4487
+	idEBML, idDocType                                  = 0x1A45DFA3, 0x4282
+	idSegment, idCluster                               = 0x18538067, 0x1F43B675
+	idSeekHead, idSeek, idSeekID, idSeekPosition       = 0x114D9B74, 0x4DBB, 0x53AB, 0x53AC
+	idInfo, idTimestampScale, idDuration, idTitle      = 0x1549A966, 0x2AD7B1, 0x4489, 0x7BA9
+	idTracks, idTrackEntry, idTrackType, idCodecID     = 0x1654AE6B, 0xAE, 0x83, 0x86
+	idAudio, idSamplingFrequency, idChannels           = 0xE1, 0xB5, 0x9F
+	idTags, idTag, idSimpleTag, idTagName              = 0x1254C367, 0x7373, 0x67C8, 0x45A3
+	idTagString                                        = 0x4487
+	idChapters, idEditionEntry, idChapterAtom          = 0x1043A770, 0x45B9, 0xB6
+	idChapterTimeStart, idChapterDisplay, idChapString = 0x91, 0x80, 0x85
 )
 
 // matroskaTagNames maps Matroska's tag names (as ffmpeg and yt-dlp write
@@ -80,7 +83,10 @@ func readMatroska(r io.ReaderAt, size int64, t *tags) map[string][]string {
 	}
 
 	title, scale, duration := "", 1_000_000.0, 0.0
-	tagsAt, seekHead := int64(-1), false
+	// Where the SeekHead says Tags and Chapters are, for when they come
+	// after the audio.
+	var later []int64
+	seekHead := false
 	for pos := seg; pos < segEnd; {
 		id, data, n, ok := elem(pos)
 		if !ok {
@@ -103,8 +109,8 @@ func readMatroska(r io.ReaderAt, size int64, t *tags) map[string][]string {
 						at = seg + int64(uintOf(b))
 					}
 				})
-				if target == idTags {
-					tagsAt = at
+				if (target == idTags || target == idChapters) && at > 0 {
+					later = append(later, at)
 				}
 			})
 		case idInfo:
@@ -135,12 +141,20 @@ func readMatroska(r io.ReaderAt, size int64, t *tags) map[string][]string {
 					}
 				})
 			})
+		case idChapters:
+			children(body(data, n), func(id uint32, b []byte) {
+				if id == idEditionEntry && len(t.Chapters) == 0 {
+					readEdition(b, t)
+				}
+			})
 		case idCluster:
-			// The audio. Tags usually come before it; when the SeekHead says
-			// they come after, jump there instead of reading past every
-			// cluster. With a SeekHead that lists no Tags, there are none.
-			if tagsAt > pos {
-				pos, tagsAt = tagsAt, -1
+			// The audio. Tags and chapters usually come before it; when the
+			// SeekHead says they come after, jump there instead of reading
+			// past every cluster. With a SeekHead that lists neither, there
+			// are none.
+			if next := slices.IndexFunc(later, func(at int64) bool { return at > pos }); next >= 0 {
+				pos = later[next]
+				later = slices.Delete(later, next, next+1)
 				continue
 			}
 			if seekHead {
@@ -195,6 +209,31 @@ func readAudioTrack(b []byte, t *tags) {
 			t.Channels = int(uintOf(b))
 		}
 	})
+}
+
+// readEdition takes the chapters of the file's first edition. Times are in
+// nanoseconds, whatever the TimestampScale.
+func readEdition(b []byte, t *tags) {
+	children(b, func(id uint32, b []byte) {
+		if id != idChapterAtom {
+			return
+		}
+		var c Chapter
+		children(b, func(id uint32, b []byte) {
+			switch id {
+			case idChapterTimeStart:
+				c.StartMS = int64(uintOf(b) / 1e6)
+			case idChapterDisplay:
+				children(b, func(id uint32, b []byte) {
+					if id == idChapString && c.Title == "" {
+						c.Title = strings.TrimSpace(string(b))
+					}
+				})
+			}
+		})
+		t.Chapters = append(t.Chapters, c)
+	})
+	sortChapters(t.Chapters)
 }
 
 func addSimpleTag(b []byte, m map[string][]string) {

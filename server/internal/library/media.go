@@ -21,11 +21,13 @@ var ErrNone = errors.New("none")
 
 // SongFile is what the media helpers need to know about a song.
 type SongFile struct {
-	Path           string // relative to the media root
+	Root           string // its kind's root folder
+	Path           string // relative to Root
 	EmbeddedArt    bool
 	EmbeddedLyrics bool
 	FolderArt      string // sibling cover file name, if any
 	Lrc            bool
+	Transcript     string // sibling transcript file name, if any (plan 031)
 }
 
 func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
@@ -40,7 +42,8 @@ var decodeSlots = make(chan struct{}, 2)
 // Art returns the song's cover: embedded art first, then the folder's cover
 // file, the same order Musicolet uses. size > 0 scales the longest side down
 // to size pixels and re-encodes as JPEG; the original is never upscaled.
-func Art(root string, f SongFile, size int) (data []byte, mimeType string, err error) {
+func Art(f SongFile, size int) (data []byte, mimeType string, err error) {
+	root := f.Root
 	switch {
 	case f.EmbeddedArt:
 		data, err = taglib.ReadImage(abs(root, f.Path))
@@ -100,7 +103,7 @@ func SniffImage(b []byte) string {
 
 // Lyrics is a song's lyrics text, as stored; clients parse LRC themselves.
 type Lyrics struct {
-	Source string `json:"source"` // "lrc" or "embedded"
+	Source string `json:"source"` // "lrc", "embedded", or an episode's "transcript" or "vtt"
 	Synced bool   `json:"synced"` // has [mm:ss.xx] timestamps
 	Text   string `json:"text"`
 }
@@ -109,7 +112,9 @@ var lrcTimestamp = regexp.MustCompile(`(?m)^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]
 
 // ReadLyrics prefers the sibling .lrc file: the curation workflow fetches
 // those and they are usually synced, while embedded lyrics often are not.
-func ReadLyrics(root string, f SongFile) (Lyrics, error) {
+// An episode's transcript comes last, converted to LRC.
+func ReadLyrics(f SongFile) (Lyrics, error) {
+	root := f.Root
 	if f.Lrc {
 		base := strings.TrimSuffix(f.Path, path.Ext(f.Path))
 		dir, err := os.ReadDir(abs(root, path.Dir(f.Path)))
@@ -134,6 +139,13 @@ func ReadLyrics(root string, f SongFile) (Lyrics, error) {
 				return makeLyrics("embedded", v[0]), nil
 			}
 		}
+	}
+	if f.Transcript != "" {
+		data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), f.Transcript)))
+		if err != nil {
+			return Lyrics{}, err
+		}
+		return transcriptLyrics(f.Transcript, string(data)), nil
 	}
 	return Lyrics{}, ErrNone
 }

@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `ACCEPTED` — behaviour decided by the owner; no code yet
+**Status:** `IN PROGRESS` — server side built and tested, not yet released; the apps are next
 **Started:** 2026-10-10
 
 ## Problem
@@ -82,7 +82,8 @@ in the catalogue.
 - **`songs.kind`**, and paths unique per kind rather than overall, each
   relative to its own root. SQLite cannot change a `UNIQUE` constraint in
   place, so the migration rebuilds `songs` (create, copy, drop, rename,
-  with foreign keys off). Moves are matched by quick hash within a kind.
+  with foreign keys off; see below). Moves are matched by quick hash within
+  a kind.
 - **The safety check is per root.** Today a scan that finds no audio while
   songs are known changes nothing, in case `Music` is not mounted. Each
   root gets the same check on its own, so an unmounted `Podcasts` never
@@ -94,19 +95,20 @@ in the catalogue.
     surrounding spaces, are one book. A folder named only as a part
     (`… (N of M)`, `CD N`, `Disc N`, `Part N`) belongs to its parent.
     Untagged files make one book per folder, titled with the folder's
-    name. Order: disc, then track, then the path in natural order (so
-    `P2` before `P10`).
-  - Podcast: the show is the album tag, else the folder. Episodes order
-    by the date tag, else the file name.
+    name. Order: disc, then the part number taken from the album, then
+    track, then the path in natural order (so `P2` before `P10`).
+  - Podcast: the show is the folder the episodes are in, titled with the
+    album tag most of them carry, else the folder's name. Episodes order
+    by the date tag, then the file name; one with no date yet sorts first.
 - **More tags kept:** the date in full (not only the year) and the comment
   as notes, both only for podcasts and audiobooks.
 - **Chapters** are read into a JSON column and sent in the catalogue: ID3v2
   `CHAP` frames in MP3 (Dune, The Three-Body Problem), `CHAPTERnnn`
   comments in Ogg (the episodes), and the Chapters element in Matroska
-  (our parser in `matroska.go`). Whether taglib's WebAssembly build exposes
-  any of these is to be checked; the `CHAP` reader is ours either way, and
-  is small: a frame ID, a start time and a title frame. A book whose files
-  are its chapters needs nothing stored: its files are listed in order.
+  (our parser in `matroska.go`). taglib returns the Ogg comments but not
+  the `CHAP` frames, so `chapters.go` walks the ID3v2 frame headers and
+  reads only those frames, skipping a large cover. A book whose files are
+  its chapters needs nothing stored: its files are listed in order.
 - **Transcripts** come through the lyrics endpoint, which gains the sources
   `transcript` and `vtt`. A `.transcript.md` beside the file wins, then
   `.<lang>.vtt`, then `.<lang>.auto.vtt`. Both are converted on the server
@@ -114,9 +116,9 @@ in the catalogue.
   new parser. YouTube's automatic captions repeat each line as it scrolls,
   and carry word timings: the conversion keeps each line once, at its first
   timestamp. The Markdown keeps its speaker names and drops its headings.
-- **Played marks:** a table `played (user_id, song_id, played, at)` and
-  the operation `played.set {song, played}`, where the later `at` wins, as
-  for favorites. The server sets it itself when a `play` reaches 90% into a
+- **Played marks:** a table `played` shaped like `favorites` (`deleted`
+  is "marked unplayed again") and the operations `played.set` and
+  `played.unset {song}`, where the later `at` wins, as for favorites. The server sets it itself when a `play` reaches 90% into a
   podcast or audiobook file, the threshold Listen Later already uses
   ([010](010_special_playlists.md)). It is pulled with the rest of the
   user's data.
@@ -132,8 +134,12 @@ in the catalogue.
   cover, author and progress, then a book's files.
 - **Everywhere music is listed**, kind `music` only: songs, albums,
   artists, genres, folders, shuffle-all, most and recently played,
-  Recently added. Favorites, Listen Later, playlists and queues take any
-  kind, since they are lists the user built.
+  Recently added. Favorites, Listen Later and queues take any kind, since
+  they are lists the user built. Playlists hold music only: each is an
+  `.m3u8` in `Music/` whose paths are relative to it, and inside the
+  container it cannot point into `Podcasts/`. The server refuses an
+  episode in a playlist, and the nightly Favorites and Listen Later files
+  leave them out.
 - **Playing** follows the queue rule: playing from a book makes a new queue
   named after the book with its files in order, starting at the first
   unplayed file and its resume point; playing an episode makes a queue of
@@ -144,6 +150,32 @@ in the catalogue.
   collection, and a file's own speed still wins. Without them, a 39-file
   book would need its speed set 39 times.
 - **Search** finds shows, episodes and books under their own headings.
+
+## Changed during implementation (2026-10-10)
+
+- **The rebuild needs foreign keys off.** Dropping `songs` breaks every
+  reference to it even with `defer_foreign_keys` on: SQLite counts the
+  violations at the drop, and renaming the new table does not undo them,
+  so the commit fails (tried). The pragma that turns the checks off has no
+  effect inside a transaction, so a migration whose first line is
+  `-- foreign_keys: off` runs with them off on its own connection, and the
+  runner refuses to commit it while `PRAGMA foreign_key_check` reports
+  anything. That is SQLite's documented procedure for changing a table.
+  A test runs the rebuild on a database with users, favorites and a
+  deleted song, and checks that IDs, references and the never-reuse
+  counter all survive.
+- **A show is its folder, not its album tag.** The ~25 episodes the
+  owner's tool has not tagged yet would otherwise be a second show beside
+  the tagged ones.
+- **A part number in the album orders the parts.** Mistborn 2's three
+  files all have track 1; `pt 1`, `pt 2` and `pt 3` put them in order.
+- **A lone image is a book's cover** when a podcast or audiobook folder has
+  none of the usual cover names (`The Three-Body Problem.jpg`). Not for
+  music, whose folders hold scans and booklets.
+- **Rolling back is safe but noisy.** An older server runs on the new
+  schema, but its scanner knows only `Music/`, so it marks every episode
+  and book file missing. Their rows and user data stay, and the next scan
+  by this server brings them back.
 
 ## Rejected
 
@@ -168,8 +200,10 @@ in the catalogue.
    `?kinds=all`, and `api/openapi.yaml`. Test against copies of the real
    shapes: Mistborn 1's nested parts, Mistborn 2's `pt N`, Dune's chapters,
    an episode with automatic captions. **Can fail:** the table rebuild on
-   the live database. The nightly backup runs first, and the migration is
-   tried on a copy of `dhun.db` before the release.
+   the live database. Migrations run when the server opens the database,
+   before any backup of that day, so the migration is tried on a copy of
+   the newest snapshot in `data/backups/` before the release. It runs in one
+   transaction: if it fails, nothing changed and the server does not start.
 2. **`deploy/docker-compose.yml`** and the NAS: two more read-only volumes
    and their variables; [003](003_deployment.md) updated.
 3. **Android**, then **macOS** and **web**, as above. One minor version for

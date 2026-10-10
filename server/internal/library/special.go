@@ -80,7 +80,9 @@ func exportList(ctx context.Context, db *sql.DB, root, data string, userID int64
 	now time.Time) (bool, error) {
 	// table is one of SpecialLists' names, never input.
 	rows, err := db.QueryContext(ctx, `SELECT s.path, s.title, s.artist, s.duration_ms FROM `+table+` t
-		JOIN songs s ON s.id = t.song_id WHERE t.user_id = ? AND NOT t.deleted ORDER BY t.at DESC, t.song_id`, userID)
+		JOIN songs s ON s.id = t.song_id WHERE t.user_id = ? AND NOT t.deleted
+		AND s.kind = 'music' -- the file's paths are relative to Music (plan 031)
+		ORDER BY t.at DESC, t.song_id`, userID)
 	if err != nil {
 		return false, err
 	}
