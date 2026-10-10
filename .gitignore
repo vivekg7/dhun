@@ -28,3 +28,6 @@ node_modules/
 
 # SwiftPM build output.
 macos/.build/
+
+# Time Machine browser captures: large, and they hold session cookies.
+storage/
