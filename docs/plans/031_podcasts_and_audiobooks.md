@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `IN PROGRESS` — server side in `server-v0.12.5` on the NAS (2026-10-11); the apps are next
+**Status:** `IN PROGRESS` — server side in `server-v0.12.5` on the NAS (2026-10-11); Android built, unreleased; macOS and web next
 **Started:** 2026-10-10
 
 ## Problem
@@ -176,6 +176,44 @@ in the catalogue.
   schema, but its scanner knows only `Music/`, so it marks every episode
   and book file missing. Their rows and user data stay, and the next scan
   by this server brings them back.
+
+## Changed during implementation: Android (2026-10-11)
+
+- **The two sections are cards on the Playlists tab,** beside Favorites
+  and Listen Later, each shown once its collection has something in it
+  (the owner's choice). The tab bar already has eight tabs and the menu;
+  one more would leave each 36 dp on a phone, two more 33 dp.
+- **Every episode and book file keeps a resume point,** however short.
+  `longFiles.minMinutes` (009) is for music: a book split into 10-minute
+  files would otherwise start each one from the beginning.
+- **Next and Previous go by chapter** in a file that has chapters, on Now
+  playing, in the mini players, in the notification and on a headset (the
+  session's player passes them to the app). Previous goes back to the
+  start of the chapter, or in its first 3 s to the one before, as it does
+  with songs. Media3 greys out the notification's Next in a queue's last
+  file even when chapters remain; the button on Now playing still works.
+- **Now playing:** in Shuffle's place, a Chapters and notes button; under
+  the title, the chapter playing, which opens the same list. The episode's
+  notes are in it, after the chapters. A book is not shuffled.
+- **Hiding played episodes** is a synced setting, `podcasts.hidePlayed`,
+  on by default, toggled from the show's menu.
+- **The collection's speed** is set from the speed dialog when the
+  "Only for this episode" switch is off. Setting it back to normal stores
+  1×, rather than clearing it, so episodes don't fall back to the phone's
+  everyday speed for music.
+- **The app marks a file played itself** when it sends a `play` that
+  reaches 90%, as of the listen's end, so the mark shows offline. The
+  server makes the same mark at the same time, so the two never disagree.
+- **A whole book can be downloaded** (a pin of kind `shelf`). Downloaded
+  episodes and book files are listed apart in Downloads, so playing every
+  download plays music only.
+- **Found on the owner's library:** a book's files are numbered ("1 of 3")
+  under their titles, because tags such as Mistborn 2's differ only in a
+  `pt N` at the end, which a phone cuts off. A file with no cover of its
+  own shows its book's or show's. In Search, the new sections come before
+  Songs, which can run to hundreds and would bury them.
+- **The phone fetches the whole catalogue once** (library format 2), which
+  `kinds=all` requires: songs it already has would not be sent again.
 
 ## Rejected
 

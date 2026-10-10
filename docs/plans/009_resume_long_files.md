@@ -59,7 +59,9 @@ and every device sees the same one.
 **What the apps do** (Android first; macOS and web the same way):
 
 - When a file at least `longFiles.minMinutes` long starts and has a resume
-  point, it continues from there (`auto`) or offers to (`ask`).
+  point, it continues from there (`auto`) or offers to (`ask`). Every
+  podcast and audiobook file counts as long, whatever its length
+  ([031](031_podcasts_and_audiobooks.md)).
 - While such a file plays, the app records `resume.set` on pause, on
   switching away, on stop, and every 30 s. The outbox keeps only the latest
   `resume.set` per song, so a long offline listen does not fill it.

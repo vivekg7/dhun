@@ -15,6 +15,7 @@ import androidx.room3.Transaction
 import androidx.room3.Upsert
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.Json
 
 /**
  * The working copy ([docs/plans/006_api_and_sync.md]): the catalogue, the
@@ -27,7 +28,7 @@ import kotlinx.coroutines.flow.Flow
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
         Pin::class, Download::class, LyricsRow::class, Thumb::class,
     ],
-    version = 6,
+    version = 7,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
     autoMigrations = [
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
             from = 1,
             to = 2,
         ), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class Db : RoomDatabase() {
@@ -82,6 +84,17 @@ data class Song(
     val missing: Boolean,
     /** Which cover it shows, shared by songs showing the same one ([Covers]); empty from a server without it. */
     @ColumnInfo(defaultValue = "") val art: String = "",
+    /** "" for music, else [PODCAST] or [AUDIOBOOK] (docs/plans/031_podcasts_and_audiobooks.md). */
+    @ColumnInfo(defaultValue = "") val kind: String = "",
+    /** The release date in full, for an episode. */
+    @ColumnInfo(defaultValue = "") val date: String = "",
+    @ColumnInfo(defaultValue = "") val notes: String = "",
+    /** [Chapter]s as the server's JSON, "" for none: only Now playing reads them. */
+    @ColumnInfo(defaultValue = "") val chapters: String = "",
+    /** The book or show it belongs to, as the server grouped them, and its place there. */
+    @ColumnInfo(defaultValue = "") val groupKey: String = "",
+    @ColumnInfo(defaultValue = "") val groupTitle: String = "",
+    @ColumnInfo(defaultValue = "0") val groupIndex: Int = 0,
 ) {
     val artistList get() = if (artists.isEmpty()) emptyList() else artists.split(SEP)
     val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)
@@ -90,6 +103,17 @@ data class Song(
 
     /** A song already on the phone, never sent to the server ([LocalSongs]). */
     val onPhone get() = id < 0
+
+    /** A podcast episode or an audiobook's file: kept out of music lists and playlists, marked played instead of counted. */
+    val spoken get() = kind.isNotEmpty()
+
+    val chapterList: List<Chapter>
+        get() = if (chapters.isEmpty()) emptyList() else runCatching { Json.decodeFromString<List<Chapter>>(chapters) }.getOrDefault(emptyList())
+
+    companion object {
+        const val PODCAST = "podcast"
+        const val AUDIOBOOK = "audiobook"
+    }
 }
 
 /**
@@ -122,7 +146,7 @@ data class QueueRow(
     val usedAt: Long,
 )
 
-/** One entry of Favorites ("fav") or Listen Later ("later"); [at] decides between two edits. */
+/** One entry of Favorites ("fav"), Listen Later ("later") or the played marks ("played"); [at] decides between two edits. */
 @Entity(tableName = "mark", primaryKeys = ["kind", "song"])
 data class Mark(
     val kind: String,
@@ -170,7 +194,7 @@ data class PlayStat(
 /**
  * Something the user downloaded, kept in step with the server
  * (docs/plans/012_downloads.md): [kind] is song, album, folder, artist,
- * genre, playlist or list, and [ref] says which one.
+ * genre, playlist, list or shelf (a book or a show), and [ref] says which one.
  */
 @Entity(tableName = "pin")
 data class Pin(

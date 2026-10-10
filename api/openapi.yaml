@@ -697,7 +697,9 @@ components:
             `listenLater.autoRemove` (default true) and
             `listenLater.finishedPercent` (default 90), read by the server;
             `speed.<song id>` (`{"speed": 1.5, "semitones": 0}`), a song's
-            own play speed and pitch, read by the apps.
+            own play speed and pitch, and `speed.podcast` and
+            `speed.audiobook`, the same for a whole collection, read by the
+            apps; `podcasts.hidePlayed` (default true), read by the apps.
           type: object
           additionalProperties: true
         nowPlaying:

@@ -134,6 +134,16 @@ sealed interface Page {
     data class ListPage(
         val kind: ListKind,
     ) : Page
+
+    /** Every audiobook, or every podcast show (docs/plans/031_podcasts_and_audiobooks.md). */
+    data class ShelvesPage(
+        val books: Boolean,
+    ) : Page
+
+    /** One book or show, by its [io.github.vivekg7.dhun.data.Shelf.key]. */
+    data class ShelfPage(
+        val key: String,
+    ) : Page
 }
 
 /** A page as one string, for saving: its kind, a colon, what it shows. */
@@ -146,6 +156,8 @@ private fun Page.encode(): String =
         is Page.PlaylistPage -> "playlist:$id"
         Page.DownloadsPage -> "downloads:"
         is Page.ListPage -> "list:${kind.name}"
+        is Page.ShelvesPage -> "shelves:$books"
+        is Page.ShelfPage -> "shelf:$key"
     }
 
 private fun decodePage(s: String): Page? {
@@ -159,6 +171,8 @@ private fun decodePage(s: String): Page? {
         "playlist" -> arg.toLongOrNull()?.let(Page::PlaylistPage)
         "downloads" -> Page.DownloadsPage
         "list" -> ListKind.entries.firstOrNull { it.name == arg }?.let(Page::ListPage)
+        "shelves" -> Page.ShelvesPage(arg.toBoolean())
+        "shelf" -> Page.ShelfPage(arg)
         else -> null
     }
 }
@@ -406,6 +420,8 @@ private fun PageContent(
         is Page.PlaylistPage -> PlaylistScreen(page.id, nav, back)
         is Page.ListPage -> ListScreen(page.kind, nav, back)
         Page.DownloadsPage -> DownloadsScreen(nav, back)
+        is Page.ShelvesPage -> ShelvesScreen(page.books, nav, back)
+        is Page.ShelfPage -> ShelfScreen(page.key, nav, back)
     }
 }
 
@@ -516,7 +532,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
                 }
             }
-            Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
+            Tip("Next") { IconButton({ app.playback.next() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
         }
     }
 }
@@ -587,7 +603,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                 }.padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tip("Previous") { IconButton({ player.seekToPrevious() }) { Icon(Icons.Previous, "Previous") } }
+            Tip("Previous") { IconButton({ app.playback.previous() }) { Icon(Icons.Previous, "Previous") } }
             // No tooltip: a long press here opens Now playing. The labels are for TalkBack.
             Box(
                 Modifier
@@ -624,7 +640,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                     Icon(Icons.Play, null, Modifier.size(26.dp), tint = Color.White)
                 }
             }
-            Tip("Next") { IconButton({ player.seekToNext() }) { Icon(Icons.Next, "Next") } }
+            Tip("Next") { IconButton({ app.playback.next() }) { Icon(Icons.Next, "Next") } }
         }
     }
 }

@@ -148,8 +148,18 @@ class Playback(
         combine(current, settings) { s, m -> s?.let { Tempo.of(m[Tempo.songSetting(it.id)]) } }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** What the player uses now. */
-    val tempo: StateFlow<Tempo> = combine(everyday, songTempo) { e, s -> s ?: e }.stateIn(scope, SharingStarted.Eagerly, Tempo.NORMAL)
+    /**
+     * For an episode or a book's file, its collection's speed (`speed.podcast`,
+     * `speed.audiobook`), synced, so a 39-file book is not set 39 times
+     * (docs/plans/031_podcasts_and_audiobooks.md); null for music.
+     */
+    val kindTempo: StateFlow<Tempo?> =
+        combine(current, settings) { s, m -> s?.takeIf { it.spoken }?.let { Tempo.of(m[Tempo.kindSetting(it.kind)]) } }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** What the player uses now: the file's own, else its collection's, else this device's everyday one. */
+    val tempo: StateFlow<Tempo> =
+        combine(everyday, songTempo, kindTempo) { e, s, k -> s ?: k ?: e }.stateIn(scope, SharingStarted.Eagerly, Tempo.NORMAL)
 
     /** When this device last reported its playback, and the hand-off last dismissed (docs/plans/017_handoff.md). */
     private val stateAt = MutableStateFlow(app.prefs.stateAt)
@@ -226,7 +236,8 @@ class Playback(
 
     /**
      * Sets speed and pitch: for the playing song only (synced, as its own
-     * setting), or as this device's everyday one.
+     * setting), for every episode or every book (synced) when it is one, or
+     * as this device's everyday one.
      */
     fun setTempo(
         t: Tempo,
@@ -235,6 +246,8 @@ class Playback(
         val s = current.value
         if (onlyThisSong && s != null) {
             scope.launch { store.setting(Tempo.songSetting(s.id), t.json()) }
+        } else if (s != null && s.spoken) {
+            scope.launch { store.setting(Tempo.kindSetting(s.kind), t.json()) }
         } else {
             app.prefs.tempo = t
             everyday.value = t
@@ -430,6 +443,24 @@ class Playback(
             saveActive()
             load(q.copy(usedAt = System.currentTimeMillis()), play = true)
         }
+
+    // --- Chapters (docs/plans/031_podcasts_and_audiobooks.md) -------------
+
+    fun next() {
+        val at = nextChapter(chapterStarts(), player.currentPosition)
+        if (at != null) player.seekTo(at) else player.seekToNext()
+    }
+
+    fun previous() {
+        val at = previousChapter(chapterStarts(), player.currentPosition, player.maxSeekToPreviousPosition)
+        if (at != null) player.seekTo(at) else player.seekToPrevious()
+    }
+
+    private fun chapterStarts() =
+        current.value
+            ?.chapterList
+            ?.map { it.startMs }
+            .orEmpty()
 
     /** Plays [song] of the active queue. */
     fun playAt(index: Int) {
@@ -701,7 +732,8 @@ class Playback(
 
     // --- Long files (plan 009) ---------------------------------------------
 
-    private fun isLong(s: Song) = s.durationMs >= settings.value.int("longFiles.minMinutes", 15) * 60_000L
+    /** Every episode and book file keeps its place, however short (docs/plans/031_podcasts_and_audiobooks.md). */
+    private fun isLong(s: Song) = s.spoken || s.durationMs >= settings.value.int("longFiles.minMinutes", 15) * 60_000L
 
     /** Where to start [s]: its resume point under "auto"; under "ask", offered instead. */
     private suspend fun startPosition(s: Song): Long? {
@@ -1013,6 +1045,35 @@ class Playback(
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val IO_ERRORS = 2000..2999
+
+        /**
+         * Where Next goes in a file whose chapters start at [starts]: the next
+         * chapter, or null for the next file. A chapter starting within a
+         * second is the one just sought to, not the next.
+         */
+        fun nextChapter(
+            starts: List<Long>,
+            pos: Long,
+        ) = starts.firstOrNull { it > pos + 1_000 }
+
+        /**
+         * Where Previous goes: back to the start of this chapter, or, within
+         * [window] of it, to the one before, as Previous does with songs; null
+         * for the player's own Previous (no chapters, or the first one).
+         */
+        fun previousChapter(
+            starts: List<Long>,
+            pos: Long,
+            window: Long,
+        ): Long? {
+            val i = starts.indexOfLast { it <= pos }
+            return when {
+                i < 0 -> null
+                pos - starts[i] > window -> starts[i]
+                i > 0 -> starts[i - 1]
+                else -> null
+            }
+        }
 
         fun repeatMode(r: String) =
             when (r) {

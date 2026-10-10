@@ -48,7 +48,7 @@ fun LyricsView(
     val tap = Modifier.fillMaxSize().clickable(interactionSource = null, indication = null, onClick = onClose)
     when (val s = state) {
         Lyrics.State.Loading -> Box(tap)
-        Lyrics.State.None -> Message(tap, "No lyrics for this song.")
+        Lyrics.State.None -> Message(tap, if (song.spoken) "No transcript for this one." else "No lyrics for this song.")
         Lyrics.State.Offline -> Message(tap, "These lyrics aren't on the phone.\nThey'll show when the server can be reached.")
         is Lyrics.State.Shown -> if (s.lyrics.synced) Synced(song.id, s.lyrics, tap) else Plain(s.lyrics, tap)
     }

@@ -100,6 +100,7 @@ fun NowPlayingScreen(nav: Nav) {
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
     var lyrics by rememberSaveable { mutableStateOf(false) }
+    var details by remember { mutableStateOf(false) }
     // Lyrics are read at arm's length: the screen stays on while they show and the song plays.
     val view = LocalView.current
     DisposableEffect(view, lyrics && playing) {
@@ -111,6 +112,7 @@ fun NowPlayingScreen(nav: Nav) {
         Empty("Nothing is playing.\nPick something from your library.", page = true)
         return
     }
+    if (details) DetailsDialog(s) { details = false }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -181,7 +183,12 @@ fun NowPlayingScreen(nav: Nav) {
         AnimatedContent(s, contentKey = { it.id }, transitionSpec = slide, label = "title") { song ->
             Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
                 Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val facts = listOf(song.displayArtist, song.album, song.year.takeIf { it > 0 }?.toString() ?: "").filter { it.isNotEmpty() }
+                val facts =
+                    when (song.kind) {
+                        Song.PODCAST -> listOf(song.groupTitle, song.date.take(10))
+                        Song.AUDIOBOOK -> listOf(song.groupTitle, song.artist.ifEmpty { song.albumArtist })
+                        else -> listOf(song.displayArtist, song.album, song.year.takeIf { it > 0 }?.toString() ?: "")
+                    }.filter { it.isNotEmpty() }
                 Text(
                     if (waiting) WAITING else facts.joinToString(" · "),
                     style = MaterialTheme.typography.bodyLarge,
@@ -189,6 +196,7 @@ fun NowPlayingScreen(nav: Nav) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                ChapterLine(song, playing) { details = true }
             }
         }
 
@@ -227,11 +235,13 @@ fun NowPlayingScreen(nav: Nav) {
                 }
             }
             Spacer(Modifier.weight(1f))
-            Tip(if (lyrics) "Show the cover" else "Lyrics") {
+            // An episode's transcript comes as its lyrics (docs/plans/031_podcasts_and_audiobooks.md).
+            val words = if (s.spoken) "Transcript" else "Lyrics"
+            Tip(if (lyrics) "Show the cover" else words) {
                 IconButton({ lyrics = !lyrics }) {
                     Icon(
                         Icons.Lyrics,
-                        if (lyrics) "Show the cover" else "Lyrics",
+                        if (lyrics) "Show the cover" else words,
                         tint = if (lyrics) c.primary else c.onSurfaceVariant.copy(alpha = if (s.hasLyrics) 1f else 0.38f),
                     )
                 }
@@ -250,9 +260,19 @@ fun NowPlayingScreen(nav: Nav) {
                     Icon(if (repeat == "song") Icons.RepeatOne else Icons.Repeat, repeatLabel, tint = if (repeat == "off") c.onSurfaceVariant else c.primary)
                 }
             }
-            Tip("Shuffle") {
-                IconButton({ pb.toggleShuffle() }) {
-                    Icon(Icons.Shuffle, "Shuffle", tint = if (queue?.shuffle == true) c.primary else c.onSurfaceVariant)
+            // A book is heard in order: in Shuffle's place, its chapters and notes.
+            if (s.spoken) {
+                val any = s.chapters.isNotEmpty() || s.notes.isNotEmpty()
+                Tip("Chapters and notes") {
+                    IconButton({ details = true }, enabled = any) {
+                        Icon(Icons.Chapters, "Chapters and notes", tint = c.onSurfaceVariant.copy(alpha = if (any) 1f else 0.38f))
+                    }
+                }
+            } else {
+                Tip("Shuffle") {
+                    IconButton({ pb.toggleShuffle() }) {
+                        Icon(Icons.Shuffle, "Shuffle", tint = if (queue?.shuffle == true) c.primary else c.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -264,7 +284,7 @@ fun NowPlayingScreen(nav: Nav) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tip("Previous") { IconButton({ pb.player.seekToPrevious() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
+            Tip("Previous") { IconButton({ pb.previous() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
             Tip(if (going) "Pause" else "Play") {
                 // Gives a little under the finger, and the icon turns from one to the other.
                 val press = remember { MutableInteractionSource() }
@@ -288,7 +308,7 @@ fun NowPlayingScreen(nav: Nav) {
                     ) { g -> Icon(if (g) Icons.Pause else Icons.Play, if (g) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
                 }
             }
-            Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
+            Tip("Next") { IconButton({ pb.next() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
         }
     }
 }

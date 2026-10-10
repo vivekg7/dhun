@@ -8,8 +8,16 @@ package io.github.vivekg7.dhun.data
 class Catalog(
     all: List<Song>,
 ) {
-    val songs: List<Song> = all.sortedWith(compareBy(TITLE) { it.title })
-    val byId: Map<Long, Song> = songs.associateBy { it.id }
+    /**
+     * The music: what every song list, view and search of songs shows.
+     * Podcasts and audiobooks have their own pages ([books], [shows]), so
+     * an episode never turns up in an artist or a shuffle
+     * (docs/plans/031_podcasts_and_audiobooks.md).
+     */
+    val songs: List<Song> = all.filter { !it.spoken }.sortedWith(compareBy(TITLE) { it.title })
+
+    /** Every song, episodes and books' files too: what queues, Favorites and Listen Later name. */
+    val byId: Map<Long, Song> = all.associateBy { it.id }
 
     /**
      * Two songs are on one album when they share the album name and either
@@ -53,7 +61,15 @@ class Catalog(
     fun songsOf(ids: List<Long>) = ids.mapNotNull { byId[it] }
 
     /** False until the NAS songs are read: phone songs alone are not the library loaded. */
-    val hasNas: Boolean by lazy { songs.any { !it.onPhone } }
+    val hasNas: Boolean by lazy { byId.values.any { !it.onPhone } }
+
+    /** Audiobooks and podcast shows as the server grouped them, each one's files in its play order. */
+    val books: List<Shelf> by lazy { shelves(all, Song.AUDIOBOOK) }
+    val shows: List<Shelf> by lazy { shelves(all, Song.PODCAST) }
+    val shelves: Map<String, Shelf> by lazy { (books + shows).associateBy { it.key } }
+
+    /** The shelf [s] is on, or null for music. */
+    fun shelfOf(s: Song) = if (s.spoken) shelves[shelfKey(s)] else null
 
     // Built on first use, with the catalog, so a keystroke folds nothing (docs/plans/029_search.md).
     val songIndex by lazy { SearchIndex.songs(songs) }
@@ -63,6 +79,9 @@ class Catalog(
     val folderIndex by lazy {
         SearchIndex.names(folders.values.filter { it.path.isNotEmpty() }.sortedWith(compareBy(TITLE) { it.path }), "folder") { it.name }
     }
+    val bookIndex by lazy { SearchIndex(books, listOf(Field<Shelf>("book", 0) { it.title }, Field("artist", 1) { it.author })) }
+    val showIndex by lazy { SearchIndex.names(shows, "show") { it.title } }
+    val episodeIndex by lazy { SearchIndex.songs(shows.flatMap { it.items }) }
 
     private fun group(keys: (Song) -> List<String>): List<Group> {
         val map = HashMap<String, MutableList<Song>>()
@@ -78,6 +97,30 @@ class Catalog(
     }
 
     companion object {
+        /** A file the server did not group (none should be) is a shelf of its folder. */
+        private fun shelfKey(s: Song) = s.groupKey.ifEmpty { s.kind + '\u0000' + s.folder }
+
+        private fun shelves(
+            all: List<Song>,
+            kind: String,
+        ): List<Shelf> =
+            all
+                .filter { it.kind == kind }
+                .groupBy(::shelfKey)
+                .map { (key, list) ->
+                    val items = list.sortedWith(compareBy<Song> { it.groupIndex }.thenBy(TITLE) { it.path })
+                    val first = items.first()
+                    Shelf(
+                        key,
+                        kind,
+                        first.groupTitle.ifEmpty {
+                            first.folder.substringAfterLast('/')
+                        },
+                        mostCommon(items.map { it.artist.ifEmpty { it.albumArtist } }.filter { it.isNotEmpty() }.ifEmpty { listOf("") }),
+                        items,
+                    )
+                }.sortedWith(compareBy(TITLE) { it.title })
+
         /** Natural, case-blind order: "Track 2" before "Track 10". */
         val TITLE: Comparator<String> = Comparator { a, b -> natural(a, b) }
 
@@ -131,6 +174,24 @@ data class Group(
     val name: String,
     val songs: List<Song>,
 )
+
+/**
+ * An audiobook or a podcast show (docs/plans/031_podcasts_and_audiobooks.md):
+ * a book's files in reading order, a show's episodes oldest first.
+ */
+data class Shelf(
+    val key: String,
+    val kind: String,
+    val title: String,
+    /** The author, or the host; "" when the tags name none. */
+    val author: String,
+    val items: List<Song>,
+) {
+    val isBook get() = kind == Song.AUDIOBOOK
+
+    /** The first file with a cover: the one its files without one show. */
+    val cover get() = items.firstOrNull { it.hasArt }
+}
 
 class Folder(
     val path: String,

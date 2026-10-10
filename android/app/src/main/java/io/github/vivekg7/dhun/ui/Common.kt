@@ -65,10 +65,12 @@ fun duration(ms: Long): String {
 }
 
 /** "12 songs · 48 min" */
-fun summary(songs: List<Song>): String {
-    val min = songs.sumOf { it.durationMs } / 60_000
-    val time = if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
-    return "${songs.size} ${if (songs.size == 1) "song" else "songs"} · $time"
+fun summary(songs: List<Song>): String = "${songs.size} ${if (songs.size == 1) "song" else "songs"} · ${length(songs.sumOf { it.durationMs })}"
+
+/** "48 min", "12 h 5 min" */
+fun length(ms: Long): String {
+    val min = ms / 60_000
+    return if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
 }
 
 @Composable
@@ -155,6 +157,7 @@ fun PageHeader(
     download: DownloadTarget? = null,
     songs: List<Song> = emptyList(),
     actions: List<Pair<String, () -> Unit>> = emptyList(),
+    playLabel: String = "Play",
     onShuffle: (() -> Unit)?,
 ) {
     var adding by remember { mutableStateOf(false) }
@@ -163,7 +166,8 @@ fun PageHeader(
         Row(Modifier.padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Tip("Back") { IconButton(onBack) { Icon(Icons.Back, "Back") } }
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val nas = songs.any { !it.onPhone }
+            // Playlists hold the server's music only (docs/plans/031_podcasts_and_audiobooks.md).
+            val nas = songs.any { !it.onPhone && !it.spoken }
             if (nas || actions.isNotEmpty()) {
                 Box {
                     var open by remember { mutableStateOf(false) }
@@ -183,7 +187,7 @@ fun PageHeader(
                 FilledTonalButton(onPlay) {
                     Icon(Icons.Play, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Play")
+                    Text(playLabel)
                 }
                 if (onShuffle != null) {
                     FilledTonalButton(onShuffle) {
@@ -346,8 +350,20 @@ fun SongMenuButton(
             MenuItem("Add to a queue…", close) { queueing = true }
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
-            // A phone song stays out of playlists, and is on the phone already (docs/plans/025_phone_local_songs.md).
-            if (!song.onPhone) MenuItem("Add to playlist…", close) { adding = true }
+            if (song.spoken) {
+                val played by app.store.played.collectAsState(emptyList())
+                val isPlayed = played.any { it.song == song.id }
+                // Either way it starts from the beginning next time.
+                MenuItem(if (isPlayed) "Mark as not played" else "Mark as played", close) {
+                    scope.launch {
+                        app.store.mark(Store.PLAYED, song.id, !isPlayed)
+                        app.store.resume(song.id, null)
+                    }
+                }
+            }
+            // A phone song stays out of playlists, and is on the phone already (docs/plans/025_phone_local_songs.md);
+            // so do episodes and books, which a playlist file in Music cannot name (docs/plans/031_podcasts_and_audiobooks.md).
+            if (!song.onPhone && !song.spoken) MenuItem("Add to playlist…", close) { adding = true }
             val pins by app.downloads.pins.collectAsState()
             val files by app.downloads.files.collectAsState()
             val key = Downloads.key(Downloads.SONG, song.id.toString())
@@ -358,11 +374,16 @@ fun SongMenuButton(
             }
             menu.nav?.let { nav ->
                 val catalog by app.catalog.collectAsState()
-                val album =
-                    catalog.albums
-                        .firstOrNull { a -> a.songs.any { it.id == song.id } }
-                if (album != null) MenuItem("Go to album", close) { nav.open(Tab.Albums, Page.AlbumPage(album.key)) }
-                MenuItem("Go to artist", close) { nav.open(Tab.Artists, Page.ArtistPage(song.artistList.firstOrNull() ?: song.displayArtist)) }
+                val shelf = catalog.shelfOf(song)
+                if (shelf != null) {
+                    MenuItem(if (shelf.isBook) "Go to book" else "Go to show", close) { nav.open(Tab.Playlists, Page.ShelfPage(shelf.key)) }
+                } else if (!song.spoken) {
+                    val album =
+                        catalog.albums
+                            .firstOrNull { a -> a.songs.any { it.id == song.id } }
+                    if (album != null) MenuItem("Go to album", close) { nav.open(Tab.Albums, Page.AlbumPage(album.key)) }
+                    MenuItem("Go to artist", close) { nav.open(Tab.Artists, Page.ArtistPage(song.artistList.firstOrNull() ?: song.displayArtist)) }
+                }
             }
             for ((label, action) in menu.extra) MenuItem(label, close, action)
         }

@@ -60,6 +60,9 @@ data class Tempo(
 
         fun songSetting(song: Long) = "speed.$song"
 
+        /** Every podcast's or every audiobook's: `speed.podcast`, `speed.audiobook`. */
+        fun kindSetting(kind: String) = "speed.$kind"
+
         /** 1.25 → "1.25", 1.5 → "1.5", 2 → "2". */
         fun fmt(speed: Float): String {
             val hundredths = (speed * 100).roundToInt()

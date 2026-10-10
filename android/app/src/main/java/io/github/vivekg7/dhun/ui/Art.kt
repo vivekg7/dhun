@@ -24,16 +24,26 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Song
 
 @Composable
 fun Art(
-    song: Song?,
+    of: Song?,
     size: Dp,
     shape: Shape,
     modifier: Modifier = Modifier,
 ) {
+    // An episode or a book's file with no cover of its own shows its show's or book's.
+    val song =
+        if (of != null && of.spoken && !of.hasArt) {
+            App.app.catalog.value
+                .shelfOf(of)
+                ?.cover ?: of
+        } else {
+            of
+        }
     val px = with(LocalDensity.current) { size.roundToPx() }
     var image by remember(song?.id) { mutableStateOf(song?.let { Covers.cached(it, px) }) }
     if (song != null && song.hasArt) {

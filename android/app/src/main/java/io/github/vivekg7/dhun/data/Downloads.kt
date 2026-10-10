@@ -352,6 +352,9 @@ class Downloads(
         /** Favorites or Listen Later; [Pin.ref] is the [Store] mark kind. */
         const val LIST = "list"
 
+        /** An audiobook or a podcast show; [Pin.ref] is its [Shelf.key]. */
+        const val SHELF = "shelf"
+
         private const val DIR = "downloads"
         const val GB = 1L shl 30
 
@@ -418,6 +421,10 @@ fun covered(
 
             Downloads.LIST -> {
                 (if (p.ref == Store.FAV) favs else later).forEach { ids += it.song }
+            }
+
+            Downloads.SHELF -> {
+                c.shelves[p.ref]?.items?.forEach { ids += it.id }
             }
         }
     }

@@ -32,6 +32,7 @@ class Store(
     // One instance each: Compose re-subscribes when handed a new Flow object.
     val favorites: Flow<List<Mark>> = dao.marks(FAV)
     val listenLater: Flow<List<Mark>> = dao.marks(LATER)
+    val played: Flow<List<Mark>> = dao.marks(PLAYED)
     val resumes: Flow<List<Resume>> = dao.resumes()
     val playlists: Flow<List<Playlist>> = dao.playlists()
     val playStats: Flow<List<PlayStat>> = dao.playStats()
@@ -48,6 +49,7 @@ class Store(
         val type =
             when (kind) {
                 FAV -> if (on) "favorite.set" else "favorite.unset"
+                PLAYED -> if (on) "played.set" else "played.unset"
                 else -> if (on) "listen_later.add" else "listen_later.remove"
             }
         // Only the last toggle of a song matters.
@@ -287,6 +289,7 @@ class Store(
     /** One listen (docs/plans/008_listening_history.md). */
     suspend fun play(l: Listen) {
         if (l.song < 0) return playOnPhone(l)
+        markPlayed(l)
         record("play", at = l.startedAt) {
             put("song", l.song)
             put("ms", l.ms)
@@ -321,6 +324,19 @@ class Store(
         if (s.bool("listenLater.autoRemove", true) && listed && l.toMs * 100 >= pct * length) {
             dao.putMark(Mark(LATER, l.song, l.endedAt, deleted = true))
         }
+    }
+
+    /**
+     * An episode or a book's file is played once a listen reaches 90% into
+     * it. The server marks it itself from the listen; this shows it at once,
+     * offline too, as of the same time, so the two agree
+     * (docs/plans/031_podcasts_and_audiobooks.md).
+     */
+    private suspend fun markPlayed(l: Listen) {
+        val s = app.catalog.value.byId[l.song] ?: return
+        if (!s.spoken || s.durationMs <= 0 || l.toMs * 100 < s.durationMs * PLAYED_PERCENT) return
+        if (dao.mark(PLAYED, l.song)?.deleted == false) return
+        dao.putMark(Mark(PLAYED, l.song, l.endedAt, deleted = false))
     }
 
     /**
@@ -362,6 +378,10 @@ class Store(
     companion object {
         const val FAV = "fav"
         const val LATER = "later"
+
+        /** An episode or a book's file heard (docs/plans/031_podcasts_and_audiobooks.md). */
+        const val PLAYED = "played"
+        const val PLAYED_PERCENT = 90
 
         fun ids(text: String) = JsonArray(songIds(text).map(::JsonPrimitive))
 

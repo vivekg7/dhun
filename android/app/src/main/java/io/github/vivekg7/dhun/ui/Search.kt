@@ -42,6 +42,7 @@ import io.github.vivekg7.dhun.data.LyricsHit
 import io.github.vivekg7.dhun.data.Playlist
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.SearchQuery
+import io.github.vivekg7.dhun.data.Shelf
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,12 @@ private enum class Kind(
     Genres("Genres"),
     Folders("Folders"),
     Playlists("Playlists"),
+
+    // Under their own headings (docs/plans/031_podcasts_and_audiobooks.md),
+    // before the songs, which can run to hundreds and would bury them.
+    Books("Audiobooks"),
+    Shows("Podcasts"),
+    Episodes("Episodes"),
     Songs("Songs"),
 }
 
@@ -92,6 +99,9 @@ private fun find(
         section(Kind.Genres, catalog.genreIndex),
         section(Kind.Folders, catalog.folderIndex),
         section(Kind.Playlists, SearchIndex.names(playlists, "playlist") { it.name }),
+        section(Kind.Books, catalog.bookIndex),
+        section(Kind.Shows, catalog.showIndex),
+        section(Kind.Episodes, catalog.episodeIndex),
         section(Kind.Songs, catalog.songIndex, boost),
     ).sortedBy { it.best }
 }
@@ -125,6 +135,7 @@ fun SearchScreen(nav: Nav) {
         value = app.lyrics.search(q).mapNotNull { h: LyricsHit -> catalog.byId[h.song]?.let { it to h.line } }
     }
     var expanded by rememberSaveable(query) { mutableStateOf("") }
+    val heard = rememberHeard()
     val keep = { app.prefs.keepSearch(query) }
 
     LazyColumn(Modifier.fillMaxSize()) {
@@ -154,7 +165,7 @@ fun SearchScreen(nav: Nav) {
                     }, menu = SongMenu(nav = nav))
                 }
             } else {
-                items(shown, key = { "${f.kind}/${keyOf(it)}" }) { h -> FoundRow(h, f.kind, catalog, nav, keep) }
+                items(shown, key = { "${f.kind}/${keyOf(it)}" }) { h -> FoundRow(h, f.kind, catalog, heard, nav, keep) }
             }
             if (!whole && f.hits.size > SHOWN) {
                 item(key = "more/${f.kind}") {
@@ -185,6 +196,8 @@ private fun keyOf(h: Any): Any =
         is Album -> h.key
         is Folder -> h.path
         is Playlist -> h.id
+        is Shelf -> h.key
+        is Song -> h.id
         else -> h.hashCode()
     }
 
@@ -234,6 +247,7 @@ private fun FoundRow(
     h: Any,
     kind: Kind,
     catalog: Catalog,
+    heard: Heard,
     nav: Nav,
     keep: () -> Unit,
 ) {
@@ -268,6 +282,21 @@ private fun FoundRow(
         is Playlist -> {
             val count = songIds(h.songs).count { it != 0L && catalog.byId.containsKey(it) }
             NameRow(Icons.Playlist, h.name, "$count", pinned(Downloads.PLAYLIST, h.id.toString())) { open(Page.PlaylistPage(h.id)) }
+        }
+
+        is Shelf -> {
+            ShelfRow(h, if (h.isBook) listOf(h.author, heard.progress(h)).filter { it.isNotEmpty() }.joinToString(" · ") else "Podcast") {
+                open(Page.ShelfPage(h.key))
+            }
+        }
+
+        // An episode found plays its show from there, as on the show's page.
+        is Song -> {
+            val shelf = catalog.shelfOf(h)
+            SongRow(h, onClick = {
+                keep()
+                if (shelf != null) playShelf(nav, shelf, heard, h)
+            }, menu = SongMenu(nav = nav), detail = listOf(h.groupTitle, h.date.take(10)).filter { it.isNotEmpty() }.joinToString(" · "))
         }
     }
 }

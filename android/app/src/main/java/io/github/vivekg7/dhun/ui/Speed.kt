@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.play.Tempo
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -85,10 +86,18 @@ private fun SpeedDialog(onDismiss: () -> Unit) {
                             .clickable { if (onlyThis) pb.clearSongTempo() else pb.setTempo(tempo, true) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // Off, an episode or a book's file takes its collection's speed, which follows the user
+                        // (docs/plans/031_podcasts_and_audiobooks.md); a song takes this phone's.
+                        val (one, every) =
+                            when (song?.kind) {
+                                Song.PODCAST -> "episode" to "Off: for every podcast, on all your devices"
+                                Song.AUDIOBOOK -> "file" to "Off: for every audiobook, on all your devices"
+                                else -> "song" to "Off: for every song, on this phone"
+                            }
                         Column(Modifier.weight(1f)) {
-                            Text("Only for this song", style = MaterialTheme.typography.bodyLarge)
+                            Text("Only for this $one", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                if (onlyThis) "Kept for this song, on all your devices" else "Off: for every song, on this phone",
+                                if (onlyThis) "Kept for this $one, on all your devices" else every,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = c.onSurfaceVariant,
                             )

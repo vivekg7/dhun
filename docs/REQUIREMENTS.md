@@ -170,7 +170,9 @@ Owner, 2026-10-10; how it is built is in
 - **Each has its own section in every app.** Their files never appear in
   song lists, Albums, Artists, Genres, Folders, shuffle-all, most and
   recently played, or play counts. Search finds them, under their own
-  headings.
+  headings. On Android they are two cards on the Playlists tab, beside
+  Favorites and Listen Later, each shown once its collection has something
+  in it (owner, 2026-10-11).
 - **Dhun does not fetch podcasts.** The owner's own tool downloads episodes
   into the NAS; Dhun only reads what is there. No feeds, no subscriptions.
 - **Files and their tags are the only source.** Dhun reads standard tags
@@ -189,11 +191,15 @@ Owner, 2026-10-10; how it is built is in
   Favorites, Listen Later and queues take any kind.
 - **Progress like Musicolet's long files, plus played marks:** an episode
   or a book file is marked played when a listen reaches 90% into it, and can
-  be marked played or unplayed by hand. A show can hide played episodes; a
-  book shows how far into it the user is. Played marks follow the user to
-  every device. Every listen is still logged in the listening history.
+  be marked played or unplayed by hand. A show hides played episodes until
+  asked to show them, a choice that follows the user; a book shows how far
+  into it the user is. Played marks follow the user to every device. Every
+  episode and book file keeps its place, however short. Every listen is
+  still logged in the listening history.
 - **Chapters** show on Now playing, with skip to the next and previous
   chapter: chapters stored inside a file, or a book's files as its chapters.
+  Next and Previous go by chapter wherever they are pressed, a headset
+  included.
 - **Transcripts** show the way lyrics do, from a `.transcript.md` or a
   `.vtt` subtitle file beside the episode.
 - **Speed** can be set for all podcasts and for all audiobooks, as well as

@@ -150,11 +150,35 @@ fun PlaylistsScreen(nav: Nav) {
         if (q.isEmpty()) {
             item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PinnedCard(ListKind.Favorites, lists(ListKind.Favorites), Modifier.weight(1f)) {
-                        nav.open(Tab.Playlists, Page.ListPage(ListKind.Favorites))
+                    for (k in listOf(ListKind.Favorites, ListKind.ListenLater)) {
+                        PinnedCard(k.icon, k.label, summary(lists(k)), Modifier.weight(1f)) { nav.open(Tab.Playlists, Page.ListPage(k)) }
                     }
-                    PinnedCard(ListKind.ListenLater, lists(ListKind.ListenLater), Modifier.weight(1f)) {
-                        nav.open(Tab.Playlists, Page.ListPage(ListKind.ListenLater))
+                }
+            }
+            // Each only once its collection has something in it (docs/plans/031_podcasts_and_audiobooks.md).
+            if (catalog.books.isNotEmpty() || catalog.shows.isNotEmpty()) {
+                item {
+                    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (catalog.books.isNotEmpty()) {
+                            PinnedCard(
+                                Icons.Book,
+                                "Audiobooks",
+                                "${catalog.books.size} ${if (catalog.books.size == 1) "book" else "books"}",
+                                Modifier.weight(1f),
+                            ) {
+                                nav.open(Tab.Playlists, Page.ShelvesPage(books = true))
+                            }
+                        }
+                        if (catalog.shows.isNotEmpty()) {
+                            PinnedCard(
+                                Icons.Podcast,
+                                "Podcasts",
+                                "${catalog.shows.size} ${if (catalog.shows.size == 1) "show" else "shows"}",
+                                Modifier.weight(1f),
+                            ) {
+                                nav.open(Tab.Playlists, Page.ShelvesPage(books = false))
+                            }
+                        }
                     }
                 }
             }
@@ -177,8 +201,9 @@ fun PlaylistsScreen(nav: Nav) {
 
 @Composable
 private fun PinnedCard(
-    kind: ListKind,
-    songs: List<Song>,
+    icon: ImageVector,
+    label: String,
+    detail: String,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -192,10 +217,10 @@ private fun PinnedCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(kind.icon, null, Modifier.size(26.dp), tint = c.secondary)
+        Icon(icon, null, Modifier.size(26.dp), tint = c.secondary)
         Column {
-            Text(kind.label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
-            Text(summary(songs), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
 }

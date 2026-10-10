@@ -79,7 +79,8 @@ parser of our own. Synced lines are highlighted from the player's position.
 - **One `play` per listen**, skips included, built from the player's events.
   The open listen is saved in Room as it plays, so a killed app closes it as
   `interrupted` on the next start ([008](008_listening_history.md)).
-- **Resume points** for files of at least `longFiles.minMinutes`: saved on
+- **Resume points** for files of at least `longFiles.minMinutes`, and for
+  every podcast and audiobook file ([031](031_podcasts_and_audiobooks.md)): saved on
   pause, on switching away and every 30 s, with one `resume.set` per song
   kept in the outbox, and cleared at the end ([009](009_resume_long_files.md)).
 - **Favorites and Listen Later** pinned above the playlists. **Continue

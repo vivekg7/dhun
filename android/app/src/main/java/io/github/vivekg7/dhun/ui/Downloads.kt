@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Downloads.State
 import io.github.vivekg7.dhun.data.Pin
@@ -136,16 +137,19 @@ fun describe(s: Downloads.Status): String {
     }
 }
 
-private fun kindLabel(p: Pin) =
-    when (p.kind) {
-        Downloads.SONG -> "Song"
-        Downloads.ALBUM -> "Album"
-        Downloads.FOLDER -> "Folder"
-        Downloads.ARTIST -> "Artist"
-        Downloads.GENRE -> "Genre"
-        Downloads.PLAYLIST -> "Playlist"
-        else -> "List"
-    }
+private fun kindLabel(
+    p: Pin,
+    c: Catalog,
+) = when (p.kind) {
+    Downloads.SONG -> "Song"
+    Downloads.ALBUM -> "Album"
+    Downloads.FOLDER -> "Folder"
+    Downloads.ARTIST -> "Artist"
+    Downloads.GENRE -> "Genre"
+    Downloads.PLAYLIST -> "Playlist"
+    Downloads.SHELF -> if (c.shelves[p.ref]?.isBook == false) "Podcast" else "Audiobook"
+    else -> "List"
+}
 
 private val STOPPED = setOf(State.Full, State.NoSpace, State.Failed)
 
@@ -161,6 +165,9 @@ fun DownloadsScreen(
     val files by app.downloads.files.collectAsState()
     val catalog by app.catalog.collectAsState()
     val songs = remember(files, catalog) { catalog.songs.filter { it.id in files } }
+    // Apart from the songs, so playing every download plays music only (docs/plans/031_podcasts_and_audiobooks.md).
+    val spoken = remember(files, catalog) { (catalog.books + catalog.shows).flatMap { it.items }.filter { it.id in files } }
+    val heard = rememberHeard()
     var removing by remember { mutableStateOf<Pin?>(null) }
     val limit = app.prefs.downloadLimitGb
     val searchable = pins.size + songs.size > SEARCH_OVER
@@ -202,7 +209,7 @@ fun DownloadsScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                        Text(kindLabel(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(kindLabel(p, catalog), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
                 }
@@ -211,6 +218,12 @@ fun DownloadsScreen(
             if (hits.isNotEmpty()) item { SectionLabel("Songs") }
             items(hits, key = { (_, s) -> s.id }) { (i, s) ->
                 SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
+            }
+            if (q.isBlank() && spoken.isNotEmpty()) {
+                item { SectionLabel("Podcasts and audiobooks") }
+                items(spoken, key = { it.id }) { s ->
+                    SongRow(s, onClick = { catalog.shelfOf(s)?.let { playShelf(nav, it, heard, s) } }, menu = SongMenu(nav = nav), detail = s.groupTitle)
+                }
             }
             if (q.isNotBlank() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }

@@ -1,0 +1,102 @@
+package io.github.vivekg7.dhun
+
+import io.github.vivekg7.dhun.data.Catalog
+import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.play.Playback
+import io.github.vivekg7.dhun.ui.Heard
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Podcasts and audiobooks (docs/plans/031_podcasts_and_audiobooks.md). */
+class SpokenTest {
+    private fun song(
+        id: Long,
+        path: String,
+        kind: String = "",
+        group: String = "",
+        index: Int = 0,
+    ) = Song(
+        id,
+        path,
+        path.substringAfterLast('/'),
+        "Host",
+        "Host",
+        "Show",
+        "",
+        "",
+        "Podcast",
+        0,
+        0,
+        0,
+        600_000,
+        "opus",
+        0,
+        0,
+        0,
+        0,
+        false,
+        false,
+        0,
+        false,
+        kind = kind,
+        groupKey = group,
+        groupTitle = group.uppercase(),
+        groupIndex = index,
+    )
+
+    // Each collection's paths are relative to its own folder, so an episode's
+    // folder can be named like a music folder; it must still stay out of
+    // every music list.
+    @Test
+    fun episodesStayOutOfMusicButQueuesFindThem() {
+        val c =
+            Catalog(
+                listOf(
+                    song(1, "Lex/song.mp3"),
+                    song(2, "Lex/002.opus", Song.PODCAST, "lex", 1),
+                    song(3, "Lex/001.opus", Song.PODCAST, "lex", 0),
+                ),
+            )
+        assertEquals(listOf(1L), c.songs.map { it.id })
+        assertEquals(
+            listOf(1L),
+            c.folders
+                .getValue("Lex")
+                .songs
+                .map { it.id },
+        )
+        assertTrue(c.artists.all { g -> g.songs.none { it.spoken } } && c.genres.all { g -> g.songs.none { it.spoken } })
+        assertEquals(
+            listOf(3L, 2L),
+            c.shows
+                .single()
+                .items
+                .map { it.id },
+        )
+        assertEquals("LEX", c.shelfOf(c.byId.getValue(2))?.title)
+    }
+
+    @Test
+    fun aBookCarriesOnFromItsFirstFileNotPlayed() {
+        val c = Catalog((1L..3L).map { song(it, "Dune/$it.mp3", Song.AUDIOBOOK, "dune", it.toInt()) })
+        val book = c.books.single()
+        val heard = Heard(played = setOf(1L), left = mapOf(2L to 300_000L))
+        assertEquals(2L, heard.next(book).id)
+        assertEquals("50% · 15 min left", heard.progress(book))
+        assertEquals(1L, Heard(setOf(1L, 2L, 3L), emptyMap()).next(book).id)
+    }
+
+    @Test
+    fun previousGoesToThisChapterThenTheOneBefore() {
+        val starts = listOf(0L, 60_000L, 120_000L)
+        assertEquals(60_000L, Playback.previousChapter(starts, 90_000, 3_000))
+        assertEquals(0L, Playback.previousChapter(starts, 61_000, 3_000))
+        assertNull("the first chapter's start goes to the previous file", Playback.previousChapter(starts, 1_000, 3_000))
+        assertNull(Playback.previousChapter(emptyList(), 90_000, 3_000))
+        // Just sought to a chapter, a little before its start: Next goes to the one after.
+        assertEquals(120_000L, Playback.nextChapter(starts, 59_900))
+        assertNull("the last chapter goes on to the next file", Playback.nextChapter(starts, 130_000))
+    }
+}

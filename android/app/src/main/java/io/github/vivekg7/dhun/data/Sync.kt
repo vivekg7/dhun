@@ -254,7 +254,7 @@ class Sync(
                 ),
             )
         }
-        for ((kind, items) in listOf(Store.FAV to s.favorites, Store.LATER to s.listenLater)) {
+        for ((kind, items) in listOf(Store.FAV to s.favorites, Store.LATER to s.listenLater, Store.PLAYED to s.played)) {
             for (i in items) {
                 val at = parseTime(i.at)
                 val local = dao.mark(kind, i.song)
@@ -337,8 +337,12 @@ fun mergePhoneSongs(
 // A blip is over in seconds; the 15 minutes this once grew to left the app
 // offline long after the network was back (docs/plans/019_networking_and_caching.md).
 
-/** Raised when songs gain a field: 1 is the art key (docs/plans/019_networking_and_caching.md). */
-const val LIBRARY_FORMAT = 1L
+/**
+ * Raised when songs gain a field: 1 is the art key (docs/plans/019_networking_and_caching.md),
+ * 2 podcasts and audiobooks, which the server sends only to a client that
+ * asks for them from the start (docs/plans/031_podcasts_and_audiobooks.md).
+ */
+const val LIBRARY_FORMAT = 2L
 
 private const val RETRY_MIN = 5_000L
 private const val RETRY_MAX = 2 * 60_000L

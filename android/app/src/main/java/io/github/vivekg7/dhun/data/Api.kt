@@ -103,7 +103,8 @@ class Api(
         )
     }
 
-    suspend fun library(since: Long): Library = call(Request.Builder().url("${prefs.server}/api/v1/library?since=$since").build())
+    /** Podcasts and audiobooks too (`kinds=all`): without it the server sends music only, for apps that predate them. */
+    suspend fun library(since: Long): Library = call(Request.Builder().url("${prefs.server}/api/v1/library?since=$since&kinds=all").build())
 
     suspend fun sync(
         since: Long,
@@ -281,6 +282,14 @@ data class SongDto(
     val hasLyrics: Boolean = false,
     val addedAt: String = "",
     val missing: Boolean = false,
+    // Podcasts and audiobooks only (docs/plans/031_podcasts_and_audiobooks.md); no kind is music.
+    val kind: String = "",
+    val date: String = "",
+    val notes: String = "",
+    val chapters: List<Chapter> = emptyList(),
+    val group: String = "",
+    val groupTitle: String = "",
+    val groupIndex: Int = 0,
 ) {
     fun toSong() =
         Song(
@@ -307,8 +316,21 @@ data class SongDto(
             parseTime(addedAt),
             missing,
             art,
+            kind,
+            date,
+            notes,
+            if (chapters.isEmpty()) "" else Json.encodeToString(chapters),
+            group,
+            groupTitle,
+            groupIndex,
         )
 }
+
+/** Where a chapter of an episode or a book's file starts. */
+@Serializable data class Chapter(
+    val startMs: Long = 0,
+    val title: String = "",
+)
 
 @Serializable
 data class PlaylistDto(
@@ -386,6 +408,7 @@ data class SyncState(
     val favorites: List<ListItemDto> = emptyList(),
     val listenLater: List<ListItemDto> = emptyList(),
     val resume: List<ResumeDto> = emptyList(),
+    val played: List<ListItemDto> = emptyList(),
     val settings: Map<String, JsonElement> = emptyMap(),
     val nowPlaying: NowPlaying? = null,
     val results: List<OpResult> = emptyList(),
