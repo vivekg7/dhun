@@ -232,6 +232,8 @@ in the catalogue.
   file still arriving had no length, and an Ogg file opened without one
   stays unseekable for as long as it is loaded. The cache now gives the
   song list's size until the server sends its own.
+- **Some tools write the date as `20251230`;** the app shows it as
+  2025-12-30. A finished book's button says Play, as it starts again.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
 

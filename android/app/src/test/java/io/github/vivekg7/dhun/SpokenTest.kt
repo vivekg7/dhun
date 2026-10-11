@@ -4,6 +4,7 @@ import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.play.Playback
 import io.github.vivekg7.dhun.ui.Heard
+import io.github.vivekg7.dhun.ui.day
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -86,6 +87,15 @@ class SpokenTest {
         assertEquals(2L, heard.next(book).id)
         assertEquals("50% · 15 min left", heard.progress(book))
         assertEquals(1L, Heard(setOf(1L, 2L, 3L), emptyMap()).next(book).id)
+    }
+
+    // Some podcast tools write the date tag without dashes.
+    @Test
+    fun aCompactDateReadsAsADay() {
+        val s = song(1, "Show/1.mp3", Song.PODCAST, "show")
+        assertEquals("2025-12-30", s.copy(date = "20251230").day)
+        assertEquals("2025-12-30", s.copy(date = "2025-12-30T08:00:00Z").day)
+        assertEquals("2025", s.copy(date = "2025").day)
     }
 
     @Test

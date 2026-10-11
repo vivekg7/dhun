@@ -296,7 +296,7 @@ private fun FoundRow(
             SongRow(h, onClick = {
                 keep()
                 if (shelf != null) playShelf(nav, shelf, heard, h)
-            }, menu = SongMenu(nav = nav), detail = listOf(h.groupTitle, h.date.take(10)).filter { it.isNotEmpty() }.joinToString(" · "))
+            }, menu = SongMenu(nav = nav), detail = listOf(h.groupTitle, h.day).filter { it.isNotEmpty() }.joinToString(" · "))
         }
     }
 }

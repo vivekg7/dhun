@@ -74,6 +74,10 @@ class Heard(
         }
 }
 
+/** An episode's date tag as a day. Some tools write 20251230 for 2025-12-30. */
+val Song.day: String
+    get() = if (date.length == 8 && date.all { it.isDigit() }) "${date.take(4)}-${date.substring(4, 6)}-${date.drop(6)}" else date.take(10)
+
 @Composable
 fun rememberHeard(): Heard {
     val app = App.app
@@ -176,7 +180,8 @@ fun ShelfScreen(
     val shelf = catalog.shelves[key] ?: return Empty("This is gone from the library", page = true)
     val hidePlayed = !shelf.isBook && settings.bool(HIDE_PLAYED, true)
     val rows = if (shelf.isBook) shelf.items else shelf.items.reversed().filter { !hidePlayed || it.id !in heard.played }
-    val begun = shelf.items.any { heard.heardMs(it) > 0 }
+    // Finished, it starts again from the first.
+    val begun = shelf.items.any { heard.heardMs(it) > 0 } && !shelf.items.all { it.id in heard.played }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             val facts =
@@ -211,7 +216,7 @@ fun ShelfScreen(
             // A book's files are often titled alike but for a part number at the end, cut off on a phone.
             val where =
                 if (!shelf.isBook) {
-                    s.date.take(10)
+                    s.day
                 } else if (rows.size > 1) {
                     "${i + 1} of ${rows.size}"
                 } else {

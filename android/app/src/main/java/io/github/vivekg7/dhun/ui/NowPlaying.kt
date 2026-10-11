@@ -186,7 +186,7 @@ fun NowPlayingScreen(nav: Nav) {
                 val facts =
                     when (song.kind) {
                         // A book of one file is often titled as the book: not twice.
-                        Song.PODCAST -> listOf(song.groupTitle, song.date.take(10))
+                        Song.PODCAST -> listOf(song.groupTitle, song.day)
 
                         Song.AUDIOBOOK -> listOf(song.groupTitle.takeIf { it != song.title }.orEmpty(), song.artist.ifEmpty { song.albumArtist })
 
