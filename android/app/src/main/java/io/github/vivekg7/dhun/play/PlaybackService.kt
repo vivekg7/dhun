@@ -89,8 +89,8 @@ class PlaybackService : MediaSessionService() {
  * The player as the session sees it: with a sleep timer set, the artist line
  * says so ("Coldplay · Sleep in 23 min"), so the notification and the lock
  * screen show it (docs/plans/014_sleep_timer.md). Refreshed every half
- * minute while a timer runs. Next and Previous go by chapter in a file that
- * has them, from a headset too (docs/plans/031_podcasts_and_audiobooks.md).
+ * minute while a timer runs. Next and Previous go to [Playback], which
+ * keeps a long file's place from a headset (docs/plans/009_resume_long_files.md).
  */
 @OptIn(UnstableApi::class)
 private class SleepAware(
@@ -118,9 +118,9 @@ private class SleepAware(
         return m.buildUpon().setArtist("${artist}Sleep $label").build()
     }
 
-    override fun seekToNext() = App.app.playback.next()
+    override fun seekToNext() = App.app.playback.next(onScreen = false)
 
-    override fun seekToPrevious() = App.app.playback.previous()
+    override fun seekToPrevious() = App.app.playback.previous(onScreen = false)
 
     override fun addListener(listener: Player.Listener) {
         listeners += listener

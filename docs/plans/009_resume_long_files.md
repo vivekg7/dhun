@@ -51,6 +51,8 @@ and every device sees the same one.
   | ---------------------- | ------------------------------------- | -------- |
   | `longFiles.minMinutes` | a number of minutes                   | `15`     |
   | `longFiles.resume`     | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
+  | `longFiles.previous`   | `"keep"`, `"ignore"`, `"songs"`       | `"keep"` |
+  | `previous.restart`     | `true`, `false`                       | `true`   |
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,
@@ -72,6 +74,32 @@ and every device sees the same one.
 The listening history ([008](008_listening_history.md)) is unchanged: each
 sitting with a book is one listen.
 
+### Previous (owner, 2026-10-11)
+
+Previous restarted a file played past its first 3 s, as it does a song.
+In a book that lost the place: the restart plays on from 0:00, and the next
+`resume.set` records it. Buds miscount taps when they are damp, so one
+mistaken Previous could cost the owner their place hours into a book. So:
+
+- **`longFiles.previous`**, for the files that resume. `keep` (the
+  default): Previous never goes back in the file. It goes to the previous
+  file, the place saved as it leaves, so coming back continues there.
+  `ignore`: the same on the screen, and nothing from a headset, the
+  notification or the lock screen. `songs`: as with songs, the old
+  behaviour. The default changed, rather than the old behaviour staying,
+  because nobody finds this trap until they have lost their place.
+- **`previous.restart`**, for everything else: `false` makes Previous
+  always go to the previous song, never restart this one.
+- **Chapters only on the screen.** A headset, the notification and the
+  lock screen go by file, Next as well as Previous: a chapter skip moves
+  the place within the file just as a restart does. Now playing and the
+  mini players still go by chapter, and Previous there never restarts the
+  chapter playing in a long file.
+
+Rejected: ignoring Previous in long files everywhere (a button on screen
+that does nothing looks broken), and an undo after a restart (the place is
+already gone by the time it is noticed, in a pocket).
+
 ## Rejected
 
 - **Storing the length rule on the server**, and deciding there what is
@@ -90,3 +118,4 @@ sitting with a book is one listen.
 2. Android: the behaviour above, and the two settings in the app's settings.
    Built ([011](011_android_app.md)).
 3. macOS and web: the same, with the settings read from the sync.
+4. Previous: Android built; macOS and web to follow.

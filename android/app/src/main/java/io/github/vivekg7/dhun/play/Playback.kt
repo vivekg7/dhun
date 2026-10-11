@@ -28,6 +28,7 @@ import io.github.vivekg7.dhun.data.Listen
 import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.data.bool
 import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.joinIds
 import io.github.vivekg7.dhun.data.parseTime
@@ -446,16 +447,38 @@ class Playback(
             load(q.copy(usedAt = System.currentTimeMillis()), play = true)
         }
 
-    // --- Chapters (docs/plans/031_podcasts_and_audiobooks.md) -------------
+    // --- Next and Previous (plans 009 and 031) -----------------------------
 
-    fun next() {
-        val at = nextChapter(chapterStarts(), player.currentPosition)
+    /**
+     * Next goes by chapter in a file that has them, but only [onScreen]: a
+     * headset, the notification or the lock screen goes to the next file, so
+     * a press miscounted by buds never moves the place in a book.
+     */
+    fun next(onScreen: Boolean) {
+        val at = if (onScreen) nextChapter(chapterStarts(), player.currentPosition) else null
         if (at != null) player.seekTo(at) else player.seekToNext()
     }
 
-    fun previous() {
-        val at = previousChapter(chapterStarts(), player.currentPosition, player.maxSeekToPreviousPosition)
-        if (at != null) player.seekTo(at) else player.seekToPrevious()
+    /**
+     * Previous restarts the song first, unless "previous.restart" is off. In
+     * a long file it never does ("longFiles.previous"): the restart would be
+     * saved as the place to resume, and the place lost to one mistaken
+     * press. It goes to the previous file instead, which keeps its place, or
+     * does nothing from a headset. By chapter only [onScreen], as Next.
+     */
+    fun previous(onScreen: Boolean) {
+        val s = current.value ?: return
+        val long = settings.value.string("longFiles.previous", "keep")
+        val keep = isLong(s) && long != "songs"
+        if (keep && !onScreen && long == "ignore") return
+        val restart = !keep && settings.value.bool("previous.restart", true)
+        val starts = chapterStarts().takeIf { onScreen && it.isNotEmpty() } ?: listOf(0L)
+        val at = previousChapter(starts, player.currentPosition, if (restart) player.maxSeekToPreviousPosition else Long.MAX_VALUE)
+        when {
+            at != null -> player.seekTo(at)
+            player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
+            restart -> player.seekTo(0)
+        }
     }
 
     private fun chapterStarts() =
@@ -1073,9 +1096,10 @@ class Playback(
         ) = starts.firstOrNull { it > pos + 1_000 }
 
         /**
-         * Where Previous goes: back to the start of this chapter, or, within
-         * [window] of it, to the one before, as Previous does with songs; null
-         * for the player's own Previous (no chapters, or the first one).
+         * Where Previous goes in a file whose chapters start at [starts]: back
+         * to the start of this chapter, or, within [window] of it, to the one
+         * before; null for the previous file. A file without chapters is one
+         * starting at 0, and a window of [Long.MAX_VALUE] never restarts it.
          */
         fun previousChapter(
             starts: List<Long>,

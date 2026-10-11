@@ -695,7 +695,9 @@ components:
             App settings changed since the cursor, as name → JSON value. A
             missing setting or null means the app's default.
             `longFiles.minMinutes` (default 15) and `longFiles.resume`
-            ("auto", "ask" or "off"; default "auto"), read by the apps;
+            ("auto", "ask" or "off"; default "auto"), `longFiles.previous`
+            ("keep", "ignore" or "songs"; default "keep") and
+            `previous.restart` (default true), read by the apps;
             `listenLater.autoRemove` (default true) and
             `listenLater.finishedPercent` (default 90), read by the server;
             `speed.<song id>` (`{"speed": 1.5, "semitones": 0}`), a song's

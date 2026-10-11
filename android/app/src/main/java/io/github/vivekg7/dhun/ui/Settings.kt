@@ -176,6 +176,16 @@ private fun PlaybackSettings() {
         value: JsonPrimitive,
     ) = scope.launch { app.store.setting(name, value) }
 
+    SectionLabel("Buttons")
+    ChoiceRow(
+        "Previous",
+        listOf(true, false),
+        settings.bool("previous.restart", true),
+        { if (it) "Restart the song first" else "Always the previous song" },
+        note = "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one.",
+        synced = true,
+    ) { set("previous.restart", JsonPrimitive(it)) }
+
     SectionLabel("Long files")
     ChoiceRow(
         "Continue long files",
@@ -198,6 +208,22 @@ private fun PlaybackSettings() {
         },
         synced = true,
     ) { set("longFiles.resume", JsonPrimitive(it)) }
+    ChoiceRow(
+        "Previous in one",
+        listOf("keep", "ignore", "songs"),
+        settings.string("longFiles.previous", "keep"),
+        {
+            when (it) {
+                "keep" -> "Previous file, keep my place"
+                "ignore" -> "Ignore headsets and the lock screen"
+                else -> "Same as songs"
+            }
+        },
+        note =
+            "Restarting a long file loses where you were, and buds miscount taps. Keeping your place, Previous goes to the " +
+                "previous file and you continue here when you come back. Ignoring, it does that only on the screen.",
+        synced = true,
+    ) { set("longFiles.previous", JsonPrimitive(it)) }
 
     SectionLabel("Listen Later")
     val autoRemove = settings.bool("listenLater.autoRemove", true)

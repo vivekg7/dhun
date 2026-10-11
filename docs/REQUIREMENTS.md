@@ -198,8 +198,9 @@ Owner, 2026-10-10; how it is built is in
   still logged in the listening history.
 - **Chapters** show on Now playing, with skip to the next and previous
   chapter: chapters stored inside a file, or a book's files as its chapters.
-  Next and Previous go by chapter wherever they are pressed, a headset
-  included.
+  Next and Previous go by chapter on the screen. From a headset, the
+  notification or the lock screen they go by file, so a tap the buds
+  miscount never moves the place in a book (owner, 2026-10-11).
 - **Transcripts** show the way lyrics do, from a `.transcript.md` or a
   `.vtt` subtitle file beside the episode.
 - **Speed** can be set for all podcasts and for all audiobooks, as well as
@@ -323,6 +324,9 @@ Proposed. Awaiting the owner's confirmation.
   added, Recently played, Most played, Not played lately —
   [plans/010](plans/010_special_playlists.md).
 - Now playing: play / pause / next / previous / seek, shuffle, repeat.
+  Previous restarts a song played past its first 3 s, or, by a setting
+  that follows the user, always goes to the previous song (owner,
+  2026-10-11).
 - **Sleep timer:** after a set time (presets or any number of minutes),
   at the end of this song, after N songs, or at the end of the queue. By
   the clock it fades out and pauses on time; by songs it pauses where a
@@ -351,7 +355,10 @@ Proposed. Awaiting the owner's confirmation.
   minutes continues where it was left, on any device, however much else was
   played in between. The length, and whether to resume automatically, ask or
   not at all, are settings that follow the user to every device —
-  [plans/009](plans/009_resume_long_files.md).
+  [plans/009](plans/009_resume_long_files.md). **Previous never restarts
+  a long file**, which would lose its place: it goes to the previous file,
+  the place kept. A setting makes headsets and the lock screen ignore it
+  instead, or Previous act as with songs (owner, 2026-10-11).
 - **Downloads** with a storage limit.
 - **Family members (admin only):** under Settings → Account, list the
   users, add a member and reset a member's forgotten password. Moved here

@@ -109,4 +109,13 @@ class SpokenTest {
         assertEquals(120_000L, Playback.nextChapter(starts, 59_900))
         assertNull("the last chapter goes on to the next file", Playback.nextChapter(starts, 130_000))
     }
+
+    /** One mistaken press of Previous restarted a book half heard, and its place was lost. */
+    @Test
+    fun previousNeverRestartsALongFile() {
+        val never = Long.MAX_VALUE
+        assertNull("no chapters: the previous file", Playback.previousChapter(listOf(0L), 5 * 3_600_000L, never))
+        assertEquals("chapters: the one before, not this one's start", 0L, Playback.previousChapter(listOf(0L, 60_000L), 90_000, never))
+        assertEquals("a song still restarts", 0L, Playback.previousChapter(listOf(0L), 90_000, 3_000))
+    }
 }

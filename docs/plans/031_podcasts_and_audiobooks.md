@@ -187,11 +187,12 @@ in the catalogue.
   `longFiles.minMinutes` (009) is for music: a book split into 10-minute
   files would otherwise start each one from the beginning.
 - **Next and Previous go by chapter** in a file that has chapters, on Now
-  playing, in the mini players, in the notification and on a headset (the
-  session's player passes them to the app). Previous goes back to the
-  start of the chapter, or in its first 3 s to the one before, as it does
-  with songs. Media3 greys out the notification's Next in a queue's last
-  file even when chapters remain; the button on Now playing still works.
+  playing and in the mini players. Previous goes to the chapter before,
+  never back to the start of the one playing, as it never restarts a long
+  file. A headset, the notification and the lock screen go by file (the
+  session's player tells the app where a press came from), so a tap
+  miscounted by buds never moves the place
+  ([009](009_resume_long_files.md#previous-owner-2026-10-11)).
 - **Now playing:** in Shuffle's place, a Chapters and notes button; under
   the title, the chapter playing, which opens the same list. The episode's
   notes are in it, after the chapters. A book is not shuffled.

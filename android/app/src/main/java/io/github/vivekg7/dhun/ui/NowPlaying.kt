@@ -287,7 +287,7 @@ fun NowPlayingScreen(nav: Nav) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tip("Previous") { IconButton({ pb.previous() }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
+            Tip("Previous") { IconButton({ pb.previous(onScreen = true) }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
             Tip(if (going) "Pause" else "Play") {
                 // Gives a little under the finger, and the icon turns from one to the other.
                 val press = remember { MutableInteractionSource() }
@@ -311,7 +311,7 @@ fun NowPlayingScreen(nav: Nav) {
                     ) { g -> Icon(if (g) Icons.Pause else Icons.Play, if (g) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
                 }
             }
-            Tip("Next") { IconButton({ pb.next() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
+            Tip("Next") { IconButton({ pb.next(onScreen = true) }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
         }
     }
 }

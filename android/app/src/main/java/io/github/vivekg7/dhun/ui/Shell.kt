@@ -532,7 +532,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
                 }
             }
-            Tip("Next") { IconButton({ app.playback.next() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
+            Tip("Next") { IconButton({ app.playback.next(onScreen = true) }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
         }
     }
 }
@@ -603,7 +603,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                 }.padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tip("Previous") { IconButton({ app.playback.previous() }) { Icon(Icons.Previous, "Previous") } }
+            Tip("Previous") { IconButton({ app.playback.previous(onScreen = true) }) { Icon(Icons.Previous, "Previous") } }
             // No tooltip: a long press here opens Now playing. The labels are for TalkBack.
             Box(
                 Modifier
@@ -640,7 +640,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                     Icon(Icons.Play, null, Modifier.size(26.dp), tint = Color.White)
                 }
             }
-            Tip("Next") { IconButton({ app.playback.next() }) { Icon(Icons.Next, "Next") } }
+            Tip("Next") { IconButton({ app.playback.next(onScreen = true) }) { Icon(Icons.Next, "Next") } }
         }
     }
 }
