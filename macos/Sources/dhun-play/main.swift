@@ -7,7 +7,9 @@
 //                                    jumping to wherever a reader waits (a Range request)
 //     --from SECONDS                 start the first file there
 //     --server URL --token T         FILEs are song IDs, streamed from a Dhun server
+//   dhun-play seek [opts] SECONDS FILE   time a seek, and how far from SECONDS it lands
 import AVFoundation
+import Accelerate
 import DhunKit
 import Foundation
 
@@ -94,7 +96,7 @@ final class Arrival: @unchecked Sendable {
 }
 
 if let server {
-    var req = URLRequest(url: server.appendingPathComponent("api/v1/library"))
+    var req = URLRequest(url: URL(string: "api/v1/library?kinds=all", relativeTo: server)!)
     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     let sem = DispatchSemaphore(value: 0)
     URLSession.shared.dataTask(with: req) { data, _, _ in
@@ -192,6 +194,40 @@ case "check":
             lastTail = nil
         }
     }
+
+case "seek":
+    // The place is judged against the file read whole from disk, where the
+    // decoder's seek is exact: the lag that best matches what was heard.
+    let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
+    let at = Double(files[0]) ?? 0
+    let t0 = Date()
+    let d = try openDecoder(try bytes(files[1]), format: format)
+    try d.seek(to: at)
+    let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192)!
+    try d.read(into: buf)
+    try d.read(into: buf)  // past the decoder's warm-up
+    print(String(format: "seek to %.0fs: first audio after %.2fs", at, Date().timeIntervalSince(t0)))
+    if server != nil { exit(0) }  // nothing on disk to judge the place by
+    let span = 20.0
+    let ref = try openDecoder(try FileBytes(URL(fileURLWithPath: files[1])), format: format)
+    try ref.seek(to: max(0, at - span))
+    var whole: [Float] = []
+    let rb = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192)!
+    while whole.count < Int(2 * span * 48000) {
+        try ref.read(into: rb)
+        if rb.frameLength == 0 { break }
+        whole += UnsafeBufferPointer(start: rb.floatChannelData![0], count: Int(rb.frameLength))
+    }
+    let heard = Array(UnsafeBufferPointer(start: buf.floatChannelData![0], count: 4096))
+    var best = (lag: 0, score: -Float.infinity)
+    for lag in 0..<(whole.count - heard.count) {
+        var dot: Float = 0
+        vDSP_dotpr(heard, 1, Array(whole[lag..<lag + heard.count]), 1, &dot, vDSP_Length(heard.count))
+        if dot > best.score { best = (lag, dot) }
+    }
+    let landed = max(0, at - span) + Double(best.lag - 8192) / 48000
+    print(String(format: "landed at %.3fs (%+.3fs)", landed, landed - at))
+    exit(0)
 
 case "play":
     let engine = Engine()

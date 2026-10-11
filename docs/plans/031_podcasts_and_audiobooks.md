@@ -260,13 +260,32 @@ in the catalogue.
   player got to, no resume point is kept in the last 5 seconds, and every
   spoken file keeps one. The song cache's fix was not needed: the Mac
   already opens a file still arriving with the song list's size.
-- **Found, not fixed: seeking far into an MP3 still arriving waits for
-  every byte before that point.** Core Audio reads an MP3 without a seek
-  table from its start, so Dune resumed at 6:01 h started after about
-  170 MB had arrived, a minute over Tailscale. A song is too short to
-  notice, and a book only on its first resume; once cached, a seek is
-  instant. Estimating the offset (from the Xing table of contents, or
-  the bitrate) and decoding from there would fix it.
+- **A far seek into an MP3 still arriving waited for every byte before
+  it.** Core Audio finds a place in an MP3 by walking every frame before
+  it, and without a Xing or Info frame walks them all just to open the
+  file. Dune resumed at 6:01 h after about 170 MB had arrived, a minute
+  over Tailscale; a 7.8 h book without such a frame would not start until
+  all 900 MB had. While the bytes before the place are missing, the Mac
+  now estimates where it is as Media3 does, from the bitrate or the Xing
+  table of contents, and decodes from the first frame there
+  (`Mp3.swift`). The slice is opened behind the file's own Xing or Info
+  frame, or one made up from the bitrate, so Core Audio has the length
+  without counting. Dune now resumes in 0.1 s.
+  - **How close it lands.** A constant bitrate lands within a frame. A
+    Xing table only places a point to about 1/256 of the file, so a VBR
+    file can land that far out (up to a minute in a generated 3 h test
+    file), at the same audio the phone plays. A file with neither frame
+    is taken to keep its first frame's bitrate, as Media3 takes it. In
+    the test account's library the long books are constant bitrate; the
+    VBR ones run 2 h at most. Once the bytes have arrived, the seek is
+    Core Audio's own, and exact.
+  - **Ten frames are decoded ahead of the place:** a frame's audio can
+    begin in the frames before it (the bit reservoir), and without them
+    the first tenth of a second was silent.
+  - **Rejected: decoding MP3 frames ourselves** with `AudioFileStream`
+    and a converter. It would replace Core Audio's reading, gapless
+    trimming included, for every MP3, to fix the one case a slice
+    covers.
 - **Found, not fixed, on the server: a transcript in an LRC lyrics tag
   repeats its lines.** Some episodes carry YouTube's automatic captions
   as LRC in the lyrics tag, each line repeated as the captions scroll.
@@ -286,9 +305,8 @@ in the catalogue.
   Previous by chapter, the collection's speed, a resume point for every
   spoken file but none in the last 5 seconds, and a finished listen that
   says where the player got to.
-- **A far seek does not stall here,** unlike on the Mac: the browser asks
-  the server for the bytes at the place, so Dune resumed at 6:01 h within
-  seconds.
+- **A far seek does not stall here:** the browser asks the server for
+  the bytes at the place, so Dune resumed at 6:01 h within seconds.
 - **"Waiting for the network…" stayed under a file paused while a seek
   was still loading,** since the `playing` event it waits for never came.
   It now ends when the data arrives (`canplay`). Long files made this

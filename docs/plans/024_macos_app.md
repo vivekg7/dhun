@@ -124,6 +124,10 @@ card's `Sound/` folder) opens natively.
   - **Gapless.** The next song's buffers are scheduled straight after the
     current song's on one player node. `ExtAudioFile` trims what MP3 (LAME
     header), AAC, FLAC and Ogg Opus declare.
+  - **MP3 still arriving.** Core Audio walks every frame before a place
+    to find it, so a seek far into a file still arriving decodes a slice
+    from an estimated place instead, as Media3 does (`Mp3.swift`,
+    [031](031_podcasts_and_audiobooks.md)).
   - **Ogg Opus** needs nothing of ours: Core Audio reads it.
   - **WebM Opus.** Nothing in macOS reads WebM, so a small WebM reader of
     our own does (`WebM.swift`, about 300 lines). It reads the EBML header,

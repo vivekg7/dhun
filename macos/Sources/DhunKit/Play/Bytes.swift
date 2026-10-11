@@ -16,10 +16,13 @@ public protocol Bytes: AnyObject, Sendable {
     /// Makes a read that is waiting for bytes throw `cancelled` (a skip or a
     /// seek); later reads wait as before.
     func interrupt()
+    /// Where the bytes run out, reading on from `offset`.
+    func arrived(from offset: Int64) -> Int64
 }
 
 extension Bytes {
     public func interrupt() {}
+    public func arrived(from offset: Int64) -> Int64 { size }
 }
 
 public enum BytesError: Error {
@@ -80,7 +83,6 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         return have.count == 1 && have[0] == 0..<size
     }
 
-    /// Where the bytes run out, reading on from `offset`.
     public func arrived(from offset: Int64) -> Int64 {
         cond.lock()
         defer { cond.unlock() }

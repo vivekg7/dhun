@@ -10,3 +10,12 @@ ffmpeg -i sweep.wav -af atrim=end_sample=24003 h1.wav
 ffmpeg -i sweep.wav -af "atrim=start_sample=24003,asetpts=PTS-STARTPTS" h2.wav
 ffmpeg -i h1.wav -c:a libopus -b:a 64k -f webm sweep-1.webm   # and h2 → sweep-2
 ```
+
+`chirp.mp3` is 20 seconds of a tone rising from 200 Hz by 20 Hz a second,
+mono at 32 kHz, 32 kb/s with an Info frame, so its pitch says where in it
+a seek landed:
+
+```sh
+ffmpeg -f lavfi -i "aevalsrc=0.4*sin(2*PI*(200*t+10*t*t)):s=32000:d=20" \
+  -ac 1 -c:a libmp3lame -b:a 32k -fflags +bitexact -map_metadata -1 chirp.mp3
+```

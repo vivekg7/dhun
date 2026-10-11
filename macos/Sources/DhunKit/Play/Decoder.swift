@@ -19,6 +19,7 @@ public func openDecoder(_ bytes: Bytes, format: AVAudioFormat) throws -> SongDec
     if magic == [0x1A, 0x45, 0xDF, 0xA3] {
         return try WebMDecoder(bytes, format: format)
     }
+    if let mp3 = try Mp3Decoder(bytes, format: format) { return mp3 }
     return try AudioFileDecoder(bytes, format: format)
 }
 
@@ -51,7 +52,8 @@ final class AudioFileDecoder: SongDecoder {
     private(set) var duration: Double = 0
     private var readError: Error?
 
-    init(_ bytes: Bytes, format: AVAudioFormat) throws {
+    /// `hint` names the type when the bytes do not start as the file does.
+    init(_ bytes: Bytes, format: AVAudioFormat, hint: AudioFileTypeID = 0) throws {
         self.bytes = bytes
         let me = Unmanaged.passUnretained(self).toOpaque()
         var st = AudioFileOpenWithCallbacks(
@@ -71,7 +73,7 @@ final class AudioFileDecoder: SongDecoder {
             { client in
                 Unmanaged<AudioFileDecoder>.fromOpaque(client).takeUnretainedValue().bytes.size
             },
-            nil, 0, &file)
+            nil, hint, &file)
         guard st == noErr, let file else { throw readError ?? DecodeError("AudioFileOpen", st) }
         st = ExtAudioFileWrapAudioFileID(file, false, &ext)
         guard st == noErr, let ext else { throw DecodeError("ExtAudioFileWrap", st) }
