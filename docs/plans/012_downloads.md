@@ -1,6 +1,6 @@
 # 012 — Downloads on Android
 
-**Status:** `MERGED` — in 0.2.0 on the owner's phone since 2026-10-07; no GitHub release yet
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.2.0 on the owner's phone since 2026-10-07
 **Started:** 2026-10-07
 
 ## Problem

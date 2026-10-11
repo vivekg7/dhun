@@ -6,11 +6,11 @@ clients for Android (full-featured, primary), macOS and the web — with
 Musicolet, the offline Android player, rebuilt for a music collection that
 lives on a NAS.
 
-**Status:** the server runs on the owner's NAS (`server-v0.1.5`). It covers the library
+**Status:** the server runs on the owner's NAS (`server-v0.13.0`). It covers the library
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
 Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
-runs on the owner's phone as 0.11.0, with downloads, playlist editing, the
+runs on the owner's phone as 0.13.0, with downloads, playlist editing, the
 sleep timer, lyrics, speed and pitch, hand-off, settings grouped as in
 Musicolet, a song cache, playback that waits out a network drop
 ([plan 019](docs/plans/019_networking_and_caching.md)), Musicolet's
@@ -21,14 +21,16 @@ and, for the admin, managing family members
 ([plan 023](docs/plans/023_users_on_android.md)), and songs already on the
 phone beside the NAS songs ([plan 025](docs/plans/025_phone_local_songs.md)),
 playable without signing in, with downloads kept through a sign-out
-([plan 026](docs/plans/026_without_an_account.md));
-there is no GitHub release yet. The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
+([plan 026](docs/plans/026_without_an_account.md)).
+The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
 control, a floating mini player and Open With from Finder; 0.13.0 is in
-daily use on the owner's Mac, with no GitHub release yet. The web client
+daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone.
+online-only, on a computer or a phone. All three are in the
+[0.13.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.13.0):
+the APK, the Mac app and the server image.
 
 ## Run the server
 
@@ -125,6 +127,11 @@ Apple account or certificate), and archives it in `local/` as
 copies it to `/Applications`. The version is in `macos/Info.plist`. On a
 Mac other than the one that built it, allow the first launch under System
 Settings → Privacy & Security.
+
+A GitHub release is tagged `vX.Y.Z` on the commit the version came from,
+beside its `server-vX.Y.Z`, and carries the APK and the Mac zip with their
+SHA-256 sums; the server ships as its image on ghcr.io. The R8 mapping stays
+in `local/`: it is only for reading the owner's crash reports.
 
 - What it must do — [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
 - Why it is built this way — [`docs/plans/`](docs/plans/README.md)

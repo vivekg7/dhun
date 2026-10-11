@@ -1,6 +1,6 @@
 # 025 — Phone-local songs on Android
 
-**Status:** `MERGED` — in 0.9.0 on the owner's phone (2026-10-09); checked on the emulator
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.9.0 on the owner's phone (2026-10-09); checked on the emulator
 **Started:** 2026-10-08
 
 ## Problem

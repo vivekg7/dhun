@@ -1,6 +1,6 @@
 # 011 — The Android app: look, structure and first build
 
-**Status:** `MERGED` — the first build is on `main` and on the owner's phone against the NAS (installed by hand); no GitHub release yet
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); the first build is on `main` and on the owner's phone against the NAS (installed by hand)
 **Started:** 2026-10-07
 
 ## Problem

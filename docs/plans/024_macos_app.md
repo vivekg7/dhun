@@ -1,6 +1,6 @@
 # 024 — The macOS app, at the Android app's level
 
-**Status:** `MERGED` — 0.1.0 installed on the owner's Mac (2026-10-08) and in daily use; no GitHub release until it has had a few weeks of testing
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); 0.1.0 installed on the owner's Mac (2026-10-08) and in daily use
 **Started:** 2026-10-08
 
 ## Problem

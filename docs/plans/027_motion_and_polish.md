@@ -1,6 +1,6 @@
 # 027 — Motion and polish on Android
 
-**Status:** `MERGED` — in 0.11.0 on the owner's phone (2026-10-09)
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.11.0 on the owner's phone (2026-10-09)
 **Started:** 2026-10-09
 
 ## Problem

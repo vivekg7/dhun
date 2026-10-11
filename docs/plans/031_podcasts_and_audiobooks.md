@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `MERGED` — 0.13.0 on the owner's phone and Mac; server and web in `server-v0.13.0` on the NAS (2026-10-12)
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); 0.13.0 on the owner's phone and Mac; server and web in `server-v0.13.0` on the NAS (2026-10-12)
 **Started:** 2026-10-10
 
 ## Problem

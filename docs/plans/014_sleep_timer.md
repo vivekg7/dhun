@@ -1,6 +1,6 @@
 # 014 — The sleep timer on Android
 
-**Status:** `MERGED` — in 0.3.0 on the owner's phone; the stepper dialog and
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the stepper dialog and
 the menu entry in 0.4.0
 **Started:** 2026-10-07
 

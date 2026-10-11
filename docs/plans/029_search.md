@@ -1,6 +1,6 @@
 # 029 — Search that forgives spelling, scripts and word order
 
-**Status:** `MERGED` — Mac 0.12.0 and phone 0.12.1 on the owner's devices; server side in `server-v0.12.0` on the NAS (2026-10-10)
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); Mac 0.12.0 and phone 0.12.1 on the owner's devices; server side in `server-v0.12.0` on the NAS (2026-10-10)
 **Started:** 2026-10-10
 
 ## Problem

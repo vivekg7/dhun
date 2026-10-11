@@ -1,6 +1,6 @@
 # 016 — Play speed and pitch on Android
 
-**Status:** `MERGED` — in 0.3.0 on the owner's phone; the settings cap on
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the settings cap on
 the NAS in `server-v0.1.3`; tested live there on 2026-10-07
 **Started:** 2026-10-07
 

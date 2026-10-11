@@ -1,6 +1,6 @@
 # 013 — Editing playlists on Android
 
-**Status:** `MERGED` — server side (`ref` in `/library`) on the NAS in `server-v0.1.2`; the app in 0.3.0 on the owner's phone
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); server side (`ref` in `/library`) on the NAS in `server-v0.1.2`; the app in 0.3.0 on the owner's phone
 **Started:** 2026-10-07
 
 ## Problem

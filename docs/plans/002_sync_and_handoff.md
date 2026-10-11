@@ -1,6 +1,6 @@
 # 002 — Sync, offline and hand-off
 
-**Status:** `MERGED` — operation-log sync on the NAS ([006](006_api_and_sync.md));
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); operation-log sync on the NAS ([006](006_api_and_sync.md));
 resume hand-off in the Android app on the owner's phone
 ([017](017_handoff.md)); live transfer after v1
 **Started:** 2026-10-06

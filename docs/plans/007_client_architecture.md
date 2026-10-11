@@ -1,6 +1,6 @@
 # 007 — Client architecture and repo layout
 
-**Status:** `MERGED` — Android built ([011](011_android_app.md)); macOS replaced by [024](024_macos_app.md), web by [030](030_web_client.md)
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); Android built ([011](011_android_app.md)); macOS replaced by [024](024_macos_app.md), web by [030](030_web_client.md)
 **Started:** 2026-10-06
 
 ## Problem
