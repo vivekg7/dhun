@@ -28,6 +28,7 @@ type SongFile struct {
 	FolderArt      string // sibling cover file name, if any
 	Lrc            bool
 	Transcript     string // sibling transcript file name, if any (plan 031)
+	Spoken         bool   // a podcast episode or an audiobook's file
 }
 
 func abs(root, rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
@@ -123,7 +124,7 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 			for _, e := range dir {
 				if strings.ToLower(e.Name()) == want {
 					if data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), e.Name()))); err == nil {
-						return makeLyrics("lrc", string(data)), nil
+						return makeLyrics("lrc", spokenLRC(f, string(data))), nil
 					}
 				}
 			}
@@ -136,7 +137,11 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 		}
 		for _, k := range []string{taglib.Lyrics, "USLT", "UNSYNCEDLYRICS"} {
 			if v := m[k]; len(v) > 0 && strings.TrimSpace(v[0]) != "" {
-				return embeddedLyrics(v[0]), nil
+				l := embeddedLyrics(v[0])
+				if l.Source == "embedded" {
+					l = makeLyrics(l.Source, spokenLRC(f, l.Text))
+				}
+				return l, nil
 			}
 		}
 	}

@@ -286,11 +286,14 @@ in the catalogue.
     and a converter. It would replace Core Audio's reading, gapless
     trimming included, for every MP3, to fix the one case a slice
     covers.
-- **Found, not fixed, on the server: a transcript in an LRC lyrics tag
-  repeats its lines.** Some episodes carry YouTube's automatic captions
-  as LRC in the lyrics tag, each line repeated as the captions scroll.
-  The server collapses them in a `.vtt` file but sends a tag that is
-  already LRC as it is, so every app shows the repeats.
+- **A transcript already in LRC repeated its lines.** Some episodes
+  carry YouTube's automatic captions as a `.lrc` file beside them,
+  converted by FFmpeg, so each line came three times with a blank line
+  between, as the captions scroll. The server collapsed them only in a
+  `.vtt` file. It now keeps each line once in an episode's or a book's
+  LRC too, from the file or the lyrics tag, by the same rule (a line
+  among the last three is not written again). A song's LRC is sent as it
+  is, since a chorus may repeat a line straight after itself.
 
 ## Changed during implementation: web (2026-10-11)
 

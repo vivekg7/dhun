@@ -62,7 +62,7 @@ var vttTag = regexp.MustCompile(`<[^>]*>`)
 // between, so a line seen in the last few is not written again.
 func vttToLRC(text string) string {
 	var b strings.Builder
-	var recent []string
+	var seen recentLines
 	for _, block := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n") {
 		lines := strings.Split(strings.TrimSpace(block), "\n")
 		at := -1
@@ -82,26 +82,62 @@ func vttToLRC(text string) string {
 		for _, l := range lines[at+1:] {
 			l = strings.Join(strings.Fields(vttTag.ReplaceAllString(l, "")), " ")
 			l = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&nbsp;", " ").Replace(l)
-			if l == "" || contains(recent, l) {
-				continue
-			}
-			b.WriteString(lrcTime(start) + l + "\n")
-			recent = append(recent, l)
-			if len(recent) > 3 {
-				recent = recent[1:]
+			if seen.fresh(l) {
+				b.WriteString(lrcTime(start) + l + "\n")
 			}
 		}
 	}
 	return b.String()
 }
 
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
+// recentLines is the last few lines of a transcript, for dropping a line
+// that scrolling captions repeat.
+type recentLines []string
+
+// fresh says whether l is worth writing: not empty, and not among the last
+// three lines written. It remembers l when it is.
+func (r *recentLines) fresh(l string) bool {
+	if l == "" {
+		return false
+	}
+	for _, x := range *r {
+		if x == l {
+			return false
 		}
 	}
-	return false
+	*r = append(*r, l)
+	if len(*r) > 3 {
+		*r = (*r)[1:]
+	}
+	return true
+}
+
+var lrcLine = regexp.MustCompile(`^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\])(.*)$`)
+
+// spokenLRC drops from an episode's or a book's LRC the repeats and blank
+// lines of scrolling captions. YouTube's automatic captions converted to
+// LRC (by FFmpeg, say) write each line three times, as the vtt does, with
+// a blank line between; a song's LRC is left as it is, since a chorus may
+// well repeat a line straight after itself.
+func spokenLRC(f SongFile, text string) string {
+	if !f.Spoken {
+		return text
+	}
+	var b strings.Builder
+	var seen recentLines
+	for _, l := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		m := lrcLine.FindStringSubmatch(l)
+		if m == nil {
+			if strings.TrimSpace(l) != "" {
+				b.WriteString(l + "\n") // a header such as [ar:…]
+			}
+			continue
+		}
+		if words := strings.TrimSpace(m[2]); seen.fresh(words) {
+			b.WriteString(m[1] + words + "\n")
+		}
+	}
+	return b.String()
 }
 
 // mdTurn is one turn in a .transcript.md: **Speaker** (01:02:03): words.

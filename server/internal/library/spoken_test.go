@@ -53,6 +53,33 @@ Q&amp;A
 	}
 }
 
+// YouTube's automatic captions converted to an LRC file scroll as the vtt
+// does: each line three times, a blank between. An episode keeps each line
+// once, at the time it first appears; a song keeps its LRC as written, since
+// a chorus may repeat a line straight after itself.
+func TestRollingCaptionsInAnLrcKeepEachLineOnce(t *testing.T) {
+	dir := t.TempDir()
+	lrc := "[re:Lavf62.3.100]\n\n" +
+		"[00:00.24]Hello and welcome. In this episode\n" +
+		"[00:02.87]Hello and welcome. In this episode\n[00:02.87] \n" +
+		"[00:02.88]Hello and welcome. In this episode\n[00:02.88]we read a book.\n" +
+		"[00:05.91]we read a book.\n[00:05.91] \n[00:05.92]we read a book.\n" +
+		"[00:05.92]Hey\n[00:07.00]Hey\n"
+	if err := os.WriteFile(filepath.Join(dir, "e.lrc"), []byte(lrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := SongFile{Root: dir, Path: "e.mp3", Lrc: true, Spoken: true}
+	want := "[re:Lavf62.3.100]\n[00:00.24]Hello and welcome. In this episode\n" +
+		"[00:02.88]we read a book.\n[00:05.92]Hey\n"
+	if l, err := ReadLyrics(f); err != nil || l.Text != want || !l.Synced {
+		t.Errorf("episode: got %+v, %v\nwant\n%s", l, err, want)
+	}
+	f.Spoken = false
+	if l, err := ReadLyrics(f); err != nil || l.Text != lrc {
+		t.Errorf("a song's lyrics changed: %+v, %v", l, err)
+	}
+}
+
 func TestMarkdownTranscriptKeepsSpeakers(t *testing.T) {
 	md := "# #400 – Elon Musk\n\n## War and human nature\n\n**Lex Fridman** (00:00:00): The following is a conversation.\n\n**Elon Musk** (01:02:03): Yeah.\n"
 	want := "[00:00.00]Lex Fridman: The following is a conversation.\n[62:03.00]Elon Musk: Yeah.\n"

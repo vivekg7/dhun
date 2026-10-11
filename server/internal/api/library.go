@@ -189,6 +189,7 @@ func (s *Server) songFile(r *http.Request) (library.SongFile, int64, error) {
 		return f, 0, errNotFound("song")
 	}
 	f.Root = s.Scanner.RootOf(kind)
+	f.Spoken = kind != "music"
 	return f, version, err
 }
 

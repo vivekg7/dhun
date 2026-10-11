@@ -241,7 +241,9 @@ paths:
       summary: A song's lyrics, as stored
       description: |
         The sibling .lrc file if there is one, else embedded lyrics.
-        Clients parse LRC timestamps themselves.
+        Clients parse LRC timestamps themselves. For a podcast episode or
+        an audiobook, the repeats and blank lines of scrolling captions
+        are dropped, keeping each line once, at its first time.
       security: [{ bearer: [] }, { cookie: [] }]
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
