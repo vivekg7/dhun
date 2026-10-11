@@ -67,3 +67,13 @@ private func song(_ id: Int, _ path: String, kind: String = "", group: String = 
     #expect(Playback.nextChapter(starts, 59_900) == 120_000)
     #expect(Playback.nextChapter(starts, 130_000) == nil, "the last chapter goes on to the next file")
 }
+
+/// One mistaken press of Previous restarted a book half heard, and its place was lost.
+@Test func previousNeverRestartsALongFile() {
+    #expect(
+        Playback.previousChapter([0], 5 * 3_600_000, window: .max) == nil, "no chapters: the previous file")
+    #expect(
+        Playback.previousChapter([0, 60_000], 90_000, window: .max) == 0,
+        "chapters: the one before, not this one's start")
+    #expect(Playback.previousChapter([0], 90_000, window: 3000) == 0, "a song still restarts")
+}

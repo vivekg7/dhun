@@ -300,8 +300,10 @@ struct Commands: SwiftUI.Commands {
         CommandMenu("Controls") {
             Button(app.playback.isPlaying ? "Pause" : "Play") { app.playback.toggle() }
                 .keyboardShortcut(.space, modifiers: [])
-            Button("Next") { app.playback.next() }.keyboardShortcut(.rightArrow, modifiers: .command)
-            Button("Previous") { app.playback.previous() }.keyboardShortcut(.leftArrow, modifiers: .command)
+            Button("Next") { app.playback.next(onScreen: true) }.keyboardShortcut(
+                .rightArrow, modifiers: .command)
+            Button("Previous") { app.playback.previous(onScreen: true) }.keyboardShortcut(
+                .leftArrow, modifiers: .command)
             Divider()
             Button("Shuffle") { app.playback.toggleShuffle() }.keyboardShortcut(
                 "s", modifiers: [.command, .option])

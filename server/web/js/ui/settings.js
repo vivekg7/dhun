@@ -125,6 +125,8 @@ export function settingsPage() {
     ];
     const [minutes, setMinutes] = synced("longFiles.minMinutes", 15, Number);
     const [resume, setResume] = synced("longFiles.resume", "auto");
+    const [restart, setRestart] = synced("previous.restart", true, (v) => v === "true");
+    const [longPrevious, setLongPrevious] = synced("longFiles.previous", "keep");
     const [autoRemove, setAutoRemove] = synced("listenLater.autoRemove", true);
     const [percent, setPercent] = synced("listenLater.finishedPercent", 90, Number);
     const palette = app.prefs.palette ?? 0;
@@ -170,10 +172,29 @@ export function settingsPage() {
       ),
       h(
         "section.group",
+        h("h2", "Buttons"),
+        h(
+          "p.groupnote",
+          "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one.",
+        ),
+        row(
+          "Previous",
+          select(
+            [
+              [true, "Restart the song first"],
+              [false, "Always the previous song"],
+            ],
+            restart !== false,
+            setRestart,
+          ),
+        ),
+      ),
+      h(
+        "section.group",
         h("h2", "Long files"),
         h(
           "p.groupnote",
-          "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices.",
+          "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back.",
         ),
         row(
           "Continue long files",
@@ -193,6 +214,18 @@ export function settingsPage() {
             ],
             resume,
             setResume,
+          ),
+        ),
+        row(
+          "Previous in one",
+          select(
+            [
+              ["keep", "Previous file, keep my place"],
+              ["ignore", "Ignore media keys and headsets"],
+              ["songs", "Same as songs"],
+            ],
+            longPrevious,
+            setLongPrevious,
           ),
         ),
       ),

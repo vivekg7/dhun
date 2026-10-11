@@ -20,13 +20,13 @@ function transport(compact = false) {
   const chapters = iconButton("chapters", "Chapters and notes", () =>
     popover(chapters, chaptersPanel),
   );
-  const prev = iconButton("previous", "Previous", () => p.previous());
+  const prev = iconButton("previous", "Previous", () => p.previous(true));
   const play = h(
     "button.play",
     { type: "button", onclick: () => p.toggle() },
     icon("play"),
   );
-  const next = iconButton("next", "Next", () => p.next());
+  const next = iconButton("next", "Next", () => p.next(true));
   const repeat = iconButton("repeat", "Repeat", () => p.cycleRepeat(), "toggle");
   const el = h(
     "div.transport",
@@ -472,7 +472,7 @@ export function miniPlayer() {
     type: "button",
     onclick: (e) => (e.stopPropagation(), p.toggle()),
   });
-  const next = iconButton("next", "Next", (e) => (e.stopPropagation(), p.next()));
+  const next = iconButton("next", "Next", (e) => (e.stopPropagation(), p.next(true)));
   const bar = h("div.miniprogress");
   const el = h(
     "div.mini",
@@ -541,7 +541,7 @@ export function nowPage() {
     "More",
     (e) => p.current && menuAt(e.currentTarget, songMenu([p.current]), p.current.title),
   );
-  swipe(stage, (dir) => (dir < 0 ? p.next() : p.previous()));
+  swipe(stage, (dir) => (dir < 0 ? p.next(true) : p.previous(true)));
   const el = h(
     "section.page.nowpage",
     h(

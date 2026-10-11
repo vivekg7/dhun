@@ -610,7 +610,7 @@ export class Shell {
       !typing
     ) {
       e.preventDefault();
-      e.key === "ArrowLeft" ? ctx.playback.previous() : ctx.playback.next();
+      e.key === "ArrowLeft" ? ctx.playback.previous(true) : ctx.playback.next(true);
     } else if (
       (e.key === "/" && !typing && !mod) ||
       (mod && e.key.toLowerCase() === "k")
@@ -655,9 +655,9 @@ export class Shell {
           sub,
           h(
             "div.transport",
-            iconButton("previous", "Previous", () => p.previous()),
+            iconButton("previous", "Previous", () => p.previous(true)),
             play,
-            iconButton("next", "Next", () => p.next()),
+            iconButton("next", "Next", () => p.next(true)),
           ),
         ),
       ),

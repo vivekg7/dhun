@@ -100,9 +100,10 @@ export function nextChapter(starts, pos) {
 }
 
 /**
- * Where Previous goes: back to the start of this chapter, or, within
- * `window` ms of it, to the one before, as Previous does with songs; null for
- * the song's own Previous (no chapters, or the first one).
+ * Where Previous goes in a file whose chapters start at `starts` (ms): back
+ * to the start of this chapter, or, within `window` ms of it, to the one
+ * before; null for the previous file. A file without chapters is one
+ * starting at 0, and a window of Infinity never restarts it.
  */
 export function previousChapter(starts, pos, window) {
   let i = -1;

@@ -110,6 +110,19 @@ struct PlaybackSettings: View {
     var body: some View {
         Form {
             SwiftUI.Section {
+                Picker("Previous", selection: synced("previous.restart", true)) {
+                    Text("Restart the song first").tag(true)
+                    Text("Always the previous song").tag(false)
+                }
+            } header: {
+                Text("Buttons")
+            } footer: {
+                Text(
+                    "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one."
+                )
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            SwiftUI.Section {
                 Picker("Continue long files", selection: synced("longFiles.minMinutes", 15)) {
                     ForEach([5, 10, 15, 20, 30, 60], id: \.self) { Text("\($0) minutes and longer").tag($0) }
                 }
@@ -118,11 +131,16 @@ struct PlaybackSettings: View {
                     Text("Ask").tag("ask")
                     Text("Start over").tag("off")
                 }
+                Picker("Previous in one", selection: synced("longFiles.previous", "keep")) {
+                    Text("Previous file, keep my place").tag("keep")
+                    Text("Ignore media keys and headsets").tag("ignore")
+                    Text("Same as songs").tag("songs")
+                }
             } header: {
                 Text("Long files")
             } footer: {
                 Text(
-                    "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices."
+                    "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back."
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }

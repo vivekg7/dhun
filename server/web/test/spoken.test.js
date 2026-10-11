@@ -94,3 +94,18 @@ test("Previous goes to this chapter, then the one before", () => {
     "the last chapter goes on to the next file",
   );
 });
+
+test("Previous never restarts a long file", () => {
+  // One mistaken press restarted a book half heard, and its place was lost.
+  assert.equal(
+    previousChapter([0], 5 * 3_600_000, Infinity),
+    null,
+    "no chapters: the previous file",
+  );
+  assert.equal(
+    previousChapter([0, 60_000], 90_000, Infinity),
+    0,
+    "chapters: the one before, not this one's start",
+  );
+  assert.equal(previousChapter([0], 90_000, 3000), 0, "a song still restarts");
+});

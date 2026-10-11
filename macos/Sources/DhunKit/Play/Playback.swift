@@ -161,9 +161,12 @@ public final class Playback {
         setPlaying(false)
     }
 
-    /// The next chapter of a file that has them (plan 031), else the next song.
-    public func next() {
-        if let at = Playback.nextChapter(chapterStarts, Int(position * 1000)) {
+    /// The next chapter of a file that has them (plan 031), else the next
+    /// song. By chapter only `onScreen`: media keys, AirPods and Control
+    /// Center go to the next file, so a press miscounted by buds never moves
+    /// the place in a book (plan 009).
+    public func next(onScreen: Bool) {
+        if onScreen, let at = Playback.nextChapter(chapterStarts, Int(position * 1000)) {
             return seek(to: Double(at) / 1000)
         }
         guard let i = currentIndex, let n = nextIndex(after: i, repeat: repeatMode == "queue") else { return }
@@ -171,18 +174,26 @@ public final class Playback {
     }
 
     /// Back to the start of the song, or to the one before within its first
-    /// three seconds; by chapter in a file that has them.
-    public func previous() {
-        guard let i = currentIndex else { return }
-        if let at = Playback.previousChapter(chapterStarts, Int(position * 1000), window: 3000) {
+    /// three seconds; always the one before with "previous.restart" off. In a
+    /// long file never back to its start ("longFiles.previous"): the restart
+    /// would be saved as the place to resume, and the place lost to one
+    /// mistaken press. It goes to the previous file instead, which keeps its
+    /// place, or does nothing from media keys. By chapter only `onScreen`, as Next.
+    public func previous(onScreen: Bool) {
+        guard let i = currentIndex, let s = current else { return }
+        let long = app.setting("longFiles.previous", "keep")
+        let keep = isLong(s) && long != "songs"
+        if keep && !onScreen && long == "ignore" { return }
+        let restart = !keep && app.setting("previous.restart", true)
+        let starts = onScreen && !chapterStarts.isEmpty ? chapterStarts : [0]
+        if let at = Playback.previousChapter(starts, Int(position * 1000), window: restart ? 3000 : .max) {
             return seek(to: Double(at) / 1000)
         }
-        if position > 3 {
+        if let p = previousIndex(before: i) {
+            jump(to: p, end: "previous")
+        } else if restart {
             seek(to: 0)
-            return
         }
-        guard let p = previousIndex(before: i) else { return seek(to: 0) }
-        jump(to: p, end: "previous")
     }
 
     private var chapterStarts: [Int] { current?.chapters.map(\.startMs) ?? [] }
@@ -194,9 +205,10 @@ public final class Playback {
         starts.first { $0 > pos + 1000 }
     }
 
-    /// Where Previous goes: back to the start of this chapter, or, within
-    /// `window` of it, to the one before, as Previous does with songs; nil for
-    /// the song's own Previous (no chapters, or the first one).
+    /// Where Previous goes in a file whose chapters start at `starts`: back to
+    /// the start of this chapter, or, within `window` of it, to the one
+    /// before; nil for the previous file. A file without chapters is one
+    /// starting at 0, and a window of `.max` never restarts it.
     nonisolated public static func previousChapter(_ starts: [Int], _ pos: Int, window: Int) -> Int? {
         guard let i = starts.lastIndex(where: { $0 <= pos }) else { return nil }
         if pos - starts[i] > window { return starts[i] }

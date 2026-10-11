@@ -157,7 +157,7 @@ struct Transport: View {
                 .accessibilityValue(p.shuffle ? "On" : "Off")
             }
             Button {
-                p.previous()
+                p.previous(onScreen: true)
             } label: {
                 Image(systemName: "backward.fill")
             }.help("Previous").accessibilityLabel("Previous")
@@ -173,7 +173,7 @@ struct Transport: View {
             .help(p.isPlaying ? "Pause" : "Play")
             .accessibilityLabel(p.isPlaying ? "Pause" : "Play")
             Button {
-                p.next()
+                p.next(onScreen: true)
             } label: {
                 Image(systemName: "forward.fill")
             }.help("Next").accessibilityLabel("Next")

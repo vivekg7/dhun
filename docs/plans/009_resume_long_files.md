@@ -118,4 +118,4 @@ already gone by the time it is noticed, in a pocket).
 2. Android: the behaviour above, and the two settings in the app's settings.
    Built ([011](011_android_app.md)).
 3. macOS and web: the same, with the settings read from the sync.
-4. Previous: Android built; macOS and web to follow.
+4. Previous: built on Android, macOS and the web.

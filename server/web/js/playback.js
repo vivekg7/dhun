@@ -192,9 +192,16 @@ export class Playback extends EventTarget {
     this.setPlaying(false);
   }
 
-  /** The next chapter of a file that has them (plan 031), else the next song. */
-  next() {
-    const at = nextChapter(this.chapterStarts, Math.round(this.position * 1000));
+  /**
+   * The next chapter of a file that has them (plan 031), else the next song.
+   * By chapter only `onScreen`: media keys, headsets and the lock screen go
+   * to the next file, so a press miscounted by buds never moves the place in
+   * a book (plan 009).
+   */
+  next(onScreen) {
+    const at = onScreen
+      ? nextChapter(this.chapterStarts, Math.round(this.position * 1000))
+      : null;
     if (at != null) return this.seek(at / 1000);
     const n = this.nextIndex(this.currentIndex, this.repeat === "queue");
     if (n >= 0) this.jump(n, "skipped");
@@ -202,21 +209,30 @@ export class Playback extends EventTarget {
 
   /**
    * Back to the start of the song, or to the one before within its first
-   * three seconds; by chapter in a file that has them.
+   * three seconds; always the one before with "previous.restart" off. In a
+   * long file never back to its start ("longFiles.previous"): the restart
+   * would be saved as the place to resume, and the place lost to one
+   * mistaken press. It goes to the previous file instead, which keeps its
+   * place, or does nothing from media keys. By chapter only `onScreen`, as Next.
    */
-  previous() {
+  previous(onScreen) {
     const i = this.currentIndex;
-    if (i < 0) return;
+    const s = this.current;
+    if (i < 0 || !s) return;
+    const long = this.app.setting("longFiles.previous", "keep");
+    const keep = this.isLong(s) && long !== "songs";
+    if (keep && !onScreen && long === "ignore") return;
+    const restart = !keep && this.app.setting("previous.restart", true) !== false;
+    const starts = onScreen && this.chapterStarts.length ? this.chapterStarts : [0];
     const at = previousChapter(
-      this.chapterStarts,
+      starts,
       Math.round(this.position * 1000),
-      3000,
+      restart ? 3000 : Infinity,
     );
     if (at != null) return this.seek(at / 1000);
-    if (this.position > 3) return this.seek(0);
     const p = this.previousIndex(i);
-    if (p < 0) return this.seek(0);
-    this.jump(p, "previous");
+    if (p >= 0) this.jump(p, "previous");
+    else if (restart) this.seek(0);
   }
 
   get chapterStarts() {
@@ -1228,8 +1244,8 @@ export class Playback extends EventTarget {
     };
     on("play", () => this.play());
     on("pause", () => this.pause());
-    on("previoustrack", () => this.previous());
-    on("nexttrack", () => this.next());
+    on("previoustrack", () => this.previous(false));
+    on("nexttrack", () => this.next(false));
     on("seekto", (d) => this.seek(d.seekTime));
     on("seekbackward", (d) => this.seek(this.position - (d.seekOffset ?? 10)));
     on("seekforward", (d) => this.seek(this.position + (d.seekOffset ?? 10)));

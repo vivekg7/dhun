@@ -14,8 +14,12 @@ final class MediaKeys {
         c.playCommand.addTarget { [weak self] _ in self?.run { $0.play() } ?? .commandFailed }
         c.pauseCommand.addTarget { [weak self] _ in self?.run { $0.pause() } ?? .commandFailed }
         c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.run { $0.toggle() } ?? .commandFailed }
-        c.nextTrackCommand.addTarget { [weak self] _ in self?.run { $0.next() } ?? .commandFailed }
-        c.previousTrackCommand.addTarget { [weak self] _ in self?.run { $0.previous() } ?? .commandFailed }
+        c.nextTrackCommand.addTarget { [weak self] _ in
+            self?.run { $0.next(onScreen: false) } ?? .commandFailed
+        }
+        c.previousTrackCommand.addTarget { [weak self] _ in
+            self?.run { $0.previous(onScreen: false) } ?? .commandFailed
+        }
         c.changePlaybackPositionCommand.addTarget { [weak self] e in
             guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             return self?.run { $0.seek(to: e.positionTime) } ?? .commandFailed
