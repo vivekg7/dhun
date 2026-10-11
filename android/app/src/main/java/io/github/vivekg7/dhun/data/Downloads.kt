@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
+import android.os.storage.StorageManager
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.play.DownloadService
 import kotlinx.coroutines.CancellationException
@@ -170,8 +171,9 @@ class Downloads(
                 return update(State.Full, songs.size, used, have, need = used + rest - limit)
             }
             val dir = dir() ?: return update(State.NoSpace, songs.size, used, have)
-            if (dir.usableSpace < s.size + RESERVE) {
-                return update(State.NoSpace, songs.size, used, have, need = s.size + RESERVE - dir.usableSpace)
+            val room = room(dir, s.size + RESERVE)
+            if (room < s.size + RESERVE) {
+                return update(State.NoSpace, songs.size, used, have, need = s.size + RESERVE - room)
             }
             startService()
             _status.value = _status.value.copy(state = State.Downloading, current = s, progress = 0f)
@@ -308,6 +310,27 @@ class Downloads(
         val dirs = app.getExternalFilesDirs(name).filterNotNull().filter(::mounted)
         return (dirs.firstOrNull { Environment.isExternalStorageRemovable(it) } ?: dirs.firstOrNull())?.also { it.mkdirs() }
     }
+
+    /**
+     * The free bytes on [dir]'s storage. Short of [want], Android is asked to
+     * clear other apps' caches to make room, as it does for its own installs,
+     * so a phone full of them still downloads. Where it cannot (some SD
+     * cards), the free bytes are all there is.
+     */
+    private suspend fun room(
+        dir: File,
+        want: Long,
+    ): Long =
+        withContext(Dispatchers.IO) {
+            if (dir.usableSpace < want) {
+                runCatching {
+                    val sm = app.getSystemService(StorageManager::class.java)
+                    val uuid = sm.getUuidForPath(dir)
+                    if (sm.getAllocatableBytes(uuid) >= want) sm.allocateBytes(uuid, want)
+                }
+            }
+            dir.usableSpace
+        }
 
     /** Where downloads go: "SD card" or "phone", for the settings. */
     fun location(): String {

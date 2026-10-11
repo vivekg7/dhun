@@ -66,7 +66,11 @@ that often wastes data and flash.
 A storage limit, **10 GB by default**, set on the device (2, 5, 10, 20,
 50 GB or none). When the next song would go over it, or over the free
 space on the card, downloads **stop and say how much more is needed**.
-Nothing already downloaded is deleted to make room.
+Nothing already downloaded is deleted to make room. Free space counts what
+Android can clear from other apps' caches: short of room, the app asks
+Android to clear them, as it does for its own installs, and stops only if
+that is not enough. 200 MB is always left free, so a full card does not
+break the rest of the phone.
 
 Rejected: **evicting older downloads**, which REQUIREMENTS allowed: the
 album you downloaded for a trip should not disappear because you downloaded
