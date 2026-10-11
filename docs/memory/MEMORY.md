@@ -1,1 +1,2 @@
 - [TagLib reads by extension](taglib-reads-by-extension.md) — wrong extension reads as untagged; MP3 lyrics are USLT
+- [Test account](test-account.md) — sign in with local/test_account to test any app, never the owner's account
