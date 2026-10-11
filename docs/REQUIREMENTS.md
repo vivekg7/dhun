@@ -2,8 +2,8 @@
 
 What the system must do. Decided items come from the owner. The reasoning
 behind each architectural decision is in a numbered plan under
-[`plans/`](plans/README.md). The [v1 scope](#v1-scope) is still a proposal,
-and anything undecided is under [Open questions](#open-questions).
+[`plans/`](plans/README.md). The [v1 scope](#v1-scope) is confirmed, and
+anything undecided is under [Open questions](#open-questions).
 
 ## Context
 
@@ -261,7 +261,8 @@ user (example: Downloads 10 GB, Cache 3 GB).
 
 ## v1 scope
 
-Proposed. Awaiting the owner's confirmation.
+Confirmed by the owner (2026-10-12), with all of it built and in daily use
+since 0.13.0. Anything else waits for a later release.
 
 **Backend (NAS)**
 
