@@ -83,8 +83,11 @@ class Reorder<T> internal constructor(
 
     /**
      * For each row, inside `items { }`: the dragged one on top, lifted and
-     * under the finger; the others slide to their new places.
+     * under the finger; the others slide to their new places. Not an
+     * extension on Modifier, as lint asks: `animateItem` exists only in a
+     * lazy list's item scope.
      */
+    @Suppress("ModifierFactoryExtensionFunction")
     fun LazyItemScope.row(key: Any): Modifier =
         if (key == this@Reorder.key) {
             Modifier.zIndex(1f).graphicsLayer {
