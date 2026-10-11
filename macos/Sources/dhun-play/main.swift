@@ -12,6 +12,7 @@ import AVFoundation
 import Accelerate
 import DhunKit
 import Foundation
+import Synchronization
 
 let args = Array(CommandLine.arguments.dropFirst())
 guard let mode = args.first else {
@@ -109,7 +110,8 @@ if let server {
     sem.wait()
 }
 
-func bytes(_ path: String) throws -> Bytes {
+// Called from the engine's thread for the next file, as well as from here.
+@Sendable func bytes(_ path: String) throws -> Bytes {
     if let server, let size = sizes[path] {
         let tmp = scratch.appendingPathComponent(UUID().uuidString + ".part")
         var req = URLRequest(url: server.appendingPathComponent("api/v1/stream/\(path)"))
@@ -123,7 +125,7 @@ func bytes(_ path: String) throws -> Bytes {
     return try FileBytes(URL(fileURLWithPath: path))
 }
 
-func name(_ i: Int) -> String { URL(fileURLWithPath: files[i]).lastPathComponent }
+@Sendable func name(_ i: Int) -> String { URL(fileURLWithPath: files[i]).lastPathComponent }
 
 switch mode {
 case "check":
@@ -231,10 +233,9 @@ case "seek":
 
 case "play":
     let engine = Engine()
-    var nextIndex = 1
-    let lock = NSLock()
+    let nextIndex = Mutex(1)
     engine.next = { _ in
-        lock.withLock {
+        nextIndex.withLock { nextIndex in
             while nextIndex < files.count {
                 let n = nextIndex
                 nextIndex += 1
