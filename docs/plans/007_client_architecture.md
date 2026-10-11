@@ -53,6 +53,14 @@ incoming one at its saved song and position. Gapless playback works within a
 queue, which is where it matters. "End of queue → jump to the next queue"
 (Musicolet, after v1) is the same switch, triggered on completion.
 
+**A wired headset's button is counted by the app** (owner, 2026-10-11):
+one press plays or pauses, two go to the next song, three to the
+previous. Media3 counts only to two, so a third press paused. Buds count
+their own taps and send Next or Previous. A press counts once the presses
+stop, 0.3 s after the last (Android's double-tap time), so two take a
+moment longer than with Media3's count; the notification's Play still acts
+at once.
+
 **Where audio comes from.** Each song resolves, in order, to a **Download**,
 then the **Cache** (built in [019](019_networking_and_caching.md), read
 while it is still arriving), then the **stream**. This happens in a data

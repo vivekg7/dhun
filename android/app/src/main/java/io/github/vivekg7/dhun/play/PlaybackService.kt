@@ -4,13 +4,19 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.view.KeyEvent
+import android.view.ViewConfiguration
 import androidx.annotation.OptIn
+import androidx.core.content.IntentCompat
 import androidx.media3.common.FlagSet
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -57,6 +63,7 @@ class PlaybackService : MediaSessionService() {
             MediaSession
                 .Builder(this, SleepAware(app.playback.player, app.playback.sleep))
                 .setSessionActivity(open)
+                .setCallback(HeadsetButton())
                 .setBitmapLoader(CoverLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build()))
                 .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_stat) })
@@ -135,6 +142,44 @@ private class SleepAware(
 
     /** Stops the refresh; the player itself lives on with the process ([Playback]). */
     fun close() = scope.cancel()
+}
+
+/**
+ * A wired headset's button sends each press as it comes, and the app counts
+ * them: one plays or pauses, two go to the next song, three to the previous,
+ * once the presses stop. Media3 counts only to two, so a third press paused.
+ * Buds count their own taps and send Next or Previous, which never get here.
+ * The notification's Play sends the same key, and acts at once.
+ */
+@OptIn(UnstableApi::class)
+private class HeadsetButton : MediaSession.Callback {
+    private val handler = Handler(Looper.getMainLooper())
+    private var presses = 0
+
+    override fun onMediaButtonEvent(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        intent: Intent,
+    ): Boolean {
+        val key = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java) ?: return false
+        if (key.keyCode != KeyEvent.KEYCODE_HEADSETHOOK && key.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) return false
+        if (session.isMediaNotificationController(controller)) return false
+        if (key.action == KeyEvent.ACTION_DOWN && key.repeatCount == 0) {
+            presses++
+            handler.removeCallbacksAndMessages(null)
+            handler.postDelayed({ act(session.player) }, ViewConfiguration.getDoubleTapTimeout().toLong())
+        }
+        return true
+    }
+
+    private fun act(player: Player) {
+        when (presses) {
+            1 -> Util.handlePlayPauseButtonAction(player)
+            2 -> player.seekToNext()
+            else -> player.seekToPrevious()
+        }
+        presses = 0
+    }
 }
 
 /**

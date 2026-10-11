@@ -339,8 +339,10 @@ Proposed. Awaiting the owner's confirmation.
   (an audiobook at 1.5×) that follows the user to every device. Set from
   Now playing (owner, 2026-10-07; [plan 016](plans/016_speed_and_pitch.md)).
 - Gapless playback.
-- Media notification, lock-screen and Bluetooth / headset controls. Pause on
-  disconnect, and audio focus (pause during calls).
+- Media notification, lock-screen and Bluetooth / headset controls. A
+  wired headset's button: one press plays or pauses, two go to the next
+  song, three to the previous (owner, 2026-10-11). Pause on disconnect,
+  and audio focus (pause during calls).
 - **Every listen logged** to the server, skips included, with its local
   time and how it ended, for a future recommender. A listen adds to the
   play count only when at least half the song was heard —
