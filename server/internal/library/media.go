@@ -136,7 +136,7 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 		}
 		for _, k := range []string{taglib.Lyrics, "USLT", "UNSYNCEDLYRICS"} {
 			if v := m[k]; len(v) > 0 && strings.TrimSpace(v[0]) != "" {
-				return makeLyrics("embedded", v[0]), nil
+				return embeddedLyrics(v[0]), nil
 			}
 		}
 	}
@@ -148,6 +148,16 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 		return transcriptLyrics(f.Transcript, string(data)), nil
 	}
 	return Lyrics{}, ErrNone
+}
+
+// embeddedLyrics reads a lyrics tag. The owner's podcast tool writes an
+// episode's transcript there too, as the Markdown of its .transcript.md,
+// which the tag's place in the order would otherwise show raw (plan 031).
+func embeddedLyrics(text string) Lyrics {
+	if lrc := markdownToLRC(strings.TrimPrefix(text, "\uFEFF")); lrc != "" {
+		return makeLyrics("transcript", lrc)
+	}
+	return makeLyrics("embedded", text)
 }
 
 func makeLyrics(source, text string) Lyrics {

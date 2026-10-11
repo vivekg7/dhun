@@ -55,9 +55,16 @@ Q&amp;A
 
 func TestMarkdownTranscriptKeepsSpeakers(t *testing.T) {
 	md := "# #400 – Elon Musk\n\n## War and human nature\n\n**Lex Fridman** (00:00:00): The following is a conversation.\n\n**Elon Musk** (01:02:03): Yeah.\n"
-	l := transcriptLyrics("x.transcript.md", md)
-	if want := "[00:00.00]Lex Fridman: The following is a conversation.\n[62:03.00]Elon Musk: Yeah.\n"; l.Text != want || !l.Synced || l.Source != "transcript" {
-		t.Errorf("got %+v, want text %q", l, want)
+	want := "[00:00.00]Lex Fridman: The following is a conversation.\n[62:03.00]Elon Musk: Yeah.\n"
+	// The owner's tool writes the same Markdown into the episode's lyrics
+	// tag, which is read first: it must come out converted too.
+	for _, l := range []Lyrics{transcriptLyrics("x.transcript.md", md), embeddedLyrics(md)} {
+		if l.Text != want || !l.Synced || l.Source != "transcript" {
+			t.Errorf("got %+v, want text %q", l, want)
+		}
+	}
+	if l := embeddedLyrics("**Chorus**\nLa la la"); l.Source != "embedded" || l.Text != "**Chorus**\nLa la la" {
+		t.Errorf("a song's lyrics changed: %+v", l)
 	}
 }
 

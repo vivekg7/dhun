@@ -212,6 +212,11 @@ in the catalogue.
   `pt N` at the end, which a phone cuts off. A file with no cover of its
   own shows its book's or show's. In Search, the new sections come before
   Songs, which can run to hundreds and would bury them.
+- **A transcript can be in the lyrics tag.** The owner's tool writes an
+  episode's transcript into its lyrics tag as well, as the same Markdown,
+  and a tag is read before the files beside it, so the app showed it raw.
+  The server converts Markdown turns wherever it finds them; song lyrics
+  never look like `**Name** (00:00:31): …`.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
 
