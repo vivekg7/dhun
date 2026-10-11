@@ -56,6 +56,10 @@ export function songMenu(songs, { play, extra = [] } = {}) {
   const allFav = songs.every((s) => app.isMarked("fav", s.id));
   const allLater = songs.every((s) => app.isMarked("later", s.id));
   const one = songs.length === 1 ? songs[0] : null;
+  // Podcasts and audiobooks (plan 031): played marks, and never in a playlist.
+  const spoken = songs.filter((s) => s.spoken);
+  const allPlayed = spoken.every((s) => app.isMarked("played", s.id));
+  const shelf = one && app.catalog.shelfOf(one);
   return [
     play ? { label: "Play", action: play } : null,
     { label: "Play next", action: () => playback.playNext(songs) },
@@ -80,7 +84,7 @@ export function songMenu(songs, { play, extra = [] } = {}) {
         },
       ],
     },
-    {
+    spoken.length < songs.length && {
       label: "Add to playlist",
       items: [
         ...app.playlists
@@ -99,7 +103,9 @@ export function songMenu(songs, { play, extra = [] } = {}) {
                 n,
                 songs.map((s) => s.id),
               );
-              toast(`Added ${count(songs.length)} to “${n}”`);
+              toast(
+                `Added ${count(songs.length - spoken.length)} to “${n}”${leftOut(spoken)}`,
+              );
             }
           },
         },
@@ -114,9 +120,28 @@ export function songMenu(songs, { play, extra = [] } = {}) {
       label: allLater ? "Remove from Listen Later" : "Listen Later",
       action: () => songs.forEach((s) => app.mark("later", s.id, !allLater)),
     },
+    spoken.length && {
+      label: allPlayed ? "Mark as not played" : "Mark as played",
+      action: () =>
+        spoken.forEach((s) => {
+          app.mark("played", s.id, !allPlayed);
+          // Played, its place is done with; not played, it starts from the beginning.
+          if (app.resume(s.id)) app.setResume(s.id, null);
+        }),
+    },
     one ? "-" : null,
-    one && one.album ? { label: "Go to album", action: () => nav.album(one) } : null,
-    one ? { label: "Go to artist", action: () => nav.artist(one) } : null,
+    shelf && nav.route.name !== "shelf"
+      ? {
+          label: shelf.isBook ? "Go to book" : "Go to show",
+          action: () => nav.go("shelf", shelf.id),
+        }
+      : null,
+    one && !one.spoken && one.album
+      ? { label: "Go to album", action: () => nav.album(one) }
+      : null,
+    one && !one.spoken
+      ? { label: "Go to artist", action: () => nav.artist(one) }
+      : null,
     one ? { label: "Song info", action: () => songInfo(one) } : null,
     ...(extra.length ? ["-", ...extra] : []),
   ].filter(Boolean);
@@ -124,18 +149,32 @@ export function songMenu(songs, { play, extra = [] } = {}) {
 
 /** Adds the songs and says what happened, as the phone does: songs already there are skipped. */
 export function addedTo(p, songs) {
-  const ids = songs.map((s) => s.id);
+  const spoken = songs.filter((s) => s.spoken);
+  const ids = songs.filter((s) => !s.spoken).map((s) => s.id);
+  if (!ids.length) return toast("Playlists hold music, not podcasts or audiobooks");
   const skipped = ctx.app.addToPlaylist(p, ids);
   const adding = new Set(ids).size - skipped;
   toast(
-    adding === 0
+    (adding === 0
       ? skipped === 1
         ? `Already in “${p.name}”`
         : `All ${skipped} already in “${p.name}”`
       : skipped > 0
         ? `Added ${adding} to “${p.name}” · ${skipped} already there`
-        : `Added ${count(adding)} to “${p.name}”`,
+        : `Added ${count(adding)} to “${p.name}”`) + leftOut(spoken),
   );
+}
+
+/** " · 2 episodes left out": playlists hold music only (plan 031). */
+function leftOut(spoken) {
+  if (!spoken.length) return "";
+  const n = spoken.length;
+  const what = spoken.every((s) => s.kind === "podcast")
+    ? count(n, "episode")
+    : spoken.every((s) => s.kind === "audiobook")
+      ? count(n, "audiobook file")
+      : count(n, "podcast or audiobook file", "podcast and audiobook files");
+  return ` · ${what} left out`;
 }
 
 /** What the file is, as the phone's song details show. */
@@ -186,7 +225,8 @@ async function songInfo(s) {
  * Items are `{song, key}` (a playlist's unmatched entry has no song).
  * Options: play(item, index) (default: the whole list from that song, as
  * `name` and `source`), extra(items) → more menu items, remove(items) for
- * Delete, current() → the song id to mark, numbered, track, album.
+ * Delete, current() → the song id to mark, numbered, track, album, and
+ * detail(song) → the line in the artist's place (a book's or show's page).
  */
 export class SongList {
   constructor(opts) {
@@ -274,14 +314,19 @@ export class SongList {
         ),
         h(
           "span.sub",
-          s
-            ? [s.displayArtist, this.o.album === false ? "" : s.album]
-                .filter(Boolean)
-                .join(" · ")
-            : "Not in the library",
+          s && this.o.detail
+            ? this.o.detail(s)
+            : s
+              ? [s.displayArtist, this.o.album === false ? "" : s.album]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Not in the library",
         ),
       ),
-      h("span.artist", s?.displayArtist ?? ""),
+      h(
+        "span.artist",
+        s && this.o.detail ? this.o.detail(s) : (s?.displayArtist ?? ""),
+      ),
       this.o.album === false ? null : h("span.album", s?.album ?? ""),
       h("span.time", s?.durationMs ? clock(s.durationMs / 1000) : ""),
       h(

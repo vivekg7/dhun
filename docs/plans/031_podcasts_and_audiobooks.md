@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `IN PROGRESS` — server side in `server-v0.12.6` on the NAS (2026-10-11); Android and macOS built, unreleased; web next
+**Status:** `IN PROGRESS` — server side in `server-v0.12.6` on the NAS (2026-10-11); Android, macOS and web built, unreleased; 0.13.0 next
 **Started:** 2026-10-10
 
 ## Problem
@@ -272,6 +272,27 @@ in the catalogue.
   as LRC in the lyrics tag, each line repeated as the captions scroll.
   The server collapses them in a `.vtt` file but sends a tag that is
   already LRC as it is, so every app shows the repeats.
+
+## Changed during implementation: web (2026-10-11)
+
+- **Audiobooks and Podcasts are sidebar entries** on a wide window, as on
+  the Mac, and cards on the Playlists tab at phone width, as on the phone.
+  A book's or show's page is the usual song list, with the date or "3 of
+  19" and Played or the time left where a song shows its artist.
+- **The Artists icon is now a person,** as on the phone. It was a
+  microphone, which is Podcasts' icon.
+- **The other apps' rules and fixes are here too:** the playlist rule in
+  `App`, played marks made from a listen that reaches 90%, Next and
+  Previous by chapter, the collection's speed, a resume point for every
+  spoken file but none in the last 5 seconds, and a finished listen that
+  says where the player got to.
+- **A far seek does not stall here,** unlike on the Mac: the browser asks
+  the server for the bytes at the place, so Dune resumed at 6:01 h within
+  seconds.
+- **"Waiting for the network…" stayed under a file paused while a seek
+  was still loading,** since the `playing` event it waits for never came.
+  It now ends when the data arrives (`canplay`). Long files made this
+  common; it was true of songs before.
 
 ## Rejected
 

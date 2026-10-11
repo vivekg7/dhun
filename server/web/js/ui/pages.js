@@ -188,7 +188,7 @@ function songsPage({
  * reload on an album's address, before the library is drawn), so the page
  * is made again when the library, the playlists or the queues change.
  */
-function missing(text = "No longer in the library") {
+export function missing(text = "No longer in the library") {
   let first = true;
   return {
     el: frame({ title: "", back: true, body: emptyNote(text) }),
@@ -550,6 +550,8 @@ export function playlistsPage() {
     body.replaceChildren(
       h(
         "div.cards",
+        // Podcasts and audiobooks (plan 031), each once its collection has something in it.
+        spokenCards(app),
         lists.map((l) =>
           h(
             "a.listcard",
@@ -577,6 +579,24 @@ export function playlistsPage() {
     update: draw,
     scroller: body,
   };
+}
+
+function spokenCards(app) {
+  const c = app.catalog;
+  return [
+    [c.books, "books", "Audiobooks", "book", "book"],
+    [c.shows, "shows", "Podcasts", "podcast", "show"],
+  ]
+    .filter(([all]) => all.length)
+    .map(([all, name, title, ic, one]) =>
+      h(
+        "a.listcard",
+        { href: ctx.nav.href(name) },
+        icon(ic),
+        h("span", title),
+        h("small", count(all.length, one)),
+      ),
+    );
 }
 
 export async function newPlaylist() {

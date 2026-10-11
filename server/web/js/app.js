@@ -4,7 +4,7 @@
 // overwrites what it covers. The outbox is kept in localStorage, so an edit
 // made just before a reload is not lost (AGENTS.md).
 
-import { Catalog, song as toSong } from "./catalog.js";
+import { Catalog, Heard, song as toSong } from "./catalog.js";
 import * as db from "./db.js";
 import { nowMs, parseTime, formatTime, uuid, debounce, distinct } from "./util.js";
 
@@ -22,8 +22,16 @@ const outboxKey = "dhun.outbox";
 /** Kept when another account signs in on this browser: they are the browser's, not the account's. */
 const browserPrefs = ["theme", "palette", "speed", "miniPlayer"];
 
-/** Raised when songs gain a field the cache lacks; 1 is the art key (plan 019). */
-const libraryFormat = 1;
+/**
+ * Raised when songs gain a field the cache lacks; 1 is the art key (plan
+ * 019), 2 the podcasts and audiobooks, which `kinds=all` asks for (plan 031).
+ */
+const libraryFormat = 2;
+
+/** A listen this far into an episode or a book's file marks it played, as the server does (plan 031). */
+const playedPercent = 90;
+
+const noMarks = () => ({ fav: new Map(), later: new Map(), played: new Map() });
 
 // A blip is over in seconds; the 15 minutes this once grew to on the phone
 // left it offline long after the network was back (plan 019).
@@ -65,7 +73,7 @@ export class App extends EventTarget {
     this.rawSongs = [];
     this.playlists = [];
     this.queues = [];
-    this.marks = { fav: new Map(), later: new Map() };
+    this.marks = noMarks();
     this.resumeMap = new Map();
     this.settings = {};
     this.playStats = new Map();
@@ -125,7 +133,8 @@ export class App extends EventTarget {
     if (data?.user === this.prefs.user) {
       this.playlists = data.playlists ?? [];
       this.queues = data.queues ?? [];
-      this.marks = data.marks ?? this.marks;
+      // A copy kept before plan 031 has no played marks.
+      this.marks = { ...noMarks(), ...data.marks };
       this.resumeMap = data.resumes ?? this.resumeMap;
       this.settings = data.settings ?? {};
       this.playStats = data.playStats ?? this.playStats;
@@ -264,7 +273,7 @@ export class App extends EventTarget {
     localStorage.removeItem(outboxKey);
     this.playlists = [];
     this.queues = [];
-    this.marks = { fav: new Map(), later: new Map() };
+    this.marks = noMarks();
     this.resumeMap = new Map();
     this.settings = {};
     this.playStats = new Map();
@@ -299,14 +308,11 @@ export class App extends EventTarget {
 
   mark(kind, song, on) {
     this.marks[kind].set(song, { at: nowMs(), deleted: !on });
-    const type =
-      kind === "fav"
-        ? on
-          ? "favorite.set"
-          : "favorite.unset"
-        : on
-          ? "listen_later.add"
-          : "listen_later.remove";
+    const type = {
+      fav: on ? "favorite.set" : "favorite.unset",
+      later: on ? "listen_later.add" : "listen_later.remove",
+      played: on ? "played.set" : "played.unset",
+    }[kind];
     this.record(type, { song }, { key: `${kind}:${song}` });
     this.changed("marks");
   }
@@ -322,6 +328,21 @@ export class App extends EventTarget {
       .filter(([, m]) => !m.deleted)
       .sort((a, b) => b[1].at - a[1].at)
       .map(([song]) => song);
+  }
+
+  /** What has been heard of the podcasts and audiobooks (plan 031). */
+  get heard() {
+    const played = new Set();
+    for (const [song, m] of this.marks.played) if (!m.deleted) played.add(song);
+    const left = new Map();
+    for (const [song, r] of this.resumeMap)
+      if (!r.deleted) left.set(song, r.positionMs);
+    return new Heard(played, left);
+  }
+
+  /** Playlists hold music only: each is an .m3u8 in Music, which cannot name a file in Podcasts or Audiobooks (plan 031). */
+  music(ids) {
+    return ids.filter((id) => !this.catalog.byId.get(id)?.spoken);
   }
 
   setSetting(name, value) {
@@ -474,7 +495,7 @@ export class App extends EventTarget {
       name,
       path: "",
       shared: false,
-      songs: distinct(songs),
+      songs: distinct(this.music(songs)),
       ref: uuid(),
     };
     this.putPlaylist(p);
@@ -489,7 +510,7 @@ export class App extends EventTarget {
   /** Adds `songs` at the end, skipping those already in it; returns how many were skipped. */
   addToPlaylist(p, songs) {
     const have = new Set(p.songs);
-    const unique = distinct(songs);
+    const unique = distinct(this.music(songs));
     const adding = unique.filter((s) => !have.has(s));
     if (adding.length) {
       this.putPlaylist({ ...p, songs: [...p.songs, ...adding] });
@@ -579,6 +600,7 @@ export class App extends EventTarget {
 
   /** One listen (plan 008). */
   play(l) {
+    this.markPlayed(l);
     const f = {
       song: l.song,
       ms: l.ms,
@@ -592,6 +614,24 @@ export class App extends EventTarget {
     if (l.source) f.source = l.source;
     if (l.queue) f.queue = l.queue;
     this.record("play", f, { at: l.startedAt });
+  }
+
+  /**
+   * An episode or a book's file is played once a listen reaches 90% into it.
+   * The server marks it itself from the listen; this shows it at once,
+   * offline too, as of the same time, so the two agree (plan 031).
+   */
+  markPlayed(l) {
+    const s = this.catalog.byId.get(l.song);
+    if (
+      !s?.spoken ||
+      !(s.durationMs > 0) ||
+      l.toMs * 100 < s.durationMs * playedPercent
+    )
+      return;
+    if (this.isMarked("played", l.song)) return;
+    this.marks.played.set(l.song, { at: l.endedAt, deleted: false });
+    this.changed("marks");
   }
 
   // MARK: Sync (plan 006)
@@ -673,7 +713,7 @@ export class App extends EventTarget {
    */
   async pullLibrary() {
     const since = this.prefs.libraryVersion ?? 0;
-    const lib = await this.call("GET", `/api/v1/library?since=${since}`);
+    const lib = await this.call("GET", `/api/v1/library?since=${since}&kinds=all`);
     const songs = (lib.songs ?? []).map(toSong);
     if (songs.length) {
       const byId = new Map(since === 0 ? [] : this.rawSongs.map((s) => [s.id, s]));
@@ -801,6 +841,7 @@ export class App extends EventTarget {
     for (const [kind, items] of [
       ["fav", s.favorites ?? []],
       ["later", s.listenLater ?? []],
+      ["played", s.played ?? []],
     ]) {
       for (const i of items) {
         const at = parseTime(i.at);
@@ -875,12 +916,14 @@ export class App extends EventTarget {
 
   /** A list row's cover: the 128 px thumbnail kept for every cover, as a data: URL; "" when the song has none. */
   thumb(s) {
+    s = this.catalog.artOf(s);
     if (!s?.art) return "";
     return this.thumbs.get(s.art) ?? null;
   }
 
   /** A larger cover, by URL: the browser caches it, and the cookie lets <img> through. */
   cover(s, px) {
+    s = this.catalog.artOf(s);
     return s?.art
       ? `/api/v1/art/${s.id}?size=${px}&k=${encodeURIComponent(s.art)}`
       : "";
@@ -892,7 +935,9 @@ export class App extends EventTarget {
     this.fetchingThumbs = true;
     try {
       const want = distinct(
-        this.catalog.songs.map((s) => s.art).filter((k) => k && !this.thumbs.has(k)),
+        [...this.catalog.byId.values()]
+          .map((s) => s.art)
+          .filter((k) => k && !this.thumbs.has(k)),
       );
       for (let i = 0; i < want.length; i += 50) {
         const r = await this.call("POST", "/api/v1/thumbs", {

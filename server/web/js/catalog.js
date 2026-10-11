@@ -39,7 +39,32 @@ export function song(s) {
     art: s.art ?? "",
     folder: slash < 0 ? "" : path.slice(0, slash),
     displayArtist: artist || albumArtist || "Unknown artist",
+    // Podcasts and audiobooks (plan 031); "" for music.
+    kind: s.kind ?? "",
+    spoken: s.kind === podcast || s.kind === audiobook,
+    date: s.date ?? "",
+    notes: s.notes ?? "",
+    chapters: (Array.isArray(s.chapters) ? s.chapters : [])
+      .filter((c) => typeof c?.startMs === "number")
+      .map((c) => ({ startMs: c.startMs, title: c.title ?? "" })),
+    group: s.group ?? "",
+    groupTitle: s.groupTitle ?? "",
+    groupIndex: s.groupIndex ?? 0,
   };
+}
+
+export const podcast = "podcast";
+export const audiobook = "audiobook";
+
+/** A chapter's own name, or "" when it is only a number ("001"), which says nothing "Chapter 1" does not. */
+export const chapterName = (c) => (/^\s*\d*\s*$/.test(c.title) ? "" : c.title.trim());
+
+/** The date tag as a day: some tools write "20251230", others a full time. */
+export function day(s) {
+  const d = s.date.trim();
+  return /^\d{8}$/.test(d)
+    ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}`
+    : d.slice(0, 10);
 }
 
 const trackOrder = (a, b) =>
@@ -47,10 +72,15 @@ const trackOrder = (a, b) =>
 
 export class Catalog {
   constructor(all) {
-    this.songs = all
-      .filter((s) => !s.missing)
+    const present = all.filter((s) => !s.missing);
+    // The music: what every song list, view and search of songs shows. Podcasts
+    // and audiobooks have their own pages, so an episode never turns up in an
+    // artist or a shuffle (plan 031).
+    this.songs = present
+      .filter((s) => !s.spoken)
       .sort((a, b) => natural(a.title, b.title));
-    this.byId = new Map(this.songs.map((s) => [s.id, s]));
+    // Every song, episodes and books' files too: what queues, Favorites and Listen Later name.
+    this.byId = new Map(present.map((s) => [s.id, s]));
     this.albums = albums(this.songs);
     this.albumById = new Map(this.albums.map((a) => [a.id, a]));
     this.albumOf = new Map();
@@ -62,7 +92,21 @@ export class Catalog {
       s.genres.length ? s.genres : ["Unknown genre"],
     );
     this.folders = folders(this.songs);
+    this.books = shelves(present, audiobook);
+    this.shows = shelves(present, podcast);
+    this.shelves = new Map([...this.books, ...this.shows].map((x) => [x.id, x]));
     this.indexes = {};
+  }
+
+  /** The book or show `s` is in, or undefined for music. */
+  shelfOf(s) {
+    return s?.spoken ? this.shelves.get(shelfKey(s)) : undefined;
+  }
+
+  /** The song whose cover `s` shows: an episode or book file without one shows its show's or book's. */
+  artOf(s) {
+    if (!s?.spoken || s.art) return s;
+    return this.shelfOf(s)?.cover ?? s;
   }
 
   songsOf(ids) {
@@ -108,6 +152,15 @@ export class Catalog {
           .sort((a, b) => natural(a.path, b.path));
         return nameIndex(all, "folder", (f) => f.name);
       }
+      case "books":
+        return new Index(this.books, [
+          ["book", 0, (b) => b.title],
+          ["artist", 1, (b) => b.author],
+        ]);
+      case "shows":
+        return nameIndex(this.shows, "show", (x) => x.title);
+      case "episodes":
+        return songIndex(this.shows.flatMap((x) => x.items));
     }
   }
 
@@ -115,7 +168,9 @@ export class Catalog {
   filter(list, query) {
     const q = new Query(query);
     if (q.empty) return list;
-    const found = new Set(this.index("songs").filter(q));
+    // Favorites, Listen Later and queues may hold episodes, which the music's index leaves out.
+    const index = list.some((s) => s.spoken) ? songIndex(list) : this.index("songs");
+    const found = new Set(index.filter(q));
     return list.filter((s) => found.has(s));
   }
 }
@@ -190,6 +245,41 @@ function folders(songs) {
     );
   }
   return map;
+}
+
+/** A file the server did not group (none should be) is a shelf of its folder. */
+const shelfKey = (s) => s.group || `${s.kind}\u0000${s.folder}`;
+
+/**
+ * Audiobooks or podcast shows as the server grouped them (plan 031): a
+ * book's files in reading order, a show's episodes oldest first.
+ */
+function shelves(all, kind) {
+  const groups = new Map();
+  for (const s of all) {
+    if (s.kind !== kind) continue;
+    const k = shelfKey(s);
+    let g = groups.get(k);
+    if (!g) groups.set(k, (g = []));
+    g.push(s);
+  }
+  const out = [];
+  for (const [id, list] of groups) {
+    list.sort((a, b) => a.groupIndex - b.groupIndex || natural(a.path, b.path));
+    const first = list[0];
+    out.push({
+      id,
+      kind,
+      isBook: kind === audiobook,
+      title: first.groupTitle || first.folder.slice(first.folder.lastIndexOf("/") + 1),
+      // The author, or the host; "" when the tags name none.
+      author: mostCommon(list.map((s) => s.artist || s.albumArtist).filter(Boolean)),
+      items: list,
+      // The first file with a cover: the one its files without one show.
+      cover: list.find((s) => s.art),
+    });
+  }
+  return out.sort((a, b) => natural(a.title, b.title));
 }
 
 /** A folder's songs and every subfolder's, in folder order: what "play folder" plays. */
@@ -322,4 +412,58 @@ export function listSongs(id, st) {
     }
   }
   return [];
+}
+
+// MARK: What has been heard of the podcasts and audiobooks (plan 031)
+
+/**
+ * The spoken files marked played, and where the others were left: `played`
+ * is a Set of song ids, `left` a Map of song id to the resume point in ms.
+ */
+export class Heard {
+  constructor(played, left) {
+    this.played = played;
+    this.left = left;
+  }
+
+  heardMs(s) {
+    if (this.played.has(s.id)) return s.durationMs;
+    return Math.min(Math.max(this.left.get(s.id) ?? 0, 0), s.durationMs);
+  }
+
+  /** Where a book carries on: its first file not played, or from the start once all are. */
+  next(shelf) {
+    return shelf.items.find((s) => !this.played.has(s.id)) ?? shelf.items[0];
+  }
+
+  finished(shelf) {
+    return shelf.items.every((s) => this.played.has(s.id));
+  }
+
+  /** Begun and not finished: its Play button says Continue. Finished, it starts again from the first. */
+  begun(shelf) {
+    return shelf.items.some((s) => this.heardMs(s) > 0) && !this.finished(shelf);
+  }
+
+  /** A book's progress, or its length before it is begun. */
+  progress(shelf) {
+    const total = shelf.items.reduce((a, s) => a + s.durationMs, 0);
+    const heard = shelf.items.reduce((a, s) => a + this.heardMs(s), 0);
+    if (this.finished(shelf)) return "Finished";
+    if (heard <= 0 || total <= 0) return length(total);
+    return `${Math.floor((heard * 100) / total)}% · ${length(total - heard)} left`;
+  }
+
+  /** A file's line beside its title: played, or how much is left of one begun. */
+  state(s) {
+    if (this.played.has(s.id)) return "Played";
+    const h = this.heardMs(s);
+    return h > 0 ? `${length(s.durationMs - h)} left` : "";
+  }
+}
+
+/** "48 min", "12 h 5 min" */
+export function length(ms) {
+  const min = Math.floor(ms / 60_000);
+  return min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`;
 }

@@ -8,14 +8,18 @@ import { iconButton, popover, menuAt, reducedMotion, toast } from "./kit.js";
 import { cover, songMenu } from "./songs.js";
 import { parseLyrics, lineAt } from "../lyrics.js";
 import { formatSpeed, minSpeed, maxSpeed } from "../queue.js";
+import { chapterLabel, chaptersPanel, spokenFacts } from "./spoken.js";
 import { ctx } from "./ctx.js";
 
 // MARK: Controls shared by the bar and the page
 
-/** Shuffle, previous, play or pause, next, repeat. */
+/** Shuffle, previous, play or pause, next, repeat; for an episode or a book, Chapters and notes in Shuffle's place. */
 function transport(compact = false) {
   const p = ctx.playback;
   const shuffle = iconButton("shuffle", "Shuffle", () => p.toggleShuffle(), "toggle");
+  const chapters = iconButton("chapters", "Chapters and notes", () =>
+    popover(chapters, chaptersPanel),
+  );
   const prev = iconButton("previous", "Previous", () => p.previous());
   const play = h(
     "button.play",
@@ -27,6 +31,7 @@ function transport(compact = false) {
   const el = h(
     "div.transport",
     compact ? null : shuffle,
+    compact ? null : chapters,
     prev,
     play,
     next,
@@ -38,6 +43,10 @@ function transport(compact = false) {
     update() {
       const none = !p.current;
       for (const b of [shuffle, prev, play, next, repeat]) b.disabled = none;
+      // A book is not shuffled (plan 031).
+      const spoken = !!p.current?.spoken;
+      shuffle.hidden = spoken;
+      chapters.hidden = !spoken;
       shuffle.classList.toggle("on", p.shuffle);
       shuffle.title = p.shuffle ? "Shuffle is on" : "Shuffle";
       const r = p.repeat;
@@ -173,14 +182,19 @@ function speedPanel(close) {
     "aria-label": "Speed",
   });
   const toggle = h("input", { type: "checkbox", checked: only, disabled: !p.current });
+  const s = p.current;
+  const what =
+    s?.kind === "podcast" ? "episode" : s?.kind === "audiobook" ? "file" : "song";
   const note = h("p.note");
   const reset = h("button", { type: "button" }, "Reset");
   const draw = (v = p.speed) => {
     title.textContent = `Speed ${formatSpeed(v)}×`;
     range.value = v;
     note.textContent = only
-      ? "This song keeps its own speed, on all your devices."
-      : "For every song in this browser without its own.";
+      ? `This ${what} keeps its own speed, on all your devices.`
+      : s?.spoken
+        ? `For every ${s.kind === "podcast" ? "podcast" : "audiobook"} without its own, on all your devices.`
+        : "For every song in this browser without its own.";
     reset.disabled = p.speed === 1;
   };
   const set = (v) => {
@@ -208,7 +222,7 @@ function speedPanel(close) {
         h("button", { type: "button", onclick: () => set(v) }, `${formatSpeed(v)}×`),
       ),
     ),
-    h("label.check", toggle, "Only for this song"),
+    h("label.check", toggle, `Only for this ${what}`),
     note,
     semis
       ? h(
@@ -330,11 +344,15 @@ function nowTitle(cls = "") {
     update() {
       const p = ctx.playback;
       const s = p.current;
+      // An episode or a book: the chapter first, then its show and day, or its book and author.
+      const facts = s?.spoken
+        ? [chapterLabel(s, p.position * 1000), ...spokenFacts(s)]
+        : [s?.displayArtist, p.active?.name];
       const sub = !s
         ? ""
         : p.waiting
           ? "Waiting for the network…"
-          : [s.displayArtist, p.active?.name, p.sleepLabel && `Sleep ${p.sleepLabel}`]
+          : [...facts, p.sleepLabel && `Sleep ${p.sleepLabel}`]
               .filter(Boolean)
               .join(" · ");
       if (shownId === (s?.id ?? null)) {
@@ -433,8 +451,13 @@ export function nowBar() {
       lyrics.classList.toggle("on", panel === "lyrics");
       queue.classList.toggle("on", panel === "queue");
       lyrics.disabled = !p.current;
+      lyricsTitle(lyrics);
     },
-    position: () => seek.update(),
+    position() {
+      seek.update();
+      // The chapter playing, under the title.
+      if (p.current?.chapters.length) title.update();
+    },
   };
 }
 
@@ -558,9 +581,16 @@ export function nowPage() {
       queueBtn.disabled = !p.activeId;
       moreBtn.disabled = !p.current;
       lyricsBtn.disabled = !p.current;
+      lyricsTitle(lyricsBtn);
       draw();
     },
   };
+}
+
+/** An episode's or a book's lyrics are its transcript (plan 031). */
+function lyricsTitle(b) {
+  b.title = ctx.playback.current?.spoken ? "Transcript" : "Lyrics";
+  b.setAttribute("aria-label", b.title);
 }
 
 /** Horizontal swipes on `el`: −1 for left (next), 1 for right (previous). */
@@ -689,12 +719,14 @@ export function lyricsView() {
     lines = [];
     at = -2;
     if (!s) return el.replaceChildren(note("Nothing playing"));
-    if (!s.hasLyrics) return el.replaceChildren(note("No lyrics"));
+    // An episode's or a book's lyrics are its transcript (plan 031).
+    const none = s.spoken ? "No transcript" : "No lyrics";
+    if (!s.hasLyrics) return el.replaceChildren(note(none));
     el.replaceChildren(h("div.empty", h("div.spinner")));
     try {
       const text = await ctx.app.lyrics(s.id);
       if (song?.id !== s.id) return;
-      if (text == null) return el.replaceChildren(note("No lyrics"));
+      if (text == null) return el.replaceChildren(note(none));
       parsed = parseLyrics(text);
       lines = parsed.lines.map((l) =>
         h(

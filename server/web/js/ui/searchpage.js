@@ -6,8 +6,10 @@
 import { h, count, debounce } from "../util.js";
 import { icon } from "../icons.js";
 import { Query, nameIndex, lyricsHits } from "../search.js";
-import { emptyNote } from "./kit.js";
-import { SongList, thumb, items } from "./songs.js";
+import { emptyNote, showMenu } from "./kit.js";
+import { SongList, thumb, items, songMenu } from "./songs.js";
+import { playShelf } from "./spoken.js";
+import { day } from "../catalog.js";
 import { frame } from "./pages.js";
 import { ctx } from "./ctx.js";
 
@@ -73,6 +75,30 @@ function find(q) {
         href: ctx.nav.href("playlist", p.id),
       }),
     ),
+    // Under their own headings (plan 031), before the songs, which can run to
+    // hundreds and would bury them.
+    section("Audiobooks", c.index("books"), (b) => ({
+      title: b.title,
+      detail: [b.author, app.heard.progress(b)].filter(Boolean).join(" · "),
+      song: b.cover ?? b.items[0],
+      href: ctx.nav.href("shelf", b.id),
+    })),
+    section("Podcasts", c.index("shows"), (x) => ({
+      title: x.title,
+      detail: "Podcast",
+      song: x.cover ?? x.items[0],
+      href: ctx.nav.href("shelf", x.id),
+    })),
+    // An episode found plays its show from there, as on the show's page.
+    section("Episodes", c.index("episodes"), (s) => ({
+      title: s.title,
+      detail: [s.groupTitle, day(s)].filter(Boolean).join(" · "),
+      song: s,
+      play: () => {
+        const shelf = c.shelfOf(s);
+        if (shelf) playShelf(shelf, s);
+      },
+    })),
     section("Songs", c.index("songs"), (s) => s, boost),
   ];
   // Stable, so a tie keeps the order above.
@@ -126,14 +152,35 @@ export function searchPage(initial, { field = false } = {}) {
     return h(
       "section.results-section",
       h("h3.section", f.kind),
-      rows.map((r) =>
-        h(
-          "a.row.hit",
-          { href: r.href, onclick: () => ctx.app.keepSearch(query) },
+      rows.map((r) => {
+        const inner = [
           r.icon ? h("span.thumb.folder-icon", icon(r.icon)) : thumb(r.song),
           h("span.main", h("span.title", r.title), h("span.sub", r.detail)),
-        ),
-      ),
+        ];
+        if (!r.play)
+          return h(
+            "a.row.hit",
+            { href: r.href, onclick: () => ctx.app.keepSearch(query) },
+            inner,
+          );
+        const play = () => {
+          ctx.app.keepSearch(query);
+          r.play();
+        };
+        return h(
+          "div.row.hit.song",
+          {
+            tabindex: "0",
+            onclick: play,
+            onkeydown: (e) => e.key === "Enter" && play(),
+            oncontextmenu: (e) => {
+              e.preventDefault();
+              showMenu(songMenu([r.song]), { x: e.clientX, y: e.clientY }, r.title);
+            },
+          },
+          inner,
+        );
+      }),
       !whole && f.rows.length > shown
         ? h(
             "button.link",

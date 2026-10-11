@@ -16,10 +16,13 @@ import {
   nextIn,
   tempoOf,
   songSetting,
+  kindSetting,
+  nextChapter,
+  previousChapter,
 } from "./queue.js";
 import { nowMs, parseTime, uuid, distinct } from "./util.js";
 
-/** A hand-off never starts closer than this to the song's end. */
+/** A hand-off never starts closer than this to the song's end, nor is a resume point kept there. */
 const endMarginMs = 5000;
 /** How long the volume takes to fall to nothing before a sleep timer by the clock pauses. */
 const fadeMs = 10_000;
@@ -38,6 +41,8 @@ export class Playback extends EventTarget {
       el.addEventListener("error", () => this.mediaError(el));
       el.addEventListener("waiting", () => el === this.el && this.setWaiting(true));
       el.addEventListener("playing", () => el === this.el && this.setWaiting(false));
+      // Paused while a seek waited for data, "playing" never comes.
+      el.addEventListener("canplay", () => el === this.el && this.setWaiting(false));
       el.addEventListener("loadedmetadata", () => el === this.el && this.emit());
       // Paused from outside: headphones out on a phone, the OS's controls.
       el.addEventListener(
@@ -123,8 +128,18 @@ export class Playback extends EventTarget {
       : null;
   }
 
+  /**
+   * For an episode or a book's file, its collection's speed, synced, so a
+   * 39-file book is not set 39 times (plan 031); null for music.
+   */
+  get kindTempo() {
+    const s = this.current;
+    return s?.spoken ? tempoOf(this.app.settings[kindSetting(s.kind)]) : null;
+  }
+
+  /** The file's own, else its collection's, else this browser's everyday one. */
   get speed() {
-    return this.songTempo?.speed ?? this.app.prefs.speed ?? 1;
+    return this.songTempo?.speed ?? this.kindTempo?.speed ?? this.app.prefs.speed ?? 1;
   }
 
   get currentIndex() {
@@ -177,19 +192,35 @@ export class Playback extends EventTarget {
     this.setPlaying(false);
   }
 
+  /** The next chapter of a file that has them (plan 031), else the next song. */
   next() {
+    const at = nextChapter(this.chapterStarts, Math.round(this.position * 1000));
+    if (at != null) return this.seek(at / 1000);
     const n = this.nextIndex(this.currentIndex, this.repeat === "queue");
     if (n >= 0) this.jump(n, "skipped");
   }
 
-  /** Back to the start of the song, or to the one before within its first three seconds. */
+  /**
+   * Back to the start of the song, or to the one before within its first
+   * three seconds; by chapter in a file that has them.
+   */
   previous() {
     const i = this.currentIndex;
     if (i < 0) return;
+    const at = previousChapter(
+      this.chapterStarts,
+      Math.round(this.position * 1000),
+      3000,
+    );
+    if (at != null) return this.seek(at / 1000);
     if (this.position > 3) return this.seek(0);
     const p = this.previousIndex(i);
     if (p < 0) return this.seek(0);
     this.jump(p, "previous");
+  }
+
+  get chapterStarts() {
+    return this.current?.chapters.map((c) => c.startMs) ?? [];
   }
 
   seek(seconds) {
@@ -489,14 +520,23 @@ export class Playback extends EventTarget {
 
   // MARK: Speed (plan 016)
 
-  /** For the playing song only (synced, as its own setting), or as this browser's everyday one. */
+  /**
+   * For the playing song only (synced, as its own setting), for every episode
+   * or every book (synced) when it is one, or as this browser's everyday one.
+   * Normal speed is stored for a collection rather than cleared, so episodes
+   * do not fall back to the everyday speed for music.
+   */
   setSpeed(speed, onlyThisSong) {
-    if (onlyThisSong && this.current) {
+    const s = this.current;
+    if (onlyThisSong && s) {
       const kept = this.songTempo ?? { semitones: 0 };
-      this.app.setSetting(songSetting(this.current.id), {
+      this.app.setSetting(songSetting(s.id), {
         speed,
         semitones: kept.semitones,
       });
+    } else if (s?.spoken) {
+      const kept = this.kindTempo ?? { semitones: 0 };
+      this.app.setSetting(kindSetting(s.kind), { speed, semitones: kept.semitones });
     } else {
       this.app.setPref("speed", speed === 1 ? undefined : speed);
     }
@@ -571,7 +611,7 @@ export class Playback extends EventTarget {
 
   /** The catalogue arrived: load the queue that was playing when the page last closed, paused, once. */
   catalogChanged() {
-    if (this.restored || !this.app.catalog.songs.length) return;
+    if (this.restored || !this.app.catalog.byId.size) return;
     this.restored = true;
     const q = this.active;
     if (!this.current && q) this.load(q, false);
@@ -790,14 +830,15 @@ export class Playback extends EventTarget {
 
   /** The song ended: on to the next by itself, or the end of the queue. */
   songEnded() {
+    // The tick is up to a quarter second behind; the listen ends where the element did.
+    if (Number.isFinite(this.el.currentTime)) this.position = this.el.currentTime;
     const finished = this.current;
     const next = this.upcoming();
     const s = next == null ? null : this.app.catalog.byId.get(next);
     if (!s) return this.reachedEnd();
-    this.close(
-      "finished",
-      finished.durationMs > 0 ? finished.durationMs : Math.round(this.position * 1000),
-    );
+    // Where the player got to, not the song list's length: a file that cannot
+    // be read past "finishes" early, and the length would mark it played (plan 031).
+    this.close("finished", Math.round(this.position * 1000));
     // Heard to the end: a long file's resume point is done with.
     if (this.isLong(finished)) this.app.setResume(finished.id, null);
     this.onNextSongSleep();
@@ -835,10 +876,7 @@ export class Playback extends EventTarget {
   /** Everything has played: the end of the queue, or a sleep timer's song. */
   reachedEnd() {
     const s = this.current;
-    this.close(
-      "finished",
-      s.durationMs > 0 ? s.durationMs : Math.round(this.position * 1000),
-    );
+    this.close("finished", Math.round(this.position * 1000));
     if (this.isLong(s)) this.app.setResume(s.id, null);
     const bySleep = this.pauseAfter != null && this.sleep.mode;
     this.setPlaying(false);
@@ -942,8 +980,11 @@ export class Playback extends EventTarget {
 
   // MARK: Long files (plan 009)
 
+  /** Every episode and book file keeps its place, however short (plan 031). */
   isLong(s) {
-    return s.durationMs >= this.app.setting("longFiles.minMinutes", 15) * 60_000;
+    return (
+      s.spoken || s.durationMs >= this.app.setting("longFiles.minMinutes", 15) * 60_000
+    );
   }
 
   /** Where to start `s`: its resume point under "auto"; under "ask", offered instead. */
@@ -962,8 +1003,14 @@ export class Playback extends EventTarget {
     }
   }
 
+  /** Not in the last seconds: a file that plays to its end also stops, and the pause would save its end as the place to resume. */
   saveResume(s, pos) {
-    if (this.isLong(s) && pos > 0) this.app.setResume(s.id, pos);
+    if (
+      this.isLong(s) &&
+      pos > 0 &&
+      (!(s.durationMs > 0) || pos < s.durationMs - endMarginMs)
+    )
+      this.app.setResume(s.id, pos);
   }
 
   // MARK: Listens (plan 008)
@@ -1199,13 +1246,14 @@ export class Playback extends EventTarget {
     }
     if (this.sessionSong !== s.id) {
       this.sessionSong = s.id;
+      const art = this.app.catalog.artOf(s);
       ms.metadata = new MediaMetadata({
         title: s.title,
         artist: s.displayArtist,
-        album: s.album,
-        artwork: s.art
+        album: s.spoken ? s.groupTitle : s.album,
+        artwork: art.art
           ? [256, 512].map((px) => ({
-              src: new URL(this.app.cover(s, px), location.href).href,
+              src: new URL(this.app.cover(art, px), location.href).href,
               sizes: `${px}x${px}`,
               type: "image/jpeg",
             }))

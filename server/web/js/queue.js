@@ -87,6 +87,30 @@ export function tempoOf(v) {
 }
 
 export const songSetting = (song) => `speed.${song}`;
+/** Every podcast's or every audiobook's speed (`speed.podcast`, `speed.audiobook`), synced (plan 031). */
+export const kindSetting = (kind) => `speed.${kind}`;
+
+/**
+ * Where Next goes in a file whose chapters start at `starts` (ms): the next
+ * chapter, or null for the next file. A chapter starting within a second is
+ * the one just sought to, not the next.
+ */
+export function nextChapter(starts, pos) {
+  return starts.find((x) => x > pos + 1000) ?? null;
+}
+
+/**
+ * Where Previous goes: back to the start of this chapter, or, within
+ * `window` ms of it, to the one before, as Previous does with songs; null for
+ * the song's own Previous (no chapters, or the first one).
+ */
+export function previousChapter(starts, pos, window) {
+  let i = -1;
+  for (let j = 0; j < starts.length; j++) if (starts[j] <= pos) i = j;
+  if (i < 0) return null;
+  if (pos - starts[i] > window) return starts[i];
+  return i > 0 ? starts[i - 1] : null;
+}
 
 /** 1.25 → "1.25", 1.5 → "1.5", 2 → "2", in every locale. */
 export function formatSpeed(speed) {

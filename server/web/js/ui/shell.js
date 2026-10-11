@@ -11,6 +11,7 @@ import { iconButton, closeMenu, touch, reducedMotion } from "./kit.js";
 import { addedTo, editable, cover } from "./songs.js";
 import * as pages from "./pages.js";
 import { searchPage } from "./searchpage.js";
+import { shelvesPage, shelfPage } from "./spoken.js";
 import { settingsPage, signInPage } from "./settings.js";
 import { nowBar, miniPlayer, nowPage, banners, lyricsView } from "./player.js";
 import { ctx } from "./ctx.js";
@@ -83,10 +84,15 @@ export class Nav {
   }
 
   section(route = this.route) {
+    if (route.name === "shelf")
+      return ctx.app.catalog.shelves.get(route.arg)?.isBook ? "books" : "shows";
     return sectionOf[route.name] ?? route.name;
   }
 
+  /** An episode's or a book file's "album" is its show or book. */
   album(s) {
+    const shelf = ctx.app.catalog.shelfOf(s);
+    if (shelf) return this.go("shelf", shelf.id);
     const a = ctx.app.catalog.albumOf.get(s.id);
     if (a) this.go("album", a.id);
   }
@@ -304,6 +310,12 @@ export class Shell {
         return pages.playlistsPage();
       case "playlist":
         return pages.playlistPage(Number(arg));
+      case "books":
+        return shelvesPage(true);
+      case "shows":
+        return shelvesPage(false);
+      case "shelf":
+        return shelfPage(arg);
       case "list":
         return pages.listPage(arg);
       case "search":
@@ -378,7 +390,10 @@ export class Shell {
         ["search", "Search", "search"],
         ["settings", "Settings", "settings"],
       ];
-      const sec = r.name === "list" ? "playlists" : this.nav.section(r);
+      // The lists, books and shows are cards on the Playlists tab, as on the phone.
+      const sec = ["list", "books", "shows"].includes(this.nav.section(r))
+        ? "playlists"
+        : this.nav.section(r);
       this.tabs.replaceChildren(
         ...tabs.map(([name, label, ic]) =>
           h(
@@ -436,6 +451,12 @@ export class Shell {
         item("albums", undefined, "Albums", "album"),
         item("artists", undefined, "Artists", "artist"),
         item("genres", undefined, "Genres", "genre"),
+        app.catalog.books.length
+          ? item("books", undefined, "Audiobooks", "book")
+          : null,
+        app.catalog.shows.length
+          ? item("shows", undefined, "Podcasts", "podcast")
+          : null,
         h("h2.navhead", "Lists"),
         ...lists.map((l) =>
           item(
@@ -510,7 +531,7 @@ export class Shell {
     const want =
       kind === "queue"
         ? `queue:${ctx.playback.activeId}:${!!ctx.playback.active}`
-        : "lyrics";
+        : `lyrics:${!!ctx.playback.current?.spoken}`;
     if (this.panelView?.key !== want) {
       const tabs = h(
         "div.segmented",
@@ -530,7 +551,7 @@ export class Shell {
             class: kind === "lyrics" ? "on" : "",
             onclick: () => kind !== "lyrics" && this.togglePanel("lyrics"),
           },
-          "Lyrics",
+          ctx.playback.current?.spoken ? "Transcript" : "Lyrics",
         ),
       );
       let view;

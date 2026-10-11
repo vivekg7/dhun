@@ -1593,6 +1593,42 @@ input.seek:focus-visible::-webkit-slider-thumb {
   flex-direction: column;
   align-items: flex-start;
 }
+/* An episode's or a book file's chapters and notes (plan 031). */
+.popover:has(.pop.chapters) {
+  width: 380px;
+  max-width: 92vw;
+}
+.pop.chapters h3 {
+  overflow-wrap: anywhere;
+}
+.pop .pophead {
+  margin: 10px 0 4px;
+  color: var(--fg2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pop .chapter {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 4px;
+  text-align: left;
+}
+.pop .chapter .time {
+  width: 64px;
+  flex: none;
+  color: var(--fg2);
+  font-variant-numeric: tabular-nums;
+}
+.pop .chapter.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pop .notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .pop .line {
   display: flex;
   align-items: center;
