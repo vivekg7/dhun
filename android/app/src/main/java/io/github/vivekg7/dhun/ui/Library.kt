@@ -188,7 +188,7 @@ fun FolderScreen(
             }
             items(children, key = { "f/" + it.path }) { f ->
                 val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
-                NameRow(icon, f.name, "${f.allSongs().size}", pinned(Downloads.FOLDER, f.path)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
+                NameRow(icon, f.name, "", pinned(Downloads.FOLDER, f.path), sub = summary(f)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
             }
             // A song found still plays the whole folder from it, as in the queue's search.
             items(hits, key = { (_, s) -> s.id }) { (i, s) ->
@@ -285,7 +285,13 @@ fun GroupsScreen(
     LazyColumn(Modifier.fillMaxSize()) {
         item { SearchField(query, { query = it }, if (artists) "Search ${all.size} artists…" else "Search ${all.size} genres…") }
         items(shown, key = { it.name }) { g ->
-            NameRow(if (artists) Icons.Artist else Icons.Genre, g.name, "${g.songs.size}", pinned(if (artists) Downloads.ARTIST else Downloads.GENRE, g.name)) {
+            NameRow(
+                if (artists) Icons.Artist else Icons.Genre,
+                g.name,
+                "",
+                pinned(if (artists) Downloads.ARTIST else Downloads.GENRE, g.name),
+                sub = summary(g.songs),
+            ) {
                 nav.open(if (artists) Tab.Artists else Tab.Genres, if (artists) Page.ArtistPage(g.name) else Page.GenrePage(g.name))
             }
         }

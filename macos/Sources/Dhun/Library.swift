@@ -87,6 +87,11 @@ struct AlbumsGrid: View {
                                 PinnedMark(app: app, kind: Downloads.album, ref: a.id)
                             }
                             Text(a.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(
+                                [a.year > 0 ? String(a.year) : "", summary(a.songs)].filter { !$0.isEmpty }
+                                    .joined(separator: " · ")
+                            )
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .frame(width: 150)
                         .contentShape(Rectangle())
@@ -223,6 +228,12 @@ func summary(_ songs: [Song]) -> String {
 /// "1 song", "12 songs"
 func count(_ n: Int) -> String { n == 1 ? "1 song" : "\(n) songs" }
 
+/// "3 folders · 120 songs · 7:45:00": what a folder holds, its subfolders' songs too.
+func summary(_ f: Folder) -> String {
+    let n = f.children.count
+    return (n == 0 ? "" : n == 1 ? "1 folder · " : "\(n) folders · ") + summary(f.allSongs())
+}
+
 /// A download's mark on an album, folder, artist or genre, as the phone shows.
 struct PinnedMark: View {
     let app: AppModel
@@ -262,7 +273,7 @@ struct GroupsList: View {
                                 app: app, kind: kind == .artist ? Downloads.artist : Downloads.genre,
                                 ref: g.name)
                         }
-                        Text(count(g.songs.count)).font(.caption).foregroundStyle(.secondary)
+                        Text(summary(g.songs)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -303,7 +314,7 @@ struct FolderView: View {
                 // A folder's header, even one holding only folders: it plays and downloads them all.
                 if !f.path.isEmpty {
                     ListHeader(
-                        title: name, subtitle: summary(f.allSongs()), songs: f.allSongs(),
+                        title: name, subtitle: summary(f), songs: f.allSongs(),
                         source: "folder:\(f.path)",
                         pin: (Downloads.folder, f.path))
                 }
@@ -314,9 +325,15 @@ struct FolderView: View {
                 if !children.isEmpty {
                     List(children) { c in
                         NavigationLink(value: Route.folder(c.path)) {
-                            HStack(spacing: 4) {
-                                Label(c.name, systemImage: "folder")
-                                PinnedMark(app: app, kind: Downloads.folder, ref: c.path)
+                            HStack(spacing: 10) {
+                                Image(systemName: "folder").foregroundStyle(.tint).frame(width: 22)
+                                VStack(alignment: .leading) {
+                                    HStack(spacing: 4) {
+                                        Text(c.name)
+                                        PinnedMark(app: app, kind: Downloads.folder, ref: c.path)
+                                    }
+                                    Text(summary(c)).font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                         .contextMenu {

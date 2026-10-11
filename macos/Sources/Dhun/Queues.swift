@@ -22,7 +22,10 @@ struct QueuesView: View {
                             width: 20, alignment: .trailing)
                         VStack(alignment: .leading) {
                             Text(q.name).lineLimit(1)
-                            Text(count(q.songs.count)).font(.caption).foregroundStyle(.secondary)
+                            // Counted by ID: a song no longer in the library is still in the queue.
+                            let ms = app.catalog.songsOf(q.songs).reduce(0) { $0 + $1.durationMs }
+                            Text("\(count(q.songs.count)) · \(clock(Double(ms) / 1000))").font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         if q.id == app.playback.activeId {

@@ -242,6 +242,7 @@ function albumCard(a) {
     cover(a.songs[0], 256, "cover"),
     h("span.cardtitle", a.name),
     h("span.cardsub", a.artist),
+    h("span.cardsub", [a.year || "", summary(a.songs)].filter(Boolean).join(" · ")),
   );
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -341,7 +342,7 @@ function groupRow(kind, g) {
     "a.row.group",
     { href: ctx.nav.href(kind, g.name) },
     thumb(g.songs[0]),
-    h("span.main", h("span.title", g.name), h("span.sub", count(g.songs.length))),
+    h("span.main", h("span.title", g.name), h("span.sub", summary(g.songs))),
     h(
       "button.more",
       {
@@ -462,7 +463,7 @@ export function folderPage(path) {
     folders.replaceChildren(...children.map(folderRow));
     const all = items(f.songs);
     list.set(all, query ? items(ctx.app.catalog.filter(f.songs, query)) : all);
-    header?.update(summary(allSongs(f)), true);
+    header?.update(folderSummary(f), true);
     filter.parentElement &&
       (filter.parentElement.hidden =
         f.children.length + f.songs.length <= filterOver && !query);
@@ -488,6 +489,12 @@ export function folderPage(path) {
   };
 }
 
+/** "3 folders · 120 songs · 7:45:00": what a folder holds, its subfolders' songs too. */
+function folderSummary(f) {
+  const n = f.children.length;
+  return (n ? `${count(n, "folder")} · ` : "") + summary(allSongs(f));
+}
+
 function folderRow(f) {
   const songs = () => allSongs(f);
   const menu = () =>
@@ -498,7 +505,7 @@ function folderRow(f) {
     "a.row.folder",
     { href: ctx.nav.href("folder", f.path) },
     h("span.thumb.folder-icon", icon("folder")),
-    h("span.main", h("span.title", f.name), h("span.sub", count(songs().length))),
+    h("span.main", h("span.title", f.name), h("span.sub", folderSummary(f))),
     h(
       "button.more",
       {
@@ -784,6 +791,12 @@ export function queuesPage() {
   };
 }
 
+/** Counted by ID: a song no longer in the library is still in the queue. */
+function queueSummary(q) {
+  const ms = ctx.app.catalog.songsOf(q.songs).reduce((a, s) => a + s.durationMs, 0);
+  return `${count(q.songs.length)} · ${clock(ms / 1000)}`;
+}
+
 function queueRow(q, i, list) {
   const p = ctx.playback;
   const active = q.id === p.activeId;
@@ -800,7 +813,7 @@ function queueRow(q, i, list) {
       icon("drag"),
     ),
     h("span.num", String(i + 1)),
-    h("span.main", h("span.title", q.name), h("span.sub", count(q.songs.length))),
+    h("span.main", h("span.title", q.name), h("span.sub", queueSummary(q))),
     active
       ? h("span.eq", { class: p.isPlaying ? "on" : "" }, h("i"), h("i"), h("i"))
       : null,

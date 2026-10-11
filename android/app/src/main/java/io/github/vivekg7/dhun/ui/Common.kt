@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Downloads
+import io.github.vivekg7.dhun.data.Folder
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
 import kotlinx.coroutines.launch
@@ -66,6 +67,17 @@ fun duration(ms: Long): String {
 
 /** "12 songs · 48 min" */
 fun summary(songs: List<Song>): String = "${songs.size} ${if (songs.size == 1) "song" else "songs"} · ${length(songs.sumOf { it.durationMs })}"
+
+/** "3 folders · 120 songs · 7 h 45 min": what a folder holds, its subfolders' songs too. */
+fun summary(f: Folder): String {
+    val folders =
+        when (val n = f.children.size) {
+            0 -> ""
+            1 -> "1 folder · "
+            else -> "$n folders · "
+        }
+    return folders + summary(f.allSongs())
+}
 
 /** "48 min", "12 h 5 min" */
 fun length(ms: Long): String {
@@ -202,13 +214,14 @@ fun PageHeader(
     }
 }
 
-/** A list row with an icon, a name and a trailing count: folders, artists, genres, views. */
+/** A list row with an icon, a name and a trailing count, or a [sub] line under the name: folders, artists, genres, views. */
 @Composable
 fun NameRow(
     icon: ImageVector,
     name: String,
     detail: String,
     downloaded: Boolean = false,
+    sub: String? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -221,7 +234,18 @@ fun NameRow(
     ) {
         Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(16.dp))
-        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            sub?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(end = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
