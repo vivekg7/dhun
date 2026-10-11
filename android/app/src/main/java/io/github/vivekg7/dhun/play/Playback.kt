@@ -312,8 +312,10 @@ class Playback(
         app.sync.nowPlaying.value = null
         stateAt.value = 0
         dismissed.value = ""
-        player.clearMediaItems()
+        // Before the clearing, whose listeners would otherwise save this
+        // song's place, after the account's data is gone, as the next one's.
         current.value = null
+        player.clearMediaItems()
         offerResume.value = null
         setActive("")
     }
