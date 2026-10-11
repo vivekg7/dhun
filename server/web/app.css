@@ -755,8 +755,9 @@ a.row {
   background: var(--bg3);
 }
 
-/* A list's songs on one line with columns, as the Mac's table; two lines when narrow. */
-.songs .row .sub {
+/* A list's songs on one line with columns, as the Mac's table; two lines when narrow.
+   Only the songs: a folder's subfolders are rows in the same list's head. */
+.songs .vrows .row .sub {
   display: none;
 }
 .groups .row,
@@ -804,14 +805,14 @@ a.row {
   .row.selected .time {
     display: none;
   }
-  .songs .row .sub {
+  .songs .vrows .row .sub {
     display: block;
   }
   .songs .row .artist,
   .songs .row .album {
     display: none;
   }
-  .songs .row .thumb {
+  .songs .vrows .row .thumb {
     width: 40px;
     height: 40px;
   }
