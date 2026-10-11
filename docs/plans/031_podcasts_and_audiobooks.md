@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `IN PROGRESS` — server side in `server-v0.12.6` on the NAS (2026-10-11); Android, macOS and web versioned 0.13.0, not yet installed or deployed
+**Status:** `MERGED` — 0.13.0 on the owner's phone and Mac; server and web in `server-v0.13.0` on the NAS (2026-10-12)
 **Started:** 2026-10-10
 
 ## Problem
