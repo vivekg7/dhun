@@ -936,7 +936,10 @@ class Playback(
                 }
             val finishedSong = current.value
             scope.launch {
-                close(end, toMs = if (end == "finished") finishedSong?.durationMs ?: old.positionMs else old.positionMs)
+                // Where the player got to, even at the end: a file it cannot read
+                // past (a damaged MP3) "finishes" early, and the song list's
+                // length would mark it played and drop it from Listen Later.
+                close(end, toMs = old.positionMs)
                 // Heard to the end: a long file's resume point is done with.
                 if (end == "finished" && finishedSong != null && isLong(finishedSong)) {
                     store.resume(finishedSong.id, null)
@@ -1016,8 +1019,10 @@ class Playback(
             updateWaiting()
             if (state != Player.STATE_ENDED) return
             val s = current.value
+            // Where it ended, not the song list's length (onPositionDiscontinuity).
+            val pos = player.currentPosition
             scope.launch {
-                close("finished", s?.durationMs ?: player.currentPosition)
+                close("finished", pos)
                 if (s != null && isLong(s)) store.resume(s.id, null)
             }
         }

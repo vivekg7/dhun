@@ -222,6 +222,12 @@ in the catalogue.
   then reopened finished. No resume point is kept in the last 5 seconds.
   This was true of long music files before; every spoken file has a
   resume point now, so it showed at once.
+- **A finished listen says where the player got to,** not the song
+  list's length. One book's MP3s carry 300 KB of junk after their first
+  ten frames, which ExoPlayer cannot read past; each part "finished" at
+  0:00, and with the length as its end it was marked played. The owner
+  remuxes such files; the app no longer takes an early end for a whole
+  one.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
 
