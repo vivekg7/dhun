@@ -16,6 +16,13 @@ struct Sidebar: View {
                     Label("Albums", systemImage: "square.stack").tag(Section.albums)
                     Label("Artists", systemImage: "music.mic").tag(Section.artists)
                     Label("Genres", systemImage: "guitars").tag(Section.genres)
+                    // Each only once its collection has something in it (plan 031).
+                    if !app.catalog.books.isEmpty {
+                        Label("Audiobooks", systemImage: "book").tag(Section.books)
+                    }
+                    if !app.catalog.shows.isEmpty {
+                        Label("Podcasts", systemImage: "mic").tag(Section.shows)
+                    }
                 }
                 SwiftUI.Section("Lists") {
                     ForEach(ListKind.allCases, id: \.self) { k in

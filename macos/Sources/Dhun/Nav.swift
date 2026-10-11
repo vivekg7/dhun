@@ -6,6 +6,8 @@ import SwiftUI
 enum Section: Hashable {
     case queues
     case folders, albums, artists, genres
+    /// Every audiobook, or every podcast show (plan 031).
+    case books, shows
     case list(ListKind)
     case playlist(Int)
     case downloads
@@ -20,6 +22,8 @@ enum Route: Hashable {
     case queue(String)
     /// From search results; the sidebar opens a playlist as a section.
     case playlist(Int)
+    /// One book or show, by its `Shelf.id`.
+    case shelf(String)
 }
 
 /// The automatic views and special lists (plan 010).
@@ -118,7 +122,11 @@ final class Nav {
         search = ""
     }
 
+    /// The song's album, or the book or show of an episode or a book's file.
     func goToAlbum(_ s: Song, _ app: AppModel) {
+        if let shelf = app.catalog.shelfOf(s) {
+            return open(shelf.isBook ? .books : .shows, .shelf(shelf.id))
+        }
         guard let a = app.catalog.albums.first(where: { $0.songs.contains { $0.id == s.id } }) else { return }
         open(.albums, .album(a.id))
     }

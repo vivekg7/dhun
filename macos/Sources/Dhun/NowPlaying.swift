@@ -60,8 +60,9 @@ struct NowPlayingBar: View {
                 } label: {
                     Image(systemName: "quote.bubble")
                 }
-                .help("Lyrics")
-                .accessibilityLabel("Lyrics")
+                // An episode's transcript comes as its lyrics (plan 031).
+                .help(app.playback.current?.spoken == true ? "Transcript" : "Lyrics")
+                .accessibilityLabel(app.playback.current?.spoken == true ? "Transcript" : "Lyrics")
                 Button {
                     let showing = nav.inspector && nav.inspectorTab == .queue
                     nav.inspectorTab = .queue
@@ -87,8 +88,18 @@ struct NowPlayingBar: View {
         let p = app.playback
         guard let s = p.current else { return "" }
         if p.waiting { return "Waiting for the network…" }
-        var parts = [s.displayArtist]
-        if let q = p.active { parts.append(q.name) }
+        var parts: [String]
+        switch s.kind {
+        case Song.podcast: parts = [s.groupTitle, s.day]
+        // A book of one file is often titled as the book: not twice.
+        case Song.audiobook:
+            parts = [
+                s.groupTitle == s.title ? "" : s.groupTitle, s.artist.isEmpty ? s.albumArtist : s.artist,
+            ]
+        default: parts = [s.displayArtist, p.active?.name ?? ""]
+        }
+        if let ch = chapterLabel(s, Int(p.position * 1000)) { parts.insert(ch, at: 0) }
+        parts = parts.filter { !$0.isEmpty }
         if let sleep = p.sleep.label { parts.append("Sleep \(sleep)") }
         return parts.joined(separator: " · ")
     }
@@ -116,11 +127,25 @@ final class Direction {
 struct Transport: View {
     @Environment(AppModel.self) private var app
     var compact = false
+    @State private var details = false
 
     var body: some View {
         let p = app.playback
         HStack(spacing: compact ? 14 : 20) {
-            if !compact {
+            // A book is heard in order: in Shuffle's place, its chapters and notes (plan 031).
+            if !compact, let s = p.current, s.spoken {
+                Button {
+                    details = true
+                } label: {
+                    Image(systemName: "list.bullet.indent")
+                }
+                .help("Chapters and notes")
+                .accessibilityLabel("Chapters and notes")
+                .disabled(s.chapters.isEmpty && s.notes.isEmpty)
+                .popover(isPresented: $details, arrowEdge: .top) {
+                    ChaptersPanel(song: s) { details = false }
+                }
+            } else if !compact {
                 Button {
                     p.toggleShuffle()
                 } label: {
@@ -322,9 +347,17 @@ struct SpeedPanel: View {
                 "Pitch \(t.semitones > 0 ? "+" : t.semitones < 0 ? "−" : "")\(abs(t.semitones)) semitones",
                 value: Binding(get: { t.semitones }, set: { set(Tempo(speed: t.speed, semitones: $0)) }),
                 in: -Tempo.maxSemitones...Tempo.maxSemitones)
+            // Off, an episode or a book's file takes its collection's speed, which
+            // follows the user (plan 031); a song takes this Mac's.
+            let (one, every) =
+                switch p.current?.kind {
+                case Song.podcast: ("episode", "For every podcast, on all your devices.")
+                case Song.audiobook: ("file", "For every audiobook, on all your devices.")
+                default: ("song", "For every song on this Mac without its own.")
+                }
             // A binding, not onChange: setting the toggle on appear must not write the setting again.
             Toggle(
-                "Only for this song",
+                "Only for this \(one)",
                 isOn: Binding(
                     get: { onlyThisSong },
                     set: { on in
@@ -333,12 +366,8 @@ struct SpeedPanel: View {
                     })
             )
             .disabled(p.current == nil)
-            Text(
-                onlyThisSong
-                    ? "This song keeps its own, on all your devices."
-                    : "For every song on this Mac without its own."
-            )
-            .font(.caption).foregroundStyle(.secondary)
+            Text(onlyThisSong ? "This \(one) keeps its own, on all your devices." : every)
+                .font(.caption).foregroundStyle(.secondary)
             Button("Reset") { set(.normal) }.disabled(t.isNormal)
         }
         .onAppear { onlyThisSong = p.songTempo != nil }
@@ -428,7 +457,8 @@ struct Inspector: View {
         VStack(spacing: 0) {
             Picker("", selection: $nav.inspectorTab) {
                 Text("Queue").tag(Nav.InspectorTab.queue)
-                Text("Lyrics").tag(Nav.InspectorTab.lyrics)
+                Text(app.playback.current?.spoken == true ? "Transcript" : "Lyrics").tag(
+                    Nav.InspectorTab.lyrics)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -465,7 +495,9 @@ struct LyricsView: View {
         Group {
             switch state {
             case .loading: ProgressView()
-            case .none: ContentUnavailableView("No lyrics", systemImage: "quote.bubble")
+            case .none:
+                ContentUnavailableView(
+                    p.current?.spoken == true ? "No transcript" : "No lyrics", systemImage: "quote.bubble")
             case .offline: ContentUnavailableView("Lyrics need the server", systemImage: "wifi.slash")
             case .shown(let l):
                 let at = l.at(Int(p.position * 1000))

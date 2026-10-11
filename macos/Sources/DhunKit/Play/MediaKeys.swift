@@ -55,7 +55,9 @@ final class MediaKeys {
         guard artFor != s.id else { return }
         artFor = s.id
         Task {
-            guard let img = await playback.app.covers.image(s, px: 512), playback.current?.id == s.id else {
+            guard let img = await playback.app.covers.image(playback.app.catalog.artOf(s), px: 512),
+                playback.current?.id == s.id
+            else {
                 return
             }
             var i = center.nowPlayingInfo ?? [:]

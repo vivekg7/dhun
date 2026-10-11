@@ -44,7 +44,17 @@ public final class DB: @unchecked Sendable {
               at INTEGER NOT NULL);
             CREATE TABLE lyrics (song INTEGER PRIMARY KEY, text TEXT NOT NULL, at INTEGER NOT NULL);
             CREATE TABLE thumb (key TEXT PRIMARY KEY, data BLOB NOT NULL);
+            """,
+            // Podcasts and audiobooks (plan 031). Chapters are the server's JSON, "" for none.
             """
+            ALTER TABLE song ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN date TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN chapters TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN groupKey TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN groupTitle TEXT NOT NULL DEFAULT '';
+            ALTER TABLE song ADD COLUMN groupIndex INTEGER NOT NULL DEFAULT 0;
+            """,
         ]
         let have = sql.userVersion
         for (i, step) in steps.enumerated() where i >= have {
@@ -73,20 +83,23 @@ public final class DB: @unchecked Sendable {
                 year: r.int(9), track: r.int(10), disc: r.int(11), durationMs: r.int(12), format: r.text(13),
                 bitrate: r.int(14), sampleRate: r.int(15), bitDepth: r.int(16), size: r.int(17),
                 hasArt: r.bool(18), hasLyrics: r.bool(19), addedAt: r.int(20), missing: r.bool(21),
-                art: r.text(22))
+                art: r.text(22), kind: r.text(23), date: r.text(24), notes: r.text(25),
+                chapters: chapters(r.text(26)), groupKey: r.text(27), groupTitle: r.text(28),
+                groupIndex: r.int(29))
         }) ?? []
     }
 
     public func putSongs(_ songs: [Song]) throws {
         try sql.runMany(
-            "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             songs.map { s in
                 ([
                     s.id, s.path, s.title, s.artist, s.artists.joined(separator: sep), s.album, s.albumArtist,
                     s.composer, s.genres.joined(separator: sep), s.year, s.track, s.disc, s.durationMs,
                     s.format,
                     s.bitrate, s.sampleRate, s.bitDepth, s.size, s.hasArt, s.hasLyrics, s.addedAt, s.missing,
-                    s.art,
+                    s.art, s.kind, s.date, s.notes, chapters(s.chapters), s.groupKey, s.groupTitle,
+                    s.groupIndex,
                 ] as [any SQLBindable]).sql
             })
     }
@@ -315,5 +328,11 @@ public final class DB: @unchecked Sendable {
 /// Joins and splits the text form of a list (artists, genres).
 let sep = "\u{1f}"
 private func split(_ s: String) -> [String] { s.isEmpty ? [] : s.components(separatedBy: sep) }
+private func chapters(_ s: String) -> [Chapter] {
+    s.isEmpty ? [] : (try? JSONDecoder().decode([Chapter].self, from: Data(s.utf8))) ?? []
+}
+private func chapters(_ c: [Chapter]) -> String {
+    c.isEmpty ? "" : (try? JSONEncoder().encode(c)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+}
 func ids(_ s: String) -> [Int] { s.isEmpty ? [] : s.split(separator: ",").compactMap { Int($0) } }
 func join(_ ids: [Int]) -> String { ids.map(String.init).joined(separator: ",") }

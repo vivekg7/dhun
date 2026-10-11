@@ -25,8 +25,10 @@ public final class Sync {
     static let retryMin: Double = 5
     static let retryMax: Double = 120
 
-    /// Raised when songs gain a field: 1 is the art key (plan 019).
-    static let libraryFormat = 1
+    /// Raised when songs gain a field: 1 is the art key (plan 019), 2 podcasts
+    /// and audiobooks, which the server sends only to a client that asks for
+    /// them from the start (plan 031).
+    static let libraryFormat = 2
 
     init(app: AppModel) {
         self.app = app
@@ -215,7 +217,10 @@ public final class Sync {
                     positionMs: q.positionMs ?? 0, shuffle: q.shuffle ?? false, repeatMode: q.repeat ?? "off",
                     usedAt: parseTime(q.usedAt)))
         }
-        for (kind, items) in [(Store.fav, s.favorites ?? []), (Store.later, s.listenLater ?? [])] {
+        for (kind, items) in [
+            (Store.fav, s.favorites ?? []), (Store.later, s.listenLater ?? []),
+            (Store.played, s.played ?? []),
+        ] {
             for i in items {
                 let at = parseTime(i.at)
                 if pending.contains("\(kind):\(i.song)") { continue }

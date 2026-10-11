@@ -14,6 +14,7 @@ struct Thumb: View {
 
     var body: some View {
         _ = app.thumbsArrived
+        let song = app.catalog.artOf(self.song)
         return Group {
             if let img = app.covers.thumbnail(song) {
                 Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
@@ -37,6 +38,7 @@ struct Cover: View {
     @State private var loaded: (key: String, image: NSImage)?
 
     var body: some View {
+        let song = self.song.map(app.catalog.artOf)
         let key = "\(song?.art ?? "")-\(song?.id ?? 0)-\(Int(size))"
         let px = Int(size * 2)
         let image = loaded?.key == key ? loaded?.image : song.flatMap { app.covers.cached($0, px: px) }
@@ -377,8 +379,13 @@ struct DownloadsView: View {
 
     var body: some View {
         let st = app.downloads.status
-        let songs = app.catalog.songsOf(Array(app.downloaded.keys)).sorted {
+        let all = app.catalog.songsOf(Array(app.downloaded.keys))
+        // Apart from the songs, so playing every download plays music only (plan 031).
+        let songs = all.filter { !$0.spoken }.sorted {
             $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        let spoken = (app.catalog.books + app.catalog.shows).flatMap(\.items).filter {
+            app.downloaded[$0.id] != nil
         }
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
@@ -410,10 +417,10 @@ struct DownloadsView: View {
                 ? app.pins : SearchIndex.names(app.pins, "name") { $0.name }.filter(SearchQuery(query))
             List(pins) { p in
                 HStack {
-                    Image(systemName: icon(p.kind)).foregroundStyle(.tint).frame(width: 22)
+                    Image(systemName: icon(p)).foregroundStyle(.tint).frame(width: 22)
                     VStack(alignment: .leading) {
                         Text(p.name)
-                        Text(p.kind.capitalized).font(.caption).foregroundStyle(.secondary)
+                        Text(kindLabel(p)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Remove Download", systemImage: "xmark.circle") {
@@ -422,7 +429,7 @@ struct DownloadsView: View {
                     .labelStyle(.iconOnly).buttonStyle(.borderless).help("Remove the download")
                 }
             }
-            .frame(maxHeight: songs.isEmpty ? .infinity : 220)
+            .frame(maxHeight: songs.isEmpty && spoken.isEmpty ? .infinity : 220)
             .overlay {
                 if app.pins.isEmpty {
                     ContentUnavailableView(
@@ -438,20 +445,31 @@ struct DownloadsView: View {
                     title: "Songs on this Mac", subtitle: summary(songs), songs: songs, source: "downloads")
                 SongTable(songs: songs, name: "Downloads", source: "downloads", query: query)
             }
+            if !spoken.isEmpty && query.isEmpty {
+                Divider()
+                Text("Podcasts and audiobooks").font(.headline).padding(.horizontal, 16).padding(.top, 12)
+                SpokenDownloads(songs: spoken)
+            }
         }
         .navigationTitle("Downloads")
         .filterBox($query, rows: app.pins.count + songs.count, prompt: "Filter downloads")
     }
 
-    private func icon(_ kind: String) -> String {
-        switch kind {
+    private func icon(_ p: Pin) -> String {
+        switch p.kind {
         case Downloads.album: "square.stack"
         case Downloads.folder: "folder"
         case Downloads.artist: "music.mic"
         case Downloads.genre: "guitars"
         case Downloads.playlist: "music.note.list"
         case Downloads.list: "heart"
+        case Downloads.shelf: app.catalog.shelves[p.ref]?.isBook == false ? "mic" : "book"
         default: "music.note"
         }
+    }
+
+    private func kindLabel(_ p: Pin) -> String {
+        guard p.kind == Downloads.shelf else { return p.kind.capitalized }
+        return app.catalog.shelves[p.ref]?.isBook == false ? "Podcast" : "Audiobook"
     }
 }

@@ -15,7 +15,7 @@ public final class Playback {
     public static let maxQueues = 20
     /// The synced setting with the queues' order: their ids, as a JSON array.
     public static let orderSetting = "queues.order"
-    /// A hand-off never starts closer than this to the song's end.
+    /// A hand-off never starts closer than this to the song's end, nor is a resume point kept there.
     static let endMarginMs = 5000
 
     @ObservationIgnored unowned let app: AppModel
@@ -98,7 +98,14 @@ public final class Playback {
 
     /// The playing song's own speed and pitch, synced; nil when it follows `everyday`.
     public var songTempo: Tempo? { current.flatMap { Tempo.of(app.settings[Tempo.songSetting($0.id)]) } }
-    public var tempo: Tempo { songTempo ?? everyday }
+    /// For an episode or a book's file, its collection's speed (`speed.podcast`,
+    /// `speed.audiobook`), synced, so a 39-file book is not set 39 times
+    /// (plan 031); nil for music.
+    public var kindTempo: Tempo? {
+        current.flatMap { $0.spoken ? Tempo.of(app.settings[Tempo.kindSetting($0.kind)]) : nil }
+    }
+    /// The file's own, else its collection's, else this Mac's everyday one.
+    public var tempo: Tempo { songTempo ?? kindTempo ?? everyday }
 
     public var duration: Double {
         if let s = current, s.durationMs > 0 { return Double(s.durationMs) / 1000 }
@@ -154,20 +161,46 @@ public final class Playback {
         setPlaying(false)
     }
 
+    /// The next chapter of a file that has them (plan 031), else the next song.
     public func next() {
+        if let at = Playback.nextChapter(chapterStarts, Int(position * 1000)) {
+            return seek(to: Double(at) / 1000)
+        }
         guard let i = currentIndex, let n = nextIndex(after: i, repeat: repeatMode == "queue") else { return }
         jump(to: n, end: "skipped")
     }
 
-    /// Back to the start of the song, or to the one before within its first three seconds.
+    /// Back to the start of the song, or to the one before within its first
+    /// three seconds; by chapter in a file that has them.
     public func previous() {
         guard let i = currentIndex else { return }
+        if let at = Playback.previousChapter(chapterStarts, Int(position * 1000), window: 3000) {
+            return seek(to: Double(at) / 1000)
+        }
         if position > 3 {
             seek(to: 0)
             return
         }
         guard let p = previousIndex(before: i) else { return seek(to: 0) }
         jump(to: p, end: "previous")
+    }
+
+    private var chapterStarts: [Int] { current?.chapters.map(\.startMs) ?? [] }
+
+    /// Where Next goes in a file whose chapters start at `starts`: the next
+    /// chapter, or nil for the next file. A chapter starting within a second
+    /// is the one just sought to, not the next.
+    nonisolated public static func nextChapter(_ starts: [Int], _ pos: Int) -> Int? {
+        starts.first { $0 > pos + 1000 }
+    }
+
+    /// Where Previous goes: back to the start of this chapter, or, within
+    /// `window` of it, to the one before, as Previous does with songs; nil for
+    /// the song's own Previous (no chapters, or the first one).
+    nonisolated public static func previousChapter(_ starts: [Int], _ pos: Int, window: Int) -> Int? {
+        guard let i = starts.lastIndex(where: { $0 <= pos }) else { return nil }
+        if pos - starts[i] > window { return starts[i] }
+        return i > 0 ? starts[i - 1] : nil
     }
 
     public func seek(to seconds: Double) {
@@ -419,10 +452,15 @@ public final class Playback {
 
     // MARK: Speed and pitch
 
-    /// For the playing song only (synced, as its own setting), or as this Mac's everyday one.
+    /// For the playing song only (synced, as its own setting), for every
+    /// episode or every book (synced) when it is one, or as this Mac's
+    /// everyday one. Normal speed is stored for a collection rather than
+    /// cleared, so episodes do not fall back to the everyday speed for music.
     public func setTempo(_ t: Tempo, onlyThisSong: Bool) {
         if onlyThisSong, let s = current {
             app.store.setting(Tempo.songSetting(s.id), t.json)
+        } else if let s = current, s.spoken {
+            app.store.setting(Tempo.kindSetting(s.kind), t.json)
         } else {
             everyday = t
             app.prefs.speed = t.speed
@@ -521,7 +559,7 @@ public final class Playback {
     /// The catalogue arrived: reload the queue that was playing when the app
     /// last stopped, paused, once.
     func catalogChanged() {
-        guard !restored, !app.catalog.songs.isEmpty else { return }
+        guard !restored, !app.catalog.byId.isEmpty else { return }
         restored = true
         if current == nil, let q = active { load(q, play: false) }
     }
@@ -743,7 +781,10 @@ public final class Playback {
     /// The engine went on to the next song by itself: the last one finished.
     private func songChangedByItself(to s: Song) {
         if let finished = current {
-            close("finished", toMs: finished.durationMs > 0 ? finished.durationMs : Int(position * 1000))
+            // Where the player got to, not the song list's length: a file that
+            // cannot be read past "finishes" early, and the length would mark
+            // it played (plan 031).
+            close("finished", toMs: Int(position * 1000))
             // Heard to the end: a long file's resume point is done with.
             if isLong(finished) { app.store.resume(finished.id, nil) }
         }
@@ -763,7 +804,7 @@ public final class Playback {
     /// Everything scheduled has played: the end of the queue, or a sleep timer's song.
     private func reachedEnd() {
         let s = current
-        close("finished", toMs: s.map { $0.durationMs > 0 ? $0.durationMs : Int(position * 1000) } ?? 0)
+        close("finished", toMs: Int(position * 1000))
         if let s, isLong(s) { app.store.resume(s.id, nil) }
         let bySleep = upcomingState.pauseAfterSong != nil && sleep.mode != nil
         setPlaying(false)
@@ -831,8 +872,9 @@ public final class Playback {
 
     // MARK: Long files (plan 009)
 
+    /// Every episode and book file keeps its place, however short (plan 031).
     private func isLong(_ s: Song) -> Bool {
-        s.durationMs >= app.setting("longFiles.minMinutes", 15) * 60_000
+        s.spoken || s.durationMs >= app.setting("longFiles.minMinutes", 15) * 60_000
     }
 
     /// Where to start `s`: its resume point under "auto"; under "ask", offered instead.
@@ -848,8 +890,12 @@ public final class Playback {
         }
     }
 
+    /// Not in the last seconds: a file that plays to its end also stops
+    /// playing, and the pause would save its end as the place to resume.
     private func saveResume(_ s: Song, _ pos: Int) {
-        if isLong(s) && pos > 0 { app.store.resume(s.id, pos) }
+        if isLong(s) && pos > 0 && (s.durationMs <= 0 || pos < s.durationMs - Playback.endMarginMs) {
+            app.store.resume(s.id, pos)
+        }
     }
 
     // MARK: Listens (plan 008)

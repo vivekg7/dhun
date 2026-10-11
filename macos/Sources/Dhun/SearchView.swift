@@ -4,10 +4,14 @@ import SwiftUI
 /// The sections of search results (plan 029), as on the phone.
 private enum Kind: String, Hashable, Sendable {
     case artists = "Artists", albums = "Albums", genres = "Genres"
-    case folders = "Folders", playlists = "Playlists", songs = "Songs"
+    case folders = "Folders", playlists = "Playlists"
+    // Under their own headings (plan 031), before the songs, which can run to
+    // hundreds and would bury them.
+    case books = "Audiobooks", shows = "Podcasts", episodes = "Episodes"
+    case songs = "Songs"
 }
 
-/// One result, ready to show. `route` is what it opens; a song has none, it plays.
+/// One result, ready to show. `route` is what it opens; a song or an episode has none, it plays.
 private struct Row: Identifiable, Sendable {
     let id: String
     let title: String
@@ -31,7 +35,9 @@ private let shown = 3
 private let songsShown = 300
 
 /// Every section with something in it, the one with the best match first; on a tie, in this order.
-private func find(_ c: Catalog, _ playlists: [Playlist], _ q: SearchQuery, boost: (Song) -> Int) -> [Found] {
+private func find(
+    _ c: Catalog, _ playlists: [Playlist], _ heard: Heard, _ q: SearchQuery, boost: (Song) -> Int
+) -> [Found] {
     if q.isEmpty { return [] }
     func section<T>(_ kind: Kind, _ index: SearchIndex<T>, boost: (T) -> Int = { _ in 0 }, _ row: (T) -> Row)
         -> Found?
@@ -71,6 +77,23 @@ private func find(_ c: Catalog, _ playlists: [Playlist], _ q: SearchQuery, boost
             Row(
                 id: "playlist/\($0.id)", title: $0.name, detail: count(c.songsOf($0.songs).count), song: nil,
                 icon: $0.shared ? "music.note.house" : "music.note.list", route: .playlist($0.id))
+        },
+        section(.books, c.bookIndex) {
+            Row(
+                id: "shelf/\($0.id)", title: $0.title,
+                detail: [$0.author, heard.progress($0)].filter { !$0.isEmpty }.joined(separator: " · "),
+                song: $0.cover ?? $0.items[0], route: .shelf($0.id))
+        },
+        section(.shows, c.showIndex) {
+            Row(
+                id: "shelf/\($0.id)", title: $0.title, detail: "Podcast", song: $0.cover ?? $0.items[0],
+                route: .shelf($0.id))
+        },
+        // An episode found plays its show from there, as on the show's page.
+        section(.episodes, c.episodeIndex) {
+            Row(
+                id: "e/\($0.id)", title: $0.title,
+                detail: [$0.groupTitle, $0.day].filter { !$0.isEmpty }.joined(separator: " · "), song: $0)
         },
         section(.songs, c.songIndex, boost: boost) {
             Row(
@@ -121,13 +144,17 @@ struct SearchResults: View {
                     } else {
                         let whole = expanded.contains(f.kind)
                         ForEach(whole ? f.rows : Array(f.rows.prefix(shown))) { r in
-                            Button {
-                                app.keepSearch(query)
-                                nav.path.append(r.route!)
-                            } label: {
-                                HitRow(app: app, row: r)
+                            if let route = r.route {
+                                Button {
+                                    app.keepSearch(query)
+                                    nav.path.append(route)
+                                } label: {
+                                    HitRow(app: app, row: r)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                SongHit(app: app, song: r.song!, detail: r.detail).tag(r.id)
                             }
-                            .buttonStyle(.plain)
                         }
                         if !whole && f.rows.count > shown {
                             Button("Show all \(f.rows.count) \(f.kind.rawValue.lowercased())") {
@@ -159,6 +186,12 @@ struct SearchResults: View {
                 .environment(app)
                 .environment(nav)
         } primaryAction: { tags in
+            if let tag = tags.first(where: { $0.hasPrefix("e/") }), let id = Int(tag.dropFirst(2)),
+                let s = app.catalog.byId[id], let shelf = app.catalog.shelfOf(s)
+            {
+                app.keepSearch(query)
+                return playShelf(app, shelf, from: s)
+            }
             let (name, list, chosen) = picked(tags, songs, lyrics?.map(\.song) ?? [])
             guard let first = chosen.first, let i = list.firstIndex(of: first) else { return }
             app.keepSearch(query)
@@ -178,8 +211,11 @@ struct SearchResults: View {
             let q = SearchQuery(query)
             let favs = Set(app.favorites.map(\.song))
             let plays = app.playStats.mapValues(\.count)
+            let heard = app.heard
             let result = await Task.detached {
-                find(c, playlists, q) { s in (favs.contains(s.id) ? 3 : 0) + min(2, (plays[s.id] ?? 0) / 5) }
+                find(c, playlists, heard, q) { s in
+                    (favs.contains(s.id) ? 3 : 0) + min(2, (plays[s.id] ?? 0) / 5)
+                }
             }.value
             if !Task.isCancelled { self.found = result }
         }
@@ -199,6 +235,15 @@ struct SearchResults: View {
     private func picked(_ tags: Set<String>, _ songs: [Song], _ inLyrics: [Song]) -> (String, [Song], [Song])
     {
         let q = query.trimmingCharacters(in: .whitespaces)
+        // Episodes play their show, not a list of what was found; the menu has no Play for them.
+        if tags.contains(where: { $0.hasPrefix("e/") }) {
+            return (
+                "", [],
+                tags.compactMap { $0.hasPrefix("e/") ? Int($0.dropFirst(2)) : nil }.compactMap {
+                    app.catalog.byId[$0]
+                }
+            )
+        }
         // "Search: …", as on the phone: a bare query could name, and refill, an album's queue.
         if tags.contains(where: { $0.hasPrefix("s/") }) {
             return ("Search: \(q)", songs, songs.filter { tags.contains("s/\($0.id)") })

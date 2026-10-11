@@ -147,13 +147,16 @@ struct SongMenu: View {
                     }
                 }
             }
-            Menu("Add to Playlist") {
-                ForEach(app.playlists.filter { $0.editable }) { p in
-                    Button(p.name) { added(to: p) }
-                }
-                Divider()
-                Button("New Playlist…") {
-                    Prompt.name("New playlist") { app.store.createPlaylist($0, songs.map(\.id)) }
+            // Playlists hold music only (plan 031).
+            if songs.contains(where: { !$0.spoken }) {
+                Menu("Add to Playlist") {
+                    ForEach(app.playlists.filter { $0.editable }) { p in
+                        Button(p.name) { added(to: p) }
+                    }
+                    Divider()
+                    Button("New Playlist…") {
+                        Prompt.name("New playlist") { app.store.createPlaylist($0, songs.map(\.id)) }
+                    }
                 }
             }
             Divider()
@@ -166,6 +169,17 @@ struct SongMenu: View {
             let allLater = songs.allSatisfy { later.contains($0.id) }
             Button(allLater ? "Remove from Listen Later" : "Listen Later") {
                 for s in songs { app.store.mark(Store.later, s.id, !allLater) }
+            }
+            let spoken = songs.filter(\.spoken)
+            if !spoken.isEmpty {
+                let allPlayed = spoken.allSatisfy { app.played.contains($0.id) }
+                // Either way it starts from the beginning next time.
+                Button(allPlayed ? "Mark as Not Played" : "Mark as Played") {
+                    for s in spoken {
+                        app.store.mark(Store.played, s.id, !allPlayed)
+                        app.store.resume(s.id, nil)
+                    }
+                }
             }
             Divider()
             if songs.count == 1 {
@@ -180,8 +194,12 @@ struct SongMenu: View {
                     Button("Download") { app.downloads.pin(Downloads.song, String(s.id), s.title) }
                 }
                 Divider()
-                if !s.album.isEmpty { Button("Go to Album") { nav.goToAlbum(s, app) } }
-                Button("Go to Artist") { nav.goToArtist(s) }
+                if let shelf = app.catalog.shelfOf(s) {
+                    Button(shelf.isBook ? "Go to Book" : "Go to Show") { nav.goToAlbum(s, app) }
+                } else {
+                    if !s.album.isEmpty { Button("Go to Album") { nav.goToAlbum(s, app) } }
+                    Button("Go to Artist") { nav.goToArtist(s) }
+                }
             } else {
                 Button("Download") {
                     for s in songs { app.downloads.pin(Downloads.song, String(s.id), s.title) }
@@ -192,15 +210,17 @@ struct SongMenu: View {
 
     /// Adds the songs and says what happened, as the phone does: songs already there are skipped.
     private func added(to p: Playlist) {
-        let ids = songs.map(\.id)
+        let ids = app.store.music(songs.map(\.id))
         let skipped = app.store.addToPlaylist(p, ids)
         let adding = Set(ids).count - skipped
+        let spoken = Set(songs.filter(\.spoken).map(\.id)).count
         app.playback.notice =
-            adding == 0
-            ? (skipped == 1 ? "Already in “\(p.name)”" : "All \(skipped) already in “\(p.name)”")
-            : skipped > 0
-                ? "Added \(adding) to “\(p.name)” · \(skipped) already there"
-                : "Added \(count(adding)) to “\(p.name)”"
+            (adding == 0
+                ? (skipped == 1 ? "Already in “\(p.name)”" : "All \(skipped) already in “\(p.name)”")
+                : skipped > 0
+                    ? "Added \(adding) to “\(p.name)” · \(skipped) already there"
+                    : "Added \(count(adding)) to “\(p.name)”")
+            + (spoken > 0 ? " · \(spoken) podcast or audiobook files left out" : "")
     }
 }
 

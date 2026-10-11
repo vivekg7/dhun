@@ -81,6 +81,8 @@ struct Detail: View {
             case .albums: AlbumsGrid()
             case .artists: GroupsList(kind: .artist)
             case .genres: GroupsList(kind: .genre)
+            case .books: ShelvesView(books: true)
+            case .shows: ShelvesView(books: false)
             case .list(let k): ListPage(kind: k)
             case .playlist(let id): PlaylistPage(id: app.sync.replaced[id] ?? id)
             case .downloads: DownloadsView()
@@ -118,6 +120,8 @@ struct RouteView: View {
                 Missing()
             }
         case .folder(let path): FolderView(path: path)
+        case .shelf(let key):
+            if let s = app.catalog.shelves[key] { ShelfPage(shelf: s) } else { Missing() }
         case .playlist(let id): PlaylistPage(id: app.sync.replaced[id] ?? id)
         case .queue(let id):
             if let q = app.queues.first(where: { $0.id == id }) {

@@ -42,6 +42,9 @@ public struct Tempo: Equatable, Sendable {
 
     public static func songSetting(_ song: Int) -> String { "speed.\(song)" }
 
+    /// Every podcast's or every audiobook's: `speed.podcast`, `speed.audiobook`.
+    public static func kindSetting(_ kind: String) -> String { "speed.\(kind)" }
+
     /// 1.25 → "1.25", 1.5 → "1.5", 2 → "2", in every locale.
     public static func format(_ speed: Double) -> String {
         let hundredths = Int((speed * 100).rounded())

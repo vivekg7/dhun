@@ -8,6 +8,9 @@ import Foundation
 public struct Store {
     nonisolated public static let fav = "fav"
     nonisolated public static let later = "later"
+    /// An episode or a book's file heard (plan 031).
+    nonisolated public static let played = "played"
+    nonisolated public static let playedPercent = 90
 
     let app: AppModel
     var db: DB { app.db }
@@ -15,8 +18,11 @@ public struct Store {
     public func mark(_ kind: String, _ song: Int, _ on: Bool) {
         db.putMark(Mark(kind: kind, song: song, at: nowMs(), deleted: !on))
         let type =
-            kind == Store.fav
-            ? (on ? "favorite.set" : "favorite.unset") : (on ? "listen_later.add" : "listen_later.remove")
+            switch kind {
+            case Store.fav: on ? "favorite.set" : "favorite.unset"
+            case Store.played: on ? "played.set" : "played.unset"
+            default: on ? "listen_later.add" : "listen_later.remove"
+            }
         // Only the last toggle of a song matters.
         record(type, key: "\(kind):\(song)", ["song": JSON(song)])
         app.reloadMarks()
@@ -122,7 +128,7 @@ public struct Store {
         var seen = Set<Int>()
         let p = Playlist(
             id: -Int.random(in: 1..<Int.max), name: name, path: "", shared: false,
-            songs: songs.filter { seen.insert($0).inserted }, ref: UUID().uuidString.lowercased())
+            songs: music(songs).filter { seen.insert($0).inserted }, ref: UUID().uuidString.lowercased())
         db.putPlaylist(p)
         record(
             "playlist.create", playlist: p.id,
@@ -136,7 +142,7 @@ public struct Store {
     public func addToPlaylist(_ p: Playlist, _ songs: [Int]) -> Int {
         let have = Set(p.songs)
         var seen = Set<Int>()
-        let distinct = songs.filter { seen.insert($0).inserted }
+        let distinct = music(songs).filter { seen.insert($0).inserted }
         let adding = distinct.filter { !have.contains($0) }
         if !adding.isEmpty {
             var q = p
@@ -147,6 +153,10 @@ public struct Store {
         }
         return distinct.count - adding.count
     }
+
+    /// Playlists hold music only: each is an `.m3u8` in Music, which cannot
+    /// name a file in Podcasts or Audiobooks, and the server refuses them (plan 031).
+    public func music(_ songs: [Int]) -> [Int] { songs.filter { app.catalog.byId[$0]?.spoken != true } }
 
     /// Removes the entry at `index` of the playlist's own list (unmatched entries included).
     public func removeFromPlaylist(_ p: Playlist, at index: Int) {
@@ -227,6 +237,7 @@ public struct Store {
 
     /// One listen (plan 008).
     public func play(_ l: Listen) {
+        markPlayed(l)
         var f: [String: JSON] = [
             "song": JSON(l.song), "ms": JSON(l.ms), "endedAt": .string(formatTime(l.endedAt)),
             "fromMs": JSON(l.fromMs),
@@ -236,6 +247,18 @@ public struct Store {
         if !l.source.isEmpty { f["source"] = .string(l.source) }
         if !l.queue.isEmpty { f["queue"] = .string(l.queue) }
         record("play", at: l.startedAt, f)
+    }
+
+    /// An episode or a book's file is played once a listen reaches 90% into
+    /// it. The server marks it itself from the listen; this shows it at once,
+    /// offline too, as of the same time, so the two agree (plan 031).
+    private func markPlayed(_ l: Listen) {
+        guard let s = app.catalog.byId[l.song], s.spoken, s.durationMs > 0,
+            l.toMs * 100 >= s.durationMs * Store.playedPercent,
+            db.mark(Store.played, l.song)?.deleted != false
+        else { return }
+        db.putMark(Mark(kind: Store.played, song: l.song, at: l.endedAt, deleted: false))
+        app.reloadMarks()
     }
 
     /// `key` replaces earlier ops with the same key. `queue` and `playlist`

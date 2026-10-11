@@ -35,6 +35,8 @@ public final class Downloads {
     nonisolated public static let playlist = "playlist"
     /// Favorites or Listen Later; `Pin.ref` is the `Store` mark kind.
     nonisolated public static let list = "list"
+    /// An audiobook or a podcast show (plan 031); `Pin.ref` is its `Shelf.id`.
+    nonisolated public static let shelf = "shelf"
     nonisolated static let gb = 1 << 30
     /// Left free on the disk, so a full disk does not break the rest of the Mac.
     static let reserve = 200 << 20
@@ -219,7 +221,7 @@ public final class Downloads {
 public func covered(_ pins: [Pin], _ c: Catalog, _ playlists: [Playlist], _ favs: [Mark], _ later: [Mark])
     -> [Song]?
 {
-    guard !c.songs.isEmpty else { return nil }
+    guard !c.byId.isEmpty else { return nil }
     var ids: [Int] = []
     var seen = Set<Int>()
     func add(_ id: Int) { if seen.insert(id).inserted { ids.append(id) } }
@@ -234,6 +236,7 @@ public func covered(_ pins: [Pin], _ c: Catalog, _ playlists: [Playlist], _ favs
             c.genres.first { $0.name.lowercased() == p.ref.lowercased() }?.songs.forEach { add($0.id) }
         case Downloads.playlist: playlists.first { String($0.id) == p.ref }?.songs.forEach(add)
         case Downloads.list: (p.ref == Store.fav ? favs : later).forEach { add($0.song) }
+        case Downloads.shelf: c.shelves[p.ref]?.items.forEach { add($0.id) }
         default: break
         }
     }

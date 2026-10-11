@@ -26,6 +26,30 @@ public struct Song: Identifiable, Hashable, Sendable {
     public var missing: Bool
     /// Which cover it shows, shared by songs showing the same one (plan 019).
     public var art: String
+    /// "" for music, else `podcast` or `audiobook` (plan 031).
+    public var kind = ""
+    /// The release date in full, for an episode.
+    public var date = ""
+    public var notes = ""
+    public var chapters: [Chapter] = []
+    /// The book or show it belongs to, as the server grouped them, and its place there.
+    public var groupKey = ""
+    public var groupTitle = ""
+    public var groupIndex = 0
+
+    public static let podcast = "podcast"
+    public static let audiobook = "audiobook"
+
+    /// A podcast episode or an audiobook's file: kept out of music lists and playlists, marked played instead of counted.
+    public var spoken: Bool { !kind.isEmpty }
+
+    /// An episode's date tag as a day. Some tools write 20251230 for 2025-12-30.
+    public var day: String {
+        if date.count == 8, date.allSatisfy(\.isASCII), date.allSatisfy(\.isNumber) {
+            return "\(date.prefix(4))-\(date.dropFirst(4).prefix(2))-\(date.suffix(2))"
+        }
+        return String(date.prefix(10))
+    }
 
     public var folder: String {
         guard let i = path.lastIndex(of: "/") else { return "" }
@@ -35,6 +59,26 @@ public struct Song: Identifiable, Hashable, Sendable {
         !artist.isEmpty ? artist : !albumArtist.isEmpty ? albumArtist : "Unknown artist"
     }
     public var fileExtension: String { (path as NSString).pathExtension.lowercased() }
+}
+
+/// Where a chapter of an episode or a book's file starts.
+public struct Chapter: Codable, Hashable, Sendable {
+    public var startMs = 0
+    public var title = ""
+
+    public init(startMs: Int, title: String) {
+        self.startMs = startMs
+        self.title = title
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startMs = try c.decodeIfPresent(Int.self, forKey: .startMs) ?? 0
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+    }
+
+    /// Its title, or "" when that is only its number ("001" in Dune), which the app shows anyway.
+    public var name: String { title.allSatisfy(\.isNumber) ? "" : title }
 }
 
 /// A playlist as the server indexed it. One made here has a negative id
@@ -76,7 +120,8 @@ public struct QueueRow: Identifiable, Hashable, Sendable {
     }
 }
 
-/// One entry of Favorites (`fav`) or Listen Later (`later`); `at` decides between two edits.
+/// One entry of Favorites (`fav`), Listen Later (`later`) or the played marks
+/// (`played`); `at` decides between two edits.
 public struct Mark: Hashable, Sendable {
     public var kind: String
     public var song: Int
@@ -106,7 +151,7 @@ public struct PlayStat: Hashable, Sendable {
 }
 
 /// Something downloaded, kept in step with the server (plan 012): `kind` is
-/// song, album, folder, artist, genre, playlist or list.
+/// song, album, folder, artist, genre, playlist, list or shelf (a book or a show).
 public struct Pin: Hashable, Sendable, Identifiable {
     public var key: String
     public var kind: String

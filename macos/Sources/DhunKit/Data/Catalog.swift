@@ -7,21 +7,61 @@ import Foundation
 /// Built whole, off the main thread, and never changed after: safe to read
 /// from the player's queue too.
 public final class Catalog: Sendable {
+    /// The music: what every song list, view and search of songs shows.
+    /// Podcasts and audiobooks have their own pages (`books`, `shows`), so
+    /// an episode never turns up in an artist or a shuffle (plan 031).
     public let songs: [Song]
+    /// Every song, episodes and books' files too: what queues, Favorites and Listen Later name.
     public let byId: [Int: Song]
     public let albums: [Album]
     public let artists: [Group]
     public let genres: [Group]
     public let folders: [String: Folder]
+    /// Audiobooks and podcast shows as the server grouped them, each one's files in its play order.
+    public let books: [Shelf]
+    public let shows: [Shelf]
+    public let shelves: [String: Shelf]
 
     public init(_ all: [Song]) {
-        let songs = all.sorted { natural($0.title, $1.title) < 0 }
+        let songs = all.filter { !$0.spoken }.sorted { natural($0.title, $1.title) < 0 }
         self.songs = songs
-        byId = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        byId = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         albums = Catalog.albums(songs)
         artists = Catalog.group(songs) { $0.artists.isEmpty ? [$0.displayArtist] : $0.artists }
         genres = Catalog.group(songs) { $0.genres.isEmpty ? ["Unknown genre"] : $0.genres }
         folders = Catalog.folders(songs)
+        books = Catalog.shelves(all, Song.audiobook)
+        shows = Catalog.shelves(all, Song.podcast)
+        shelves = Dictionary((books + shows).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// The shelf `s` is on, or nil for music.
+    public func shelfOf(_ s: Song) -> Shelf? { s.spoken ? shelves[Catalog.shelfKey(s)] : nil }
+
+    /// The song whose cover `s` shows: an episode or a book's file with no
+    /// cover of its own shows its show's or book's.
+    public func artOf(_ s: Song) -> Song {
+        guard s.spoken, !s.hasArt else { return s }
+        return shelfOf(s)?.cover ?? s
+    }
+
+    /// A file the server did not group (none should be) is a shelf of its folder.
+    private static func shelfKey(_ s: Song) -> String {
+        s.groupKey.isEmpty ? s.kind + "\u{0}" + s.folder : s.groupKey
+    }
+
+    private static func shelves(_ all: [Song], _ kind: String) -> [Shelf] {
+        Dictionary(grouping: all.filter { $0.kind == kind }, by: shelfKey).map { key, list in
+            let items = list.sorted {
+                $0.groupIndex != $1.groupIndex ? $0.groupIndex < $1.groupIndex : natural($0.path, $1.path) < 0
+            }
+            let first = items[0]
+            let title =
+                first.groupTitle.isEmpty
+                ? String(first.folder.split(separator: "/").last ?? "") : first.groupTitle
+            let authors = items.map { $0.artist.isEmpty ? $0.albumArtist : $0.artist }.filter { !$0.isEmpty }
+            return Shelf(id: key, kind: kind, title: title, author: mostCommon(authors), items: items)
+        }.sorted { natural($0.title, $1.title) < 0 }
     }
 
     public static let empty = Catalog([])
@@ -93,11 +133,25 @@ public final class Catalog: Sendable {
         }
     }
 
+    public var bookIndex: SearchIndex<Shelf> {
+        indexes.get(\.books) {
+            SearchIndex(books, [SearchField("book", 0) { $0.title }, SearchField("artist", 1) { $0.author }])
+        }
+    }
+    public var showIndex: SearchIndex<Shelf> {
+        indexes.get(\.shows) { SearchIndex.names(shows, "show") { $0.title } }
+    }
+    public var episodeIndex: SearchIndex<Song> {
+        indexes.get(\.episodes) { SearchIndex.songs(shows.flatMap(\.items)) }
+    }
+
     /// The songs of `list` that `query` finds, in the list's order: what a page's filter box shows.
     public func filter(_ list: [Song], _ query: String) -> [Song] {
         let q = SearchQuery(query)
         if q.isEmpty { return list }
-        let found = Set(songIndex.filter(q).map(\.id))
+        // Favorites, Listen Later and queues may hold episodes, which the music's index leaves out.
+        let index = list.contains(where: \.spoken) ? SearchIndex.songs(list) : songIndex
+        let found = Set(index.filter(q).map(\.id))
         return list.filter { found.contains($0.id) }
     }
 
@@ -110,6 +164,9 @@ public final class Catalog: Sendable {
         var artists: SearchIndex<Group>?
         var genres: SearchIndex<Group>?
         var folders: SearchIndex<Folder>?
+        var books: SearchIndex<Shelf>?
+        var shows: SearchIndex<Shelf>?
+        var episodes: SearchIndex<Song>?
 
         func get<T>(_ at: ReferenceWritableKeyPath<Indexes, T?>, _ make: () -> T) -> T {
             lock.withLock {
@@ -154,6 +211,22 @@ public struct Group: Identifiable, Hashable, Sendable {
     public let name: String
     public let songs: [Song]
     public var id: String { name.lowercased() }
+}
+
+/// An audiobook or a podcast show (plan 031): a book's files in reading
+/// order, a show's episodes oldest first.
+public struct Shelf: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let kind: String
+    public let title: String
+    /// The author, or the host; "" when the tags name none.
+    public let author: String
+    public let items: [Song]
+
+    public var isBook: Bool { kind == Song.audiobook }
+
+    /// The first file with a cover: the one its files without one show.
+    public var cover: Song? { items.first { $0.hasArt } }
 }
 
 /// Filled while the catalogue is built, then only read.

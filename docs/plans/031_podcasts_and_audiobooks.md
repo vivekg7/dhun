@@ -1,6 +1,6 @@
 # 031 — Podcasts and audiobooks
 
-**Status:** `IN PROGRESS` — server side in `server-v0.12.5` on the NAS (2026-10-11); Android built, unreleased; macOS and web next
+**Status:** `IN PROGRESS` — server side in `server-v0.12.6` on the NAS (2026-10-11); Android and macOS built, unreleased; web next
 **Started:** 2026-10-10
 
 ## Problem
@@ -236,6 +236,42 @@ in the catalogue.
   2025-12-30. A finished book's button says Play, as it starts again.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
+
+## Changed during implementation: macOS (2026-10-11)
+
+- **Audiobooks and Podcasts are sidebar entries** under Library, each
+  shown once its collection has something in it. The Mac's sidebar has
+  room the phone's tab bar does not.
+- **A book's or show's page is a table:** title, then the date for an
+  episode or "3 of 19" for a book's file, then Played or the time left,
+  then the length. Hiding played episodes is a button in the show's
+  header.
+- **Now playing has one line under the title,** so the chapter goes at
+  its start: "Chapter 4 of 18 · Frank Herbert". The Chapters and notes
+  button in Shuffle's place opens a popover; the lyrics panel's tab reads
+  Transcript.
+- **Next and Previous go by chapter in `Playback` itself,** so the
+  buttons, the Controls menu, ⌘→ and ⌘←, the media keys and Control
+  Center all do.
+- **The playlist rule is kept in `Store`,** which drops episodes and
+  books' files from every playlist edit: the song menu, a drag onto a
+  playlist in the sidebar, and Save as Playlist from a queue.
+- **The phone's fixes apply here too:** a finished listen says where the
+  player got to, no resume point is kept in the last 5 seconds, and every
+  spoken file keeps one. The song cache's fix was not needed: the Mac
+  already opens a file still arriving with the song list's size.
+- **Found, not fixed: seeking far into an MP3 still arriving waits for
+  every byte before that point.** Core Audio reads an MP3 without a seek
+  table from its start, so Dune resumed at 6:01 h started after about
+  170 MB had arrived, a minute over Tailscale. A song is too short to
+  notice, and a book only on its first resume; once cached, a seek is
+  instant. Estimating the offset (from the Xing table of contents, or
+  the bitrate) and decoding from there would fix it.
+- **Found, not fixed, on the server: a transcript in an LRC lyrics tag
+  repeats its lines.** Some episodes carry YouTube's automatic captions
+  as LRC in the lyrics tag, each line repeated as the captions scroll.
+  The server collapses them in a `.vtt` file but sends a tag that is
+  already LRC as it is, so every app shows the repeats.
 
 ## Rejected
 

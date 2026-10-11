@@ -30,8 +30,9 @@ public final class Api: @unchecked Sendable {
             auth: false)
     }
 
+    /// Podcasts and audiobooks too (`kinds=all`): without it the server sends music only, for apps that predate them.
     public func library(since: Int) async throws -> LibraryDTO {
-        try await call("GET", "/api/v1/library?since=\(since)")
+        try await call("GET", "/api/v1/library?since=\(since)&kinds=all")
     }
 
     public func sync(since: Int, ops: [JSON]) async throws -> SyncState {
@@ -181,6 +182,14 @@ public struct SongDTO: Decodable, Sendable {
     var hasLyrics: Bool?
     var addedAt: String?
     var missing: Bool?
+    // Podcasts and audiobooks only (plan 031); no kind is music.
+    var kind: String?
+    var date: String?
+    var notes: String?
+    var chapters: [Chapter]?
+    var group: String?
+    var groupTitle: String?
+    var groupIndex: Int?
 
     var song: Song {
         let p = path ?? ""
@@ -194,7 +203,9 @@ public struct SongDTO: Decodable, Sendable {
             format: format ?? "", bitrate: bitrate ?? 0, sampleRate: sampleRate ?? 0, bitDepth: bitDepth ?? 0,
             size: size ?? 0, hasArt: hasArt ?? false, hasLyrics: hasLyrics ?? false,
             addedAt: parseTime(addedAt),
-            missing: missing ?? false, art: art ?? "")
+            missing: missing ?? false, art: art ?? "", kind: kind ?? "", date: date ?? "", notes: notes ?? "",
+            chapters: chapters ?? [], groupKey: group ?? "", groupTitle: groupTitle ?? "",
+            groupIndex: groupIndex ?? 0)
     }
 }
 
@@ -251,6 +262,7 @@ public struct SyncState: Decodable, Sendable {
     var favorites: [ListItemDTO]?
     var listenLater: [ListItemDTO]?
     var resume: [ResumeDTO]?
+    var played: [ListItemDTO]?
     var settings: [String: JSON]?
     var nowPlaying: NowPlaying?
     var results: [OpResult]?

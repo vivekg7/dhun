@@ -30,6 +30,8 @@ public final class AppModel {
     public private(set) var queues: [QueueRow] = []
     public private(set) var favorites: [Mark] = []
     public private(set) var listenLater: [Mark] = []
+    /// Episodes and books' files heard (plan 031).
+    public private(set) var played: Set<Int> = []
     public private(set) var resumes: [Resume] = []
     public private(set) var settings: [String: JSON] = [:]
     public private(set) var playStats: [Int: PlayStat] = [:]
@@ -142,6 +144,7 @@ public final class AppModel {
     public func reloadMarks() {
         favorites = db.marks(Store.fav)
         listenLater = db.marks(Store.later)
+        played = Set(db.marks(Store.played).map(\.song))
     }
     public func reloadResumes() { resumes = db.resumes() }
     public func reloadSettings() { settings = db.settings() }
