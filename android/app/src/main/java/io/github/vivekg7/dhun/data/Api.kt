@@ -330,7 +330,10 @@ data class SongDto(
 @Serializable data class Chapter(
     val startMs: Long = 0,
     val title: String = "",
-)
+) {
+    /** Its title, or "" when that is only its number ("001" in Dune), which the app shows anyway. */
+    val name get() = title.takeUnless { it.all(Char::isDigit) }.orEmpty()
+}
 
 @Serializable
 data class PlaylistDto(

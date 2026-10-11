@@ -185,8 +185,11 @@ fun NowPlayingScreen(nav: Nav) {
                 Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val facts =
                     when (song.kind) {
+                        // A book of one file is often titled as the book: not twice.
                         Song.PODCAST -> listOf(song.groupTitle, song.date.take(10))
-                        Song.AUDIOBOOK -> listOf(song.groupTitle, song.artist.ifEmpty { song.albumArtist })
+
+                        Song.AUDIOBOOK -> listOf(song.groupTitle.takeIf { it != song.title }.orEmpty(), song.artist.ifEmpty { song.albumArtist })
+
                         else -> listOf(song.displayArtist, song.album, song.year.takeIf { it > 0 }?.toString() ?: "")
                     }.filter { it.isNotEmpty() }
                 Text(

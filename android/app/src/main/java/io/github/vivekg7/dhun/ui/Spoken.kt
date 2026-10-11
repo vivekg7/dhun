@@ -209,7 +209,14 @@ fun ShelfScreen(
         }
         itemsIndexed(rows, key = { _, s -> s.id }) { i, s ->
             // A book's files are often titled alike but for a part number at the end, cut off on a phone.
-            val where = if (shelf.isBook) "${i + 1} of ${rows.size}" else s.date.take(10)
+            val where =
+                if (!shelf.isBook) {
+                    s.date.take(10)
+                } else if (rows.size > 1) {
+                    "${i + 1} of ${rows.size}"
+                } else {
+                    ""
+                }
             val detail = listOf(where, heard.state(s) ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
             SongRow(s, onClick = { playShelf(nav, shelf, heard, s) }, menu = SongMenu(nav = nav), detail = detail.ifEmpty { s.displayArtist })
         }
@@ -236,7 +243,7 @@ fun ChapterLine(
     }
     val i = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
     Text(
-        "Chapter ${i + 1} of ${chapters.size}" + chapters[i].title.let { if (it.isEmpty()) "" else " · $it" },
+        "Chapter ${i + 1} of ${chapters.size}" + chapters[i].name.let { if (it.isEmpty()) "" else " · $it" },
         Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
@@ -273,10 +280,11 @@ fun DetailsDialog(
                                 player.seekTo(ch.startMs)
                                 onDismiss()
                             }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(duration(ch.startMs), Modifier.width(64.dp), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                        Text(duration(ch.startMs), Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
                         Text(
-                            ch.title.ifEmpty { "Chapter ${i + 1}" },
+                            ch.name.ifEmpty { "Chapter ${i + 1}" },
                             style = MaterialTheme.typography.bodyLarge,
                             color = if (i == now) c.primary else c.onSurface,
                         )

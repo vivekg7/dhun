@@ -760,11 +760,16 @@ class Playback(
         }
     }
 
+    /**
+     * Not in the last seconds: a file that plays to its end also stops
+     * playing, and the pause would save its end as the place to resume,
+     * racing the end's own clearing of it.
+     */
     private suspend fun saveResume(
         s: Song,
         pos: Long,
     ) {
-        if (isLong(s) && pos > 0) store.resume(s.id, pos)
+        if (isLong(s) && pos > 0 && (s.durationMs <= 0 || pos < s.durationMs - END_MARGIN_MS)) store.resume(s.id, pos)
     }
 
     // --- Listens (plan 008) -------------------------------------------------
@@ -1040,7 +1045,11 @@ class Playback(
         /** The notification's and lock screen's cover. */
         const val COVER_PX = 512
 
-        /** A hand-off never starts closer than this to the song's end: the other device may have been closed mid-song. */
+        /**
+         * A hand-off never starts closer than this to the song's end: the
+         * other device may have been closed mid-song. Nor is a resume point
+         * kept there ([saveResume]).
+         */
         private const val END_MARGIN_MS = 5_000L
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */

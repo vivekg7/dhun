@@ -217,6 +217,11 @@ in the catalogue.
   and a tag is read before the files beside it, so the app showed it raw.
   The server converts Markdown turns wherever it finds them; song lyrics
   never look like `**Name** (00:00:31): …`.
+- **A file played to its end kept its end as the place to resume:** the
+  pause at the end saved it, racing the end's clearing of it, and the file
+  then reopened finished. No resume point is kept in the last 5 seconds.
+  This was true of long music files before; every spoken file has a
+  resume point now, so it showed at once.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
 
