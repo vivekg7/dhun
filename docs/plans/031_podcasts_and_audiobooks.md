@@ -228,6 +228,10 @@ in the catalogue.
   0:00, and with the length as its end it was marked played. The owner
   remuxes such files; the app no longer takes an early end for a whole
   one.
+- **An episode streamed through the song cache could not be sought.** A
+  file still arriving had no length, and an Ogg file opened without one
+  stays unseekable for as long as it is loaded. The cache now gives the
+  song list's size until the server sends its own.
 - **The phone fetches the whole catalogue once** (library format 2), which
   `kinds=all` requires: songs it already has would not be sent again.
 

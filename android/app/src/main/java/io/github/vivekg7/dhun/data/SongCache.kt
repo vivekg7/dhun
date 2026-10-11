@@ -44,7 +44,7 @@ class SongCache(
 
         @Volatile var written = 0L
 
-        /** The whole file's length, once the server has said; else -1. */
+        /** The whole file's length, as the server said, or the song list until it has; else -1. */
         @Volatile var total = -1L
 
         @Volatile var done = false
@@ -137,7 +137,13 @@ class SongCache(
         val e =
             entries.computeIfAbsent(song) {
                 poke()
-                Entry(song, File(dir, name(s) + ".part")).also { it.written = it.file.length() }
+                Entry(song, File(dir, name(s) + ".part")).also {
+                    it.written = it.file.length()
+                    // The song list's size until the server says: opened without
+                    // a length, an Ogg file stays unseekable for as long as it is
+                    // loaded, and an MP3 without a Xing header has no duration.
+                    if (s.size > 0) it.total = s.size
+                }
             }
         synchronized(e) {
             if (e.done || e.gone || pos > e.written + SEEK_AHEAD) return null
