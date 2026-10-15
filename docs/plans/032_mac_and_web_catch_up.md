@@ -1,6 +1,6 @@
 # 032 — Mac and web catch up with the phone
 
-**Status:** `RELEASED` — in the 0.14.0 GitHub release (2026-10-15); not yet installed or deployed
+**Status:** `RELEASED` — in the 0.14.0 GitHub release (2026-10-15); 0.14.0 on the owner's phone and Mac; server and web in `server-v0.14.0` on the NAS (2026-10-15)
 **Started:** 2026-10-15
 
 ## Problem
