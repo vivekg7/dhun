@@ -53,6 +53,19 @@ Q&amp;A
 	}
 }
 
+// The owner's tool writes older episodes' captions into the lyrics tag as
+// WebVTT with no blank lines between cues. Sent raw, no app could show it.
+func TestCaptionsInTheLyricsTag(t *testing.T) {
+	vtt := "WEBVTT\nKind: captions\nLanguage: en\n" +
+		"00:00:00.000 --> 00:00:02.360 align:start position:0%\nas<00:00:00.089><c> part</c><00:00:00.390><c> of</c>\n" +
+		"00:00:02.360 --> 00:00:02.370 align:start position:0%\nas part of\n" +
+		"00:00:02.370 --> 00:00:04.280 align:start position:0%\nas part of\nartificial<00:00:03.030><c> general</c>\n"
+	want := "[00:00.00]as part of\n[00:02.37]artificial general\n"
+	if l := embeddedLyrics(vtt); l.Text != want || !l.Synced || l.Source != "vtt" {
+		t.Errorf("got %+v, want text %q", l, want)
+	}
+}
+
 // YouTube's automatic captions converted to an LRC file scroll as the vtt
 // does: each line three times, a blank between. An episode keeps each line
 // once, at the time it first appears; a song keeps its LRC as written, since

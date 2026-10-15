@@ -158,8 +158,13 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 // embeddedLyrics reads a lyrics tag. The owner's podcast tool writes an
 // episode's transcript there too, as the Markdown of its .transcript.md,
 // which the tag's place in the order would otherwise show raw (plan 031).
+// Older episodes carry YouTube's WebVTT captions there instead.
 func embeddedLyrics(text string) Lyrics {
-	if lrc := markdownToLRC(strings.TrimPrefix(text, "\uFEFF")); lrc != "" {
+	text = strings.TrimPrefix(text, "\uFEFF")
+	if strings.HasPrefix(strings.TrimSpace(text), "WEBVTT") {
+		return makeLyrics("vtt", vttToLRC(text))
+	}
+	if lrc := markdownToLRC(text); lrc != "" {
 		return makeLyrics("transcript", lrc)
 	}
 	return makeLyrics("embedded", text)

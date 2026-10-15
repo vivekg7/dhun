@@ -316,6 +316,17 @@ in the catalogue.
   It now ends when the data arrives (`canplay`). Long files made this
   common; it was true of songs before.
 
+## Changed after release (2026-10-15)
+
+- **Captions in the lyrics tag came through raw.** Most episodes carry
+  YouTube's WebVTT captions in their lyrics tag rather than the Markdown
+  transcript, and the server converted only Markdown there; every app
+  showed the VTT as plain text. A tag starting `WEBVTT` now goes through
+  the same conversion as a `.vtt` file. That copy has lost the blank
+  lines between cues, so the conversion now reads line by line rather
+  than by blank-separated blocks. A server fix: no app changes, and no
+  need to re-encode the files as `.lrc`.
+
 ## Rejected
 
 - **Fetching feeds on the server.** The owner's tool already downloads

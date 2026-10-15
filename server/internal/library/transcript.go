@@ -60,31 +60,32 @@ var vttTag = regexp.MustCompile(`<[^>]*>`)
 // YouTube's automatic captions scroll: each cue repeats the line before it
 // and the next cue repeats it again for a moment, with word timings in
 // between, so a line seen in the last few is not written again.
+//
+// It reads line by line, not by blank-separated blocks: the copy the
+// owner's tool writes into an episode's lyrics tag has lost the blank
+// lines, so a whole file was one block.
 func vttToLRC(text string) string {
 	var b strings.Builder
 	var seen recentLines
-	for _, block := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n") {
-		lines := strings.Split(strings.TrimSpace(block), "\n")
-		at := -1
-		for i, l := range lines {
-			if strings.Contains(l, "-->") {
-				at = i
-				break
+	start := int64(-1) // the cue being read; -1 in the header, NOTE or STYLE
+	for _, l := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		if strings.Contains(l, "-->") {
+			ms, ok := clockMS(strings.Fields(l)[0])
+			start = -1
+			if ok {
+				start = ms
 			}
-		}
-		if at < 0 {
-			continue // the header, NOTE or STYLE
-		}
-		start, ok := clockMS(strings.Fields(lines[at])[0])
-		if !ok {
 			continue
 		}
-		for _, l := range lines[at+1:] {
-			l = strings.Join(strings.Fields(vttTag.ReplaceAllString(l, "")), " ")
-			l = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&nbsp;", " ").Replace(l)
-			if seen.fresh(l) {
-				b.WriteString(lrcTime(start) + l + "\n")
-			}
+		// Only an empty line ends a cue: YouTube's own first line is a space.
+		if l == "" || start < 0 {
+			start = -1
+			continue
+		}
+		l = strings.Join(strings.Fields(vttTag.ReplaceAllString(l, "")), " ")
+		l = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&nbsp;", " ").Replace(l)
+		if seen.fresh(l) {
+			b.WriteString(lrcTime(start) + l + "\n")
 		}
 	}
 	return b.String()
