@@ -934,10 +934,78 @@ export function queuePage(id, { compact = false } = {}) {
       })),
     );
   });
-  const filter = filterBox("Filter queue", (v) => {
+  // The field finds rather than filters, as Musicolet's queue search does
+  // (plan 032): the matches drop down under it, and picking one scrolls the
+  // queue to that song and selects it. The queue stays whole, so a song can
+  // be dragged with its neighbours in view.
+  const filter = filterBox("Find in queue", (v) => {
     query = v;
-    show();
+    at = 0;
+    showMatches();
   });
+  const matches = h("div.matches", {
+    role: "listbox",
+    // Keeps the focus in the field, which a click on a match would take.
+    onmousedown: (e) => e.preventDefault(),
+  });
+  let found = [];
+  let at = 0;
+  const showMatches = () => {
+    const hits = new Set(
+      query ? app.catalog.filter(app.catalog.songsOf(ids()), query) : [],
+    );
+    found = list.items.flatMap((it, i) => (hits.has(it.song) ? [i] : []));
+    if (!query || document.activeElement !== filter) return matches.remove();
+    at = Math.min(at, Math.max(found.length - 1, 0));
+    matches.replaceChildren(
+      ...(found.length
+        ? found.slice(0, 100).map((i, j) => {
+            const s = list.items[i].song;
+            return h(
+              "button.match",
+              {
+                type: "button",
+                role: "option",
+                class: j === at ? "on" : "",
+                "aria-selected": String(j === at),
+                onclick: () => pick(i),
+              },
+              h("span.num", String(i + 1)),
+              h("span.title", s.title),
+              h("span.sub", s.displayArtist),
+            );
+          })
+        : [h("p.note", `Nothing matches “${query}”`)]),
+    );
+    const r = filter.parentElement.getBoundingClientRect();
+    const width = Math.max(r.width, 440);
+    Object.assign(matches.style, {
+      top: `${r.bottom + 4}px`,
+      left: `${Math.max(8, Math.min(r.left, innerWidth - width - 8))}px`,
+      width: `${width}px`,
+    });
+    document.body.append(matches);
+    matches.querySelector(".on")?.scrollIntoView({ block: "nearest" });
+  };
+  const pick = (i) => {
+    filter.value = query = "";
+    matches.remove();
+    list.selected = new Set([list.items[i].key]);
+    list.anchor = i;
+    // By index, not by element: the row may not be drawn until the list has scrolled.
+    list.list.scrollTo(i);
+    list.refresh();
+    list.el.focus({ preventScroll: true });
+  };
+  filter.addEventListener("keydown", (e) => {
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && found.length) {
+      e.preventDefault();
+      at = (at + (e.key === "ArrowDown" ? 1 : found.length - 1)) % found.length;
+      showMatches();
+    } else if (e.key === "Enter" && found.length) pick(found[at]);
+  });
+  filter.addEventListener("focus", showMatches);
+  filter.addEventListener("blur", () => matches.remove());
   const head = h(
     "div.queuehead",
     compact ? h("div.queuetop", h("div", name, place), more) : h("div", place),
@@ -954,7 +1022,7 @@ export function queuePage(id, { compact = false } = {}) {
     numbered: true,
     album: false,
     current: currentId,
-    reorder: (from, to) => !query && p.moveIn(id, from, to),
+    reorder: (from, to) => p.moveIn(id, from, to),
     play: (it) => {
       if (isActive()) p.playAt(p.items.indexOf(it.song.id));
       else {
@@ -988,9 +1056,8 @@ export function queuePage(id, { compact = false } = {}) {
   const show = () => {
     if (!q()) return compact ? null : ctx.nav.replace("queues");
     const songs = app.catalog.songsOf(ids());
-    const all = items(songs);
-    list.el.classList.toggle("no-reorder", !!query);
-    list.set(all, query ? items(app.catalog.filter(songs, query)) : all);
+    list.set(items(songs));
+    if (query) showMatches();
     name.textContent = q().name;
     titleEl && (titleEl.textContent = q().name);
     filter.parentElement &&
