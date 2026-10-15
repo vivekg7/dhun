@@ -91,7 +91,10 @@ export class Catalog {
     this.genres = group(this.songs, (s) =>
       s.genres.length ? s.genres : ["Unknown genre"],
     );
-    this.folders = folders(this.songs);
+    this.folders = folders(
+      this.songs,
+      present.filter((s) => s.spoken),
+    );
     this.books = shelves(present, audiobook);
     this.shows = shelves(present, podcast);
     this.shelves = new Map([...this.books, ...this.shows].map((x) => [x.id, x]));
@@ -219,8 +222,16 @@ function group(songs, keys) {
   return [...map.values()].sort((a, b) => natural(a.name, b.name));
 }
 
-/** Every folder, keyed by its path relative to the Music folder ("" is the top). */
-function folders(songs) {
+const spokenRoot = (s) => (s.kind === podcast ? "Podcasts" : "Audiobooks");
+
+/**
+ * Every folder, keyed by its path relative to the Music folder ("" is the
+ * top). Episodes and books' files sit under a Podcasts and an Audiobooks
+ * root after the music's folders, as on the phone: their paths are relative
+ * to folders of their own, so a show's folder could share a music folder's
+ * name.
+ */
+function folders(songs, spoken) {
   const map = new Map();
   const folder = (path) => {
     let f = map.get(path);
@@ -238,8 +249,11 @@ function folders(songs) {
   };
   folder("");
   for (const s of songs) folder(s.folder).songs.push(s);
+  for (const s of spoken)
+    folder(`${spokenRoot(s)}/${s.folder}`.replace(/\/$/, "")).songs.push(s);
+  const last = (f) => f.path === "Podcasts" || f.path === "Audiobooks";
   for (const f of map.values()) {
-    f.children.sort((a, b) => natural(a.name, b.name));
+    f.children.sort((a, b) => last(a) - last(b) || natural(a.name, b.name));
     f.songs.sort(
       (a, b) => a.disc - b.disc || a.track - b.track || natural(a.path, b.path),
     );

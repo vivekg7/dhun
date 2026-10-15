@@ -38,6 +38,15 @@ test("episodes stay out of music, but queues find them", () => {
     c.folders.get("Lex").songs.map((x) => x.id),
     [1],
   );
+  // Folders shows them under a root of their own, after the music's.
+  assert.deepEqual(
+    c.folders.get("").children.map((f) => f.path),
+    ["Lex", "Podcasts"],
+  );
+  assert.deepEqual(
+    c.folders.get("Podcasts/Lex").songs.map((x) => x.id),
+    [3, 2],
+  );
   assert.ok(c.artists.every((g) => g.songs.every((x) => !x.spoken)));
   assert.deepEqual(
     c.shows.map((x) => x.items.map((y) => y.id)),

@@ -504,7 +504,10 @@ function folderRow(f) {
   const row = h(
     "a.row.folder",
     { href: ctx.nav.href("folder", f.path) },
-    h("span.thumb.folder-icon", icon("folder")),
+    h(
+      "span.thumb.folder-icon",
+      icon({ Podcasts: "podcast", Audiobooks: "book" }[f.path] ?? "folder"),
+    ),
     h("span.main", h("span.title", f.name), h("span.sub", folderSummary(f))),
     h(
       "button.more",
