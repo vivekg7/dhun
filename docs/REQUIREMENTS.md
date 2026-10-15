@@ -170,11 +170,12 @@ Owner, 2026-10-10; how it is built is in
   `Audiobooks/` folders, beside `Music/`, each mounted read-only. Their
   `_inbox`, `_meta` and `_trash` folders are skipped, as in `Music/`.
 - **Each has its own section in every app.** Their files never appear in
-  song lists, Albums, Artists, Genres, Folders, shuffle-all, most and
-  recently played, or play counts. Search finds them, under their own
-  headings. On Android they are two cards on the Playlists tab, beside
-  Favorites and Listen Later, each shown once its collection has something
-  in it (owner, 2026-10-11).
+  song lists, Albums, Artists, Genres, shuffle-all, most and recently
+  played, or play counts. **Folders** shows them, under a Podcasts and an
+  Audiobooks root after the music folders (owner, 2026-10-15). Search
+  finds them, under their own headings. On Android they are two cards on
+  the Playlists tab, beside Favorites and Listen Later, each shown once
+  its collection has something in it (owner, 2026-10-11).
 - **Dhun does not fetch podcasts.** The owner's own tool downloads episodes
   into the NAS; Dhun only reads what is there. No feeds, no subscriptions.
 - **Files and their tags are the only source.** Dhun reads standard tags

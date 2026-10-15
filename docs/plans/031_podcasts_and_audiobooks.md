@@ -318,6 +318,10 @@ in the catalogue.
 
 ## Changed after release (2026-10-15)
 
+- **Folders shows podcasts and audiobooks** (owner), under a Podcasts and
+  an Audiobooks root after the music folders, since their folders sit
+  beside `Music/` on the NAS. Their paths are relative to their own
+  roots, so the root's name is put in front of them. Android first.
 - **Captions in the lyrics tag came through raw.** Most episodes carry
   YouTube's WebVTT captions in their lyrics tag rather than the Markdown
   transcript, and the server converted only Markdown there; every app

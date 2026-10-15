@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.SearchIndex
@@ -187,7 +188,13 @@ fun FolderScreen(
                 }
             }
             items(children, key = { "f/" + it.path }) { f ->
-                val icon = if (f.path == LocalSongs.PHONE_ROOT) Icons.Phone else Icons.Folder
+                val icon =
+                    when (f.path) {
+                        LocalSongs.PHONE_ROOT -> Icons.Phone
+                        Catalog.PODCASTS -> Icons.Podcast
+                        Catalog.AUDIOBOOKS -> Icons.Book
+                        else -> Icons.Folder
+                    }
                 NameRow(icon, f.name, "", pinned(Downloads.FOLDER, f.path), sub = summary(f)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
             }
             // A song found still plays the whole folder from it, as in the queue's search.

@@ -40,7 +40,12 @@ class Catalog(
     val artists: List<Group> by lazy { group { it.artistList.ifEmpty { listOf(it.displayArtist) } } }
     val genres: List<Group> by lazy { group { it.genreList.ifEmpty { listOf("Unknown genre") } } }
 
-    /** Every folder, keyed by its path relative to the Music folder ("" is the top). */
+    /**
+     * Every folder, keyed by its path relative to the Music folder ("" is the
+     * top). Podcasts and audiobooks are browsed here too, under a root of
+     * their own after the music, as their own folders sit beside `Music/` on
+     * the NAS; their paths are relative to those folders.
+     */
     val folders: Map<String, Folder> by lazy {
         val map = HashMap<String, Folder>()
 
@@ -49,9 +54,11 @@ class Catalog(
                 Folder(path).also { if (path.isNotEmpty()) folder(path.substringBeforeLast('/', "")).children += it }
             }
         for (s in songs) folder(s.folder).songs += s
+        for (s in all) if (s.spoken) folder((spokenRoot(s.kind) + "/" + s.folder).trimEnd('/')).songs += s
+        val last = setOf(PODCASTS, AUDIOBOOKS)
         for (f in map.values) {
-            // The phone's songs first, before the NAS folders.
-            f.children.sortWith(compareBy<Folder> { it.path != LocalSongs.PHONE_ROOT }.thenBy(TITLE) { it.name })
+            // The phone's songs first, before the NAS folders; podcasts and audiobooks last.
+            f.children.sortWith(compareBy<Folder>({ it.path != LocalSongs.PHONE_ROOT }, { it.path in last }).thenBy(TITLE) { it.name })
             f.songs.sortWith(compareBy<Song>({ it.disc }, { it.track }).thenBy(TITLE) { it.path })
         }
         folder("")
@@ -97,6 +104,11 @@ class Catalog(
     }
 
     companion object {
+        const val PODCASTS = "Podcasts"
+        const val AUDIOBOOKS = "Audiobooks"
+
+        private fun spokenRoot(kind: String) = if (kind == Song.PODCAST) PODCASTS else AUDIOBOOKS
+
         /** A file the server did not group (none should be) is a shelf of its folder. */
         private fun shelfKey(s: Song) = s.groupKey.ifEmpty { s.kind + '\u0000' + s.folder }
 
