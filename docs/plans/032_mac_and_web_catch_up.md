@@ -1,6 +1,6 @@
 # 032 — Mac and web catch up with the phone
 
-**Status:** `IN PROGRESS` — built and checked on the web and the Mac; not yet released
+**Status:** `RELEASED` — in the 0.14.0 GitHub release (2026-10-15); not yet installed or deployed
 **Started:** 2026-10-15
 
 ## Problem

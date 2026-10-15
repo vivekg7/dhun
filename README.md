@@ -29,7 +29,7 @@ daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
 online-only, on a computer or a phone. All three are in the
-[0.13.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.13.0):
+[0.14.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.14.0):
 the APK, the Mac app and the server image.
 
 ## Run the server
