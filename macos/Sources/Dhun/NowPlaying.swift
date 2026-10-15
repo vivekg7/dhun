@@ -19,6 +19,8 @@ struct NowPlayingBar: View {
                         // Redrawn on a clock too: "Sleep in 12 min" counts down on its own.
                         TimelineView(.periodic(from: .now, by: 15)) { _ in
                             Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                .tint(.secondary)
+                                .environment(\.openURL, openLinks)
                         }
                     }
                 }
@@ -84,24 +86,64 @@ struct NowPlayingBar: View {
 
     @State private var direction = Direction()
 
-    private var subtitle: String {
+    /// The line under the title. Each artist, the album, and an episode's
+    /// show or a book's title link to their pages (plan 032), through our
+    /// own scheme, which `openLinks` handles rather than the system.
+    private var subtitle: AttributedString {
         let p = app.playback
         guard let s = p.current else { return "" }
         if p.waiting { return "Waiting for the network…" }
-        var parts: [String]
+        func link(_ text: String, _ host: String, _ name: String = "") -> AttributedString {
+            var a = AttributedString(text)
+            var c = URLComponents()
+            c.scheme = "dhun"
+            c.host = host
+            c.path = "/" + name
+            a.link = c.url
+            return a
+        }
+        var parts: [AttributedString]
         switch s.kind {
-        case Song.podcast: parts = [s.groupTitle, s.day]
+        case Song.podcast: parts = [link(s.groupTitle, "shelf"), AttributedString(s.day)]
         // A book of one file is often titled as the book: not twice.
         case Song.audiobook:
             parts = [
-                s.groupTitle == s.title ? "" : s.groupTitle, s.artist.isEmpty ? s.albumArtist : s.artist,
+                s.groupTitle == s.title ? "" : link(s.groupTitle, "shelf"),
+                AttributedString(s.artist.isEmpty ? s.albumArtist : s.artist),
             ]
-        default: parts = [s.displayArtist, p.active?.name ?? ""]
+        default:
+            // Each of several artists opens its own page, as Artists lists them apart.
+            let artists = (s.artists.isEmpty ? [s.displayArtist] : s.artists).filter { !$0.isEmpty }
+            var line = AttributedString()
+            for (i, a) in artists.enumerated() {
+                if i > 0 { line += ", " }
+                line += link(a, "artist", a)
+            }
+            parts = [line, s.album.isEmpty ? "" : link(s.album, "album")]
         }
-        if let ch = chapterLabel(s, Int(p.position * 1000)) { parts.insert(ch, at: 0) }
-        parts = parts.filter { !$0.isEmpty }
-        if let sleep = p.sleep.label { parts.append("Sleep \(sleep)") }
-        return parts.joined(separator: " · ")
+        if let ch = chapterLabel(s, Int(p.position * 1000)) { parts.insert(AttributedString(ch), at: 0) }
+        if let sleep = p.sleep.label { parts.append(AttributedString("Sleep \(sleep)")) }
+        var out = AttributedString()
+        for part in parts where !part.characters.isEmpty {
+            if !out.characters.isEmpty { out += " · " }
+            out += part
+        }
+        return out
+    }
+
+    /// Opens a link in the line under the title on its page, in this window.
+    private var openLinks: OpenURLAction {
+        let app = self.app
+        let nav = self.nav
+        return OpenURLAction { url in
+            guard url.scheme == "dhun", let s = app.playback.current else { return .systemAction }
+            if url.host == "artist" {
+                nav.open(.artists, .artist(String(url.path.dropFirst())))
+            } else {
+                nav.goToAlbum(s, app)
+            }
+            return .handled
+        }
     }
 }
 

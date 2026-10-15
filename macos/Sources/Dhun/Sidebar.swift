@@ -8,7 +8,12 @@ struct Sidebar: View {
 
     var body: some View {
         @Bindable var nav = nav
-        List(selection: Binding(get: { nav.section }, set: { if let s = $0 { nav.open(s) } })) {
+        // Only a section other than the one showing: `nav.open` sets the section with a page
+        // in it (Now playing's links, Go to Artist), and the selection following it must
+        // not empty the page again.
+        List(
+            selection: Binding(get: { nav.section }, set: { if let s = $0, s != nav.section { nav.open(s) } })
+        ) {
             Group {
                 Label("Queues", systemImage: "list.number").tag(Section.queues)
                 SwiftUI.Section("Library") {
