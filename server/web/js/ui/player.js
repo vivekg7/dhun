@@ -333,30 +333,41 @@ function sleepPanel(close) {
   );
 }
 
-/** The song's title and the line under it, sliding in from the side the queue moved to (plan 027). */
-function nowTitle(cls = "") {
+/**
+ * The song's title and the line under it, sliding in from the side the queue
+ * moved to (plan 027). With `links`, each artist, the album, and an
+ * episode's show or a book's title in that line open their pages (plan 032).
+ */
+function nowTitle(cls = "", links = false) {
   const box = h("div.nowtitle", { class: cls });
   // Nothing drawn yet: unlike any song id, null included.
   let shownId = box;
   let lastIndex = -1;
+  const subLine = (s) => {
+    const p = ctx.playback;
+    if (!s) return [];
+    if (p.waiting) return ["Waiting for the network…"];
+    const parts = [...nowFacts(s), [[p.sleepLabel && `Sleep ${p.sleepLabel}`]]]
+      .map((part) => part.filter(([text]) => text))
+      .filter((part) => part.length);
+    return parts.flatMap((part, i) => [
+      i ? " · " : "",
+      ...part.flatMap(([text, href], j) => [
+        j ? ", " : "",
+        links && href ? h("a", { href }, text) : text,
+      ]),
+    ]);
+  };
   return {
     el: box,
     update() {
       const p = ctx.playback;
       const s = p.current;
-      // An episode or a book: the chapter first, then its show and day, or its book and author.
-      const facts = s?.spoken
-        ? [chapterLabel(s, p.position * 1000), ...spokenFacts(s)]
-        : [s?.displayArtist, p.active?.name];
-      const sub = !s
-        ? ""
-        : p.waiting
-          ? "Waiting for the network…"
-          : [...facts, p.sleepLabel && `Sleep ${p.sleepLabel}`]
-              .filter(Boolean)
-              .join(" · ");
       if (shownId === (s?.id ?? null)) {
-        box.querySelector(".nowsub").textContent = sub;
+        // Only when it changed: a link redrawn under the pointer loses its click.
+        const sub = box.querySelector(".nowsub");
+        const next = h("div.nowsub", ...subLine(s));
+        if (next.innerHTML !== sub.innerHTML) sub.replaceWith(next);
         return;
       }
       const i = s ? p.items.indexOf(s.id) : -1;
@@ -366,7 +377,7 @@ function nowTitle(cls = "") {
       const inner = h(
         "div.nowinner",
         h("div.nowsong", s ? s.title : "Nothing playing"),
-        h("div.nowsub", sub),
+        h("div.nowsub", ...subLine(s)),
       );
       box.replaceChildren(inner);
       if (shownId !== box && !reducedMotion())
@@ -380,6 +391,34 @@ function nowTitle(cls = "") {
       shownId = s?.id ?? null;
     },
   };
+}
+
+/**
+ * The parts of the line under the title, each a list of [text, page]: the
+ * artists and the album as on the phone, or an episode's chapter, show and
+ * day, or a book file's chapter, book and author.
+ */
+function nowFacts(s) {
+  const c = ctx.app.catalog;
+  const nav = ctx.nav;
+  if (s.spoken) {
+    const shelf = c.shelfOf(s);
+    const [group, rest] = spokenFacts(s);
+    return [
+      [[chapterLabel(s, ctx.playback.position * 1000)]],
+      [[group, shelf && nav.href("shelf", shelf.id)]],
+      [[rest]],
+    ];
+  }
+  const album = c.albumOf.get(s.id);
+  return [
+    // Each of several artists opens its own page, as Artists lists them apart.
+    (s.artists.length ? s.artists : [s.displayArtist]).map((a) => [
+      a,
+      nav.href("artist", a),
+    ]),
+    [[s.album, album && nav.href("album", album.id)]],
+  ];
 }
 
 /** The cover of the song playing; a new one fades in over the old. */
@@ -404,7 +443,7 @@ function nowCover(px, cls) {
 export function nowBar() {
   const p = ctx.playback;
   const art = nowCover(128, "small");
-  const title = nowTitle();
+  const title = nowTitle("", true);
   const t = transport();
   const seek = seeker();
   const fav = markButton("fav");
@@ -428,7 +467,10 @@ export function nowBar() {
       ? iconButton("pip", "Mini player", () => ctx.shell.openMini())
       : null;
   const left = h("div.nowleft", art.el, title.el);
-  left.addEventListener("dblclick", () => p.current && ctx.nav.album(p.current));
+  left.addEventListener(
+    "dblclick",
+    (e) => p.current && !e.target.closest("a") && ctx.nav.album(p.current),
+  );
   left.addEventListener("contextmenu", (e) => {
     if (!p.current) return;
     e.preventDefault();
@@ -512,7 +554,7 @@ export function miniPlayer() {
 export function nowPage() {
   const p = ctx.playback;
   const art = nowCover(1024, "large");
-  const title = nowTitle("large");
+  const title = nowTitle("large", true);
   const t = transport();
   const seek = seeker();
   const fav = markButton("fav");
@@ -542,6 +584,8 @@ export function nowPage() {
     (e) => p.current && menuAt(e.currentTarget, songMenu([p.current]), p.current.title),
   );
   swipe(stage, (dir) => (dir < 0 ? p.next(true) : p.previous(true)));
+  // The line under the title names the album, so the queue is named here, as on the phone.
+  const queueName = h("div.nowqueue");
   const el = h(
     "section.page.nowpage",
     h(
@@ -553,6 +597,7 @@ export function nowPage() {
     ),
     h(
       "div.nowbody",
+      queueName,
       stage,
       title.el,
       seek.el,
@@ -578,6 +623,7 @@ export function nowPage() {
         return;
       }
       for (const x of parts) x.update();
+      queueName.textContent = p.active?.name ?? "";
       queueBtn.disabled = !p.activeId;
       moreBtn.disabled = !p.current;
       lyricsBtn.disabled = !p.current;

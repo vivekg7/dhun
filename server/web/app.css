@@ -1081,6 +1081,22 @@ h3.section {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.nowsub a {
+  color: inherit;
+  text-decoration: none;
+}
+.nowsub a:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+.nowqueue {
+  color: var(--fg2);
+  font-size: 13px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .nowcenter {
   display: flex;
   flex-direction: column;
