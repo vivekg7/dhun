@@ -326,6 +326,13 @@ in the catalogue.
   lines between cues, so the conversion now reads line by line rather
   than by blank-separated blocks. A server fix: no app changes, and no
   need to re-encode the files as `.lrc`.
+- **An `.lrc` beside an episode or a book's file comes first** (owner),
+  before the lyrics tag and any transcript or `.vtt`; that was already
+  the order. It may now also carry a language as subtitle tools name it,
+  `<name>.en.lrc`, before `<name>.en.auto.lrc`; the exact `<name>.lrc`
+  still wins. A song's `.lrc` must still match its name exactly, so
+  `Track 1.5.lrc` never becomes `Track 1`'s. Its repeated caption lines
+  are dropped as before.
 
 ## Rejected
 

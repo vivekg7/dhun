@@ -117,15 +117,14 @@ var lrcTimestamp = regexp.MustCompile(`(?m)^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]
 func ReadLyrics(f SongFile) (Lyrics, error) {
 	root := f.Root
 	if f.Lrc {
-		base := strings.TrimSuffix(f.Path, path.Ext(f.Path))
-		dir, err := os.ReadDir(abs(root, path.Dir(f.Path)))
-		if err == nil {
-			want := strings.ToLower(path.Base(base) + ".lrc")
-			for _, e := range dir {
-				if strings.ToLower(e.Name()) == want {
-					if data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), e.Name()))); err == nil {
-						return makeLyrics("lrc", spokenLRC(f, string(data))), nil
-					}
+		if dir, err := os.ReadDir(abs(root, path.Dir(f.Path))); err == nil {
+			names := make([]string, len(dir))
+			for i, e := range dir {
+				names[i] = e.Name()
+			}
+			if n := lrcName(names, path.Base(f.Path), f.Spoken); n != "" {
+				if data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), n))); err == nil {
+					return makeLyrics("lrc", spokenLRC(f, string(data))), nil
 				}
 			}
 		}

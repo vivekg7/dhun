@@ -38,6 +38,34 @@ func transcriptName(names []string, audio string) string {
 	return best
 }
 
+// lrcName picks an audio file's .lrc among its folder's file names, or "".
+// The exact `<name>.lrc` comes first. An episode's or a book's may also
+// carry a language, as subtitle tools name them (`<name>.en.lrc`), people's
+// before automatic ones (`.en.auto.lrc`). A song's must match exactly:
+// `Track 1.5.lrc` is not `Track 1`'s.
+func lrcName(names []string, audio string, spoken bool) string {
+	base := strings.ToLower(strings.TrimSuffix(audio, path.Ext(audio)))
+	best, rank := "", 0
+	for _, n := range names {
+		l := strings.ToLower(n)
+		r := 0
+		switch {
+		case l == base+".lrc":
+			r = 3
+		case !spoken || !strings.HasPrefix(l, base+".") || !strings.HasSuffix(l, ".lrc"):
+			continue
+		case strings.HasSuffix(l, ".auto.lrc"):
+			r = 1
+		default:
+			r = 2
+		}
+		if r > rank {
+			best, rank = n, r
+		}
+	}
+	return best
+}
+
 // transcriptLyrics converts a transcript file's text into lyrics.
 func transcriptLyrics(name, text string) Lyrics {
 	text = strings.TrimPrefix(text, "\uFEFF")

@@ -381,8 +381,7 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 		if err != nil {
 			continue
 		}
-		base := strings.TrimSuffix(e.Name(), path.Ext(e.Name()))
-		_, hasLrc := lower[strings.ToLower(base)+".lrc"]
+		hasLrc := lrcName(names, e.Name(), r.kind != KindMusic) != ""
 		transcript := ""
 		if r.kind != KindMusic {
 			transcript = transcriptName(names, e.Name())

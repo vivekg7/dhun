@@ -66,6 +66,33 @@ func TestCaptionsInTheLyricsTag(t *testing.T) {
 	}
 }
 
+// An .lrc beside an episode wins over its other captions and transcript
+// (the owner, 2026-10-15), whether named as the audio or with a language
+// as subtitle tools write it. A song's .lrc must match its name exactly.
+func TestLrcComesFirst(t *testing.T) {
+	names := []string{"e.opus", "e.en.vtt", "e.transcript.md", "e.en.auto.lrc", "e.en.lrc"}
+	if n := lrcName(names, "e.opus", true); n != "e.en.lrc" {
+		t.Errorf("tagged: got %q", n)
+	}
+	if n := lrcName(append(names, "E.lrc"), "e.opus", true); n != "E.lrc" {
+		t.Errorf("exact: got %q", n)
+	}
+	if n := lrcName(names, "e.opus", false); n != "" {
+		t.Errorf("a song took %q", n)
+	}
+
+	dir := t.TempDir()
+	for name, text := range map[string]string{"e.en.lrc": "[00:01.00]from the lrc\n", "e.en.vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nfrom the vtt\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := SongFile{Root: dir, Path: "e.opus", Lrc: true, Spoken: true, Transcript: "e.en.vtt"}
+	if l, err := ReadLyrics(f); err != nil || l.Source != "lrc" || l.Text != "[00:01.00]from the lrc\n" {
+		t.Errorf("got %+v, %v", l, err)
+	}
+}
+
 // YouTube's automatic captions converted to an LRC file scroll as the vtt
 // does: each line three times, a blank between. An episode keeps each line
 // once, at the time it first appears; a song keeps its LRC as written, since
