@@ -332,7 +332,9 @@ since 0.13.0. Anything else waits for a later release.
   that follows the user, always goes to the previous song (owner,
   2026-10-11). Each artist and the album under the title open their page
   in the Artists and Albums tabs; an episode's show or a book's title
-  opens it (owner, 2026-10-15).
+  opens it (owner, 2026-10-15). On the Mac and the web the bar reads
+  "artist · album", as the phone does, not the queue's name (owner,
+  2026-10-15; [plan 032](plans/032_mac_and_web_catch_up.md)).
 - **A song with a resume point shows how far in it is,** as a thin bar
   under its row in every list: Continue listening, search, queues
   (owner, 2026-10-15).
