@@ -49,9 +49,10 @@ public func length(_ ms: Int) -> String {
 }
 
 extension AppModel {
-    public var heard: Heard {
-        Heard(
-            played: played,
-            left: Dictionary(resumes.map { ($0.song, $0.positionMs) }, uniquingKeysWith: { a, _ in a }))
+    public var heard: Heard { Heard(played: played, left: resumeAt) }
+
+    /// Where each long file was left, by song (plan 009).
+    public var resumeAt: [Int: Int] {
+        Dictionary(resumes.map { ($0.song, $0.positionMs) }, uniquingKeysWith: { a, _ in a })
     }
 }

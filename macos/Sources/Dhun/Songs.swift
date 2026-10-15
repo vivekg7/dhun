@@ -27,6 +27,7 @@ struct SongTable: View {
         let nav = self.nav
         let all = sort.isEmpty ? songs : songs.sorted(using: sort)
         let rows = app.catalog.filter(all, query)
+        let resumeAt = app.resumeAt
         Table(of: Song.self, selection: $selection, sortOrder: $sort) {
             if showTrack {
                 TableColumn("#", value: \.track) { s in
@@ -45,6 +46,11 @@ struct SongTable: View {
                     }
                 }
                 .opacity(playable(app, s) ? 1 : 0.4)
+                // The rows are one line, so the bar runs along the cell's foot, past the cover.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .bottom) {
+                    ResumeBar(positionMs: resumeAt[s.id], song: s).padding(.leading, 30).offset(y: 3)
+                }
             }
             .width(min: 160, ideal: 300)
             TableColumn("Artist", value: \.displayArtist) { s in Text(s.displayArtist).lineLimit(1) }
@@ -108,6 +114,26 @@ struct DownloadedMark: View {
         if app.downloaded[song.id] != nil {
             Image(systemName: "arrow.down.circle.fill").font(.caption2).foregroundStyle(.secondary)
                 .help("Downloaded")
+        }
+    }
+}
+
+/// How far into a long file its resume point is, as a thin bar under its
+/// title, as on the phone (plan 009); nothing in the first 1%.
+struct ResumeBar: View {
+    let positionMs: Int?
+    let song: Song
+
+    var body: some View {
+        let f = song.durationMs > 0 ? min(Double(positionMs ?? 0) / Double(song.durationMs), 1) : 0
+        if f >= 0.01 {
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.tint.opacity(0.2))
+                    Capsule().fill(.tint).frame(width: g.size.width * f)
+                }
+            }
+            .frame(height: 3)
         }
     }
 }

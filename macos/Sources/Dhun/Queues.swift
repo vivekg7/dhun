@@ -107,6 +107,7 @@ struct QueueSongs: View {
         let songs = ids.compactMap { app.catalog.byId[$0] }
         let currentId = isActive ? app.playback.current?.id : queue.currentSong
         let numbered = Array(songs.enumerated())
+        let resumeAt = app.resumeAt
         let found = Set(app.catalog.filter(songs, filter).map(\.id))
         let shown = filter.isEmpty ? numbered : numbered.filter { found.contains($0.element.id) }
         ScrollViewReader { proxy in
@@ -162,6 +163,7 @@ struct QueueSongs: View {
                                 .foregroundStyle(
                                     s.id == currentId ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                                 Text(s.displayArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                ResumeBar(positionMs: resumeAt[s.id], song: s)
                             }
                             Spacer()
                             DownloadedMark(app: app, song: s)
