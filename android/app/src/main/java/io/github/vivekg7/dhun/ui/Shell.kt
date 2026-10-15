@@ -19,12 +19,15 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -337,6 +340,7 @@ private fun depth(p: SettingsPage?) =
         else -> 2
     }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Tabs(
     nav: Nav,
@@ -344,7 +348,12 @@ private fun Tabs(
     pager: PagerState,
     onSelect: (Tab) -> Unit,
 ) = saved.SaveableStateProvider("tabs") {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // An edge-to-edge window no longer shrinks for the keyboard (Android 15 and
+    // later), so the tabs make room for it themselves, and the bars under the
+    // list fold away while it is up: a search box at a list's bottom stays in
+    // sight, with as many matches over it as fit.
+    val typing = WindowInsets.isImeVisible
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()) {
         val mini = App.app.prefs.miniPlayer
         // Scrolling a list, or swiping between tabs, puts the keyboard away; only a tap on a search box brings it.
         val focus = LocalFocusManager.current
@@ -377,6 +386,7 @@ private fun Tabs(
             }
             FloatingPlayer(mini == MiniPlayerStyle.Floating && nav.tab != Tab.Now) { nav.tab = Tab.Now }
         }
+        if (typing) return@Column
         HandoffBar()
         AnimatedVisibility(
             mini == MiniPlayerStyle.Bar && nav.tab != Tab.Now,
