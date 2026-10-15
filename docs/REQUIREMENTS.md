@@ -142,7 +142,9 @@ anything undecided is under [Open questions](#open-questions).
   another queue starts that queue from it. Every queue can be edited, sorted
   (Randomize, Reverse, by tags), searched, and its songs selected several
   at a time; any song in the playing queue can be the one to **stop
-  after**. Song rows keep two lines.
+  after**. Song rows keep two lines. Searching a queue lists its matches
+  over the queue, as Musicolet's dropdown; tapping one scrolls the queue
+  to that song (owner, 2026-10-15).
 
 ### Phone-local songs
 

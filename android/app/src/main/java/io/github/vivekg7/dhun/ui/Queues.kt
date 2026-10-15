@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,7 +67,8 @@ import kotlinx.coroutines.launch
  * The Queues tab, laid out as Musicolet's (docs/plans/020_queue_screen.md):
  * the queue shown, numbered, in a box that opens the queue picker, with ✕
  * to remove it; a row of Play or Resume, Sort, where the queue is, Save and
- * more; the songs; and a search box at the bottom. Every queue can be
+ * more; the songs; and a search box at the bottom, whose matches pop up
+ * over the list and scroll it to the one tapped. Every queue can be
  * edited, not only the playing one.
  */
 @Composable
@@ -103,21 +106,23 @@ fun QueuesScreen(nav: Nav) {
     val rowPx = with(LocalDensity.current) { 64.dp.roundToPx() }
     val focus = LocalFocusManager.current
 
-    /**
-     * Back to the current song from anywhere in a long queue (Musicolet's
-     * tap on the counter): the search is cleared, since the song may not
-     * be among what it shows, and the song lands in the middle of the list.
-     */
-    val toCurrent: () -> Unit = {
+    /** Scrolls the song at [at] to the middle of the list, closing the search. */
+    val scrollTo: (Int) -> Unit = { at ->
         query = ""
         focus.clearFocus()
         scope.launch {
             snapshotFlow { list.layoutInfo.totalItemsCount }.first { it == songs.size }
             val visible = list.layoutInfo.viewportSize.height / rowPx
-            list.animateScrollToItem((index - visible / 2).coerceAtLeast(0))
+            list.animateScrollToItem((at - visible / 2).coerceAtLeast(0))
         }
     }
-    val rows = rememberFound(songs, query) { SearchIndex.songs(it) }
+
+    // Back to the current song from anywhere in a long queue (Musicolet's tap on the counter).
+    val toCurrent = { scrollTo(index) }
+
+    // The list always shows the whole queue, so it can be dragged; the search only finds where to scroll.
+    val rows = remember(songs) { songs.withIndex().toList() }
+    val found = rememberFound(songs, query) { SearchIndex.songs(it) }
     // Select multiple: null when not selecting.
     var selected by remember(shown.id) { mutableStateOf<Set<Long>?>(null) }
     BackHandler(selected != null) { selected = null }
@@ -238,58 +243,60 @@ fun QueuesScreen(nav: Nav) {
             }
         }
         val reorder = rememberReorder(list, rows, { it.value.id }) { from, to -> app.playback.moveIn(shown.id, from, to) }
-        // Positions are the queue's own, so dragging waits until the search is cleared.
-        val canDrag = query.isBlank() && sel == null
-        LazyColumn(Modifier.weight(1f), state = list) {
-            items(reorder.shown, key = { it.value.id }) { (i, s) ->
-                val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
-                val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
-                val extra =
-                    buildList<Pair<String, () -> Unit>> {
-                        add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)).let { } })
-                        if (isActive) {
-                            if (stopping) {
-                                add("Don't stop after this song" to { app.playback.sleep.cancel() })
-                            } else {
-                                add("Stop after this song" to { app.playback.sleep.afterSong(s.id, s.title) })
+        val canDrag = sel == null
+        Box(Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), state = list) {
+                items(reorder.shown, key = { it.value.id }) { (i, s) ->
+                    val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
+                    val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
+                    val extra =
+                        buildList<Pair<String, () -> Unit>> {
+                            add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)).let { } })
+                            if (isActive) {
+                                if (stopping) {
+                                    add("Don't stop after this song" to { app.playback.sleep.cancel() })
+                                } else {
+                                    add("Stop after this song" to { app.playback.sleep.afterSong(s.id, s.title) })
+                                }
                             }
                         }
-                    }
-                Box(with(reorder) { row(s.id) }) {
-                    SongRow(
-                        s,
-                        onClick = {
-                            when {
-                                sel != null -> toggle()
+                    Box(with(reorder) { row(s.id) }) {
+                        SongRow(
+                            s,
+                            onClick = {
+                                when {
+                                    sel != null -> toggle()
 
-                                isActive -> app.playback.playAt(i)
+                                    isActive -> app.playback.playAt(i)
 
-                                // Musicolet's way: a song of another queue starts that queue from it.
-                                else -> app.playback.switchTo(shown.id).invokeOnCompletion { app.playback.playAt(i) }
-                            }
-                        },
-                        current = i == index && songs.isNotEmpty(),
-                        live = isActive,
-                        selected = sel?.contains(s.id) == true,
-                        onLongClick = { selected = (sel ?: emptySet()) + s.id },
-                        leading =
-                            when {
-                                sel != null -> {
-                                    { Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) { Checkbox(s.id in sel, { toggle() }) } }
-                                }
-
-                                canDrag -> {
-                                    { reorder.Handle(s.id) }
-                                }
-
-                                else -> {
-                                    null
+                                    // Musicolet's way: a song of another queue starts that queue from it.
+                                    else -> app.playback.switchTo(shown.id).invokeOnCompletion { app.playback.playAt(i) }
                                 }
                             },
-                        menu = SongMenu(extra = extra, nav = nav),
-                    )
+                            current = i == index && songs.isNotEmpty(),
+                            live = isActive,
+                            selected = sel?.contains(s.id) == true,
+                            onLongClick = { selected = (sel ?: emptySet()) + s.id },
+                            leading =
+                                when {
+                                    sel != null -> {
+                                        { Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) { Checkbox(s.id in sel, { toggle() }) } }
+                                    }
+
+                                    canDrag -> {
+                                        { reorder.Handle(s.id) }
+                                    }
+
+                                    else -> {
+                                        null
+                                    }
+                                },
+                            menu = SongMenu(extra = extra, nav = nav),
+                        )
+                    }
                 }
             }
+            if (query.isNotBlank()) QueueMatches(found, query) { scrollTo(it) }
         }
         SearchField(query, { query = it }, "Search in this queue…", bottom = true)
     }
@@ -519,3 +526,52 @@ private fun SortDialog(
     confirmButton = {},
     dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
 )
+
+/**
+ * What the queue's search box finds, popped up over the bottom of the list
+ * as Musicolet's dropdown: number, title and artist. A tap scrolls the queue
+ * to that song and closes the search.
+ */
+@Composable
+private fun BoxScope.QueueMatches(
+    found: List<IndexedValue<Song>>,
+    query: String,
+    onPick: (Int) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    Surface(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .heightIn(max = 320.dp),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+    ) {
+        if (found.isEmpty()) {
+            Empty("Nothing in this queue matches “${query.trim()}”")
+            return@Surface
+        }
+        LazyColumn {
+            items(found, key = { it.value.id }) { (i, s) ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${i + 1}", Modifier.width(44.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+                    Column(Modifier.weight(1f)) {
+                        Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            s.displayArtist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

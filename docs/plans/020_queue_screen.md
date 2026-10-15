@@ -103,6 +103,16 @@ not playing makes the next one current.
 Not taken from Musicolet for now: swipe to remove, share, export as
 `.m3u`, preview, and saving a queue back to the playlist it came from.
 
+## Changed after release (2026-10-15)
+
+- **Search finds; it no longer filters.** The owner expected Musicolet's
+  way: the matches drop down over the queue, and a tap scrolls the queue
+  to that song, in the middle of the list, and closes the search. The
+  list keeps showing the whole queue, so dragging no longer waits for the
+  search to clear. The filter it replaces also stopped updating after
+  the first letter: the reorder helper reads its rows outside Compose's
+  state, and the list was not recomposed once dragging was already off.
+
 ## Open questions
 
 None.
