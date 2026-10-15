@@ -100,6 +100,15 @@ Rejected: ignoring Previous in long files everywhere (a button on screen
 that does nothing looks broken), and an undo after a restart (the place is
 already gone by the time it is noticed, in a pocket).
 
+### Progress in lists (owner, 2026-10-15)
+
+Every song row with a resume point shows a thin bar under its title, how
+far in the point is: in Continue listening, search, queues and any other
+list. Not on Now playing, which has its seek bar. A point in the first 1%
+draws no bar, since every episode played for a moment has one. The phone
+reads every resume point once, as a map kept in memory, rather than each
+row asking the database.
+
 ## Rejected
 
 - **Storing the length rule on the server**, and deciding there what is

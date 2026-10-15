@@ -2,8 +2,11 @@ package io.github.vivekg7.dhun.data
 
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -34,6 +37,10 @@ class Store(
     val listenLater: Flow<List<Mark>> = dao.marks(LATER)
     val played: Flow<List<Mark>> = dao.marks(PLAYED)
     val resumes: Flow<List<Resume>> = dao.resumes()
+
+    /** Each resume point's place, for the progress bar under a song in any list: one subscription, not one a row. */
+    val resumeAt: StateFlow<Map<Long, Long>> =
+        resumes.map { rows -> rows.associate { it.song to it.positionMs } }.stateIn(app.scope, SharingStarted.Eagerly, emptyMap())
     val playlists: Flow<List<Playlist>> = dao.playlists()
     val playStats: Flow<List<PlayStat>> = dao.playStats()
     val settings: Flow<Map<String, JsonElement>> =

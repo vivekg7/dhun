@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -274,6 +275,7 @@ fun SongRow(
     val files by app.downloads.files.collectAsState()
     val reachable by app.api.reachable.collectAsState()
     val cached by app.cache.songs.collectAsState()
+    val resumeAt by app.store.resumeAt.collectAsState()
     val downloaded = song.id in files
     val playable = song.onPhone || downloaded || song.id in cached
     val outline = if (live) c.primary else c.outline
@@ -325,6 +327,17 @@ fun SongRow(
                 overflow = TextOverflow.Ellipsis,
                 color = c.onSurfaceVariant,
             )
+            // How far into a long file its resume point is (docs/plans/009_resume_long_files.md).
+            // Not for a point at the very start, which every episode played a moment has: an empty bar is noise.
+            val done = resumeAt[song.id]?.takeIf { song.durationMs > 0 }?.let { (it.toFloat() / song.durationMs).coerceIn(0f, 1f) }
+            if (done != null && done >= 0.01f) {
+                Box(
+                    Modifier.padding(top = 5.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).drawBehind {
+                        drawRect(c.surfaceVariant)
+                        drawRect(c.primary, size = Size(size.width * done, size.height))
+                    },
+                )
+            }
         }
         if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
         if (song.onPhone) Icon(Icons.Phone, "On this phone", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
