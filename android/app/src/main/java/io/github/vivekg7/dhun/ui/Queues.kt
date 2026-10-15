@@ -2,26 +2,34 @@ package io.github.vivekg7.dhun.ui
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -36,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,19 +56,26 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import io.github.vivekg7.dhun.play.SleepTimer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -67,9 +83,9 @@ import kotlinx.coroutines.launch
  * The Queues tab, laid out as Musicolet's (docs/plans/020_queue_screen.md):
  * the queue shown, numbered, in a box that opens the queue picker, with ✕
  * to remove it; a row of Play or Resume, Sort, where the queue is, Save and
- * more; the songs; and a search box at the bottom, whose matches pop up
- * over the list and scroll it to the one tapped. Every queue can be
- * edited, not only the playing one.
+ * more; the songs; and a Search pill floating over their bottom, which
+ * opens a search whose match tapped scrolls the list to it. Every queue can
+ * be edited, not only the playing one.
  */
 @Composable
 fun QueuesScreen(nav: Nav) {
@@ -102,18 +118,28 @@ fun QueuesScreen(nav: Nav) {
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
 
+    var searching by rememberSaveable(shown.id) { mutableStateOf(false) }
     var query by rememberSaveable(shown.id) { mutableStateOf("") }
     val rowPx = with(LocalDensity.current) { 64.dp.roundToPx() }
-    val focus = LocalFocusManager.current
+    // The row a search scrolled to, washed in the accent for a moment, then fading.
+    var flashed by remember(shown.id) { mutableStateOf<Int?>(null) }
+    val flash = remember { Animatable(0f) }
 
-    /** Scrolls the song at [at] to the middle of the list, closing the search. */
-    val scrollTo: (Int) -> Unit = { at ->
-        query = ""
-        focus.clearFocus()
+    /** Scrolls the song at [at] to the middle of the list, then flashes it if [mark]. */
+    fun scrollTo(
+        at: Int,
+        mark: Boolean = false,
+    ) {
         scope.launch {
             snapshotFlow { list.layoutInfo.totalItemsCount }.first { it == songs.size }
             val visible = list.layoutInfo.viewportSize.height / rowPx
             list.animateScrollToItem((at - visible / 2).coerceAtLeast(0))
+            if (!mark) return@launch
+            flashed = at
+            flash.snapTo(0.3f)
+            delay(500)
+            flash.animateTo(0f, tween(700))
+            flashed = null
         }
     }
 
@@ -122,7 +148,6 @@ fun QueuesScreen(nav: Nav) {
 
     // The list always shows the whole queue, so it can be dragged; the search only finds where to scroll.
     val rows = remember(songs) { songs.withIndex().toList() }
-    val found = rememberFound(songs, query) { SearchIndex.songs(it) }
     // Select multiple: null when not selecting.
     var selected by remember(shown.id) { mutableStateOf<Set<Long>?>(null) }
     BackHandler(selected != null) { selected = null }
@@ -245,7 +270,8 @@ fun QueuesScreen(nav: Nav) {
         val reorder = rememberReorder(list, rows, { it.value.id }) { from, to -> app.playback.moveIn(shown.id, from, to) }
         val canDrag = sel == null
         Box(Modifier.weight(1f)) {
-            LazyColumn(Modifier.fillMaxSize(), state = list) {
+            // Room under the last song, so the Search pill never hides it.
+            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 72.dp)) {
                 items(reorder.shown, key = { it.value.id }) { (i, s) ->
                     val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
                     val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
@@ -260,7 +286,19 @@ fun QueuesScreen(nav: Nav) {
                                 }
                             }
                         }
-                    Box(with(reorder) { row(s.id) }) {
+                    val wash = c.primary
+                    Box(
+                        with(reorder) { row(s.id) }.then(
+                            if (i == flashed) {
+                                Modifier.drawWithContent {
+                                    drawContent()
+                                    drawRect(wash.copy(alpha = flash.value))
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    ) {
                         SongRow(
                             s,
                             onClick = {
@@ -296,9 +334,16 @@ fun QueuesScreen(nav: Nav) {
                     }
                 }
             }
-            if (query.isNotBlank()) QueueMatches(found, query) { scrollTo(it) }
+            if (sel == null && songs.isNotEmpty()) SearchPill { searching = true }
         }
-        SearchField(query, { query = it }, "Search in this queue…", bottom = true)
+    }
+
+    if (searching) {
+        QueueSearch(songs, query, { query = it }, onDismiss = { searching = false }) {
+            searching = false
+            query = ""
+            scrollTo(it, mark = true)
+        }
     }
 
     if (picking) {
@@ -528,47 +573,81 @@ private fun SortDialog(
 )
 
 /**
- * What the queue's search box finds, popped up over the bottom of the list
- * as Musicolet's dropdown: number, title and artist. A tap scrolls the queue
- * to that song and closes the search.
+ * The queue's search, folded into a small pill over the bottom of the list.
+ * A box at the bottom ended up under the keyboard: on Android 15 and later an
+ * edge-to-edge window no longer shrinks for it.
  */
 @Composable
-private fun BoxScope.QueueMatches(
-    found: List<IndexedValue<Song>>,
-    query: String,
-    onPick: (Int) -> Unit,
-) {
+private fun BoxScope.SearchPill(onOpen: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    Surface(
+    Row(
         Modifier
             .align(Alignment.BottomCenter)
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-            .heightIn(max = 320.dp),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
+            .padding(bottom = 16.dp)
+            .shadow(6.dp, CircleShape)
+            .background(c.surfaceContainerHighest, CircleShape)
+            .clip(CircleShape)
+            .clickable(onClickLabel = "Search in this queue", onClick = onOpen)
+            .padding(start = 16.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (found.isEmpty()) {
-            Empty("Nothing in this queue matches “${query.trim()}”")
-            return@Surface
+        Icon(Icons.Search, null, Modifier.size(20.dp), tint = c.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        Text("Search", style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/**
+ * Searching a queue, over the whole screen with the box at the top, so the
+ * keyboard covers nothing: its matches as Musicolet's dropdown, number,
+ * title and artist. A tap closes it and scrolls the queue to that song.
+ */
+@Composable
+private fun QueueSearch(
+    songs: List<Song>,
+    query: String,
+    onQuery: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) = Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    val c = MaterialTheme.colorScheme
+    val found = rememberFound(songs, query) { SearchIndex.songs(it) }
+    // A dialog has a window of its own, whose bars do not follow the theme as the app's do.
+    val view = LocalView.current
+    val light = c.surface.luminance() > 0.5f
+    SideEffect {
+        (view.parent as? DialogWindowProvider)?.window?.let {
+            WindowCompat.getInsetsController(it, view).apply {
+                isAppearanceLightStatusBars = light
+                isAppearanceLightNavigationBars = light
+            }
         }
-        LazyColumn {
-            items(found, key = { it.value.id }) { (i, s) ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("${i + 1}", Modifier.width(44.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-                    Column(Modifier.weight(1f)) {
-                        Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            s.displayArtist,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = c.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+    }
+    Surface(Modifier.fillMaxSize()) {
+        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
+            SearchField(query, onQuery, "Search in this queue…", autofocus = true) { TextButton(onDismiss) { Text("Cancel") } }
+            if (query.isBlank()) return@Column
+            if (found.isEmpty()) {
+                Empty("Nothing in this queue matches “${query.trim()}”")
+                return@Column
+            }
+            LazyColumn {
+                items(found, key = { it.value.id }) { (i, s) ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("${i + 1}", Modifier.width(44.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+                        Column(Modifier.weight(1f)) {
+                            Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                s.displayArtist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = c.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }

@@ -73,7 +73,7 @@ first**, which renumbers every queue on each switch.
   selection.
 - Song rows stay **two lines** (title and artist), the owner's choice over
   Musicolet's three, so more of the queue fits on screen.
-- **A search box at the bottom**, "Search in this queue…", filtering by
+- **A search box at the bottom** (a pill since; see below), "Search in this queue…", filtering by
   title, artist or album. Dragging waits until it is cleared, since the
   positions shown are no longer the queue's. How a drag moves (rows
   sliding aside, scrolling at the edges) is in
@@ -112,6 +112,19 @@ Not taken from Musicolet for now: swipe to remove, share, export as
   search to clear. The filter it replaces also stopped updating after
   the first letter: the reorder helper reads its rows outside Compose's
   state, and the list was not recomposed once dragging was already off.
+- **Search moved from a box at the bottom to a pill that opens it at the
+  top** (0.14.x). On real phones the keyboard covered the box and its
+  matches: the app targets Android 15+, where an edge-to-edge window no
+  longer shrinks for the keyboard, and the emulator, typing on the
+  computer's keyboard, never showed it. A small **Search** pill now floats
+  over the bottom of the list; it opens the search over the whole screen,
+  box at the top and matches below it, where the keyboard cannot reach
+  them. A tap closes it, scrolls the queue to the song and washes its row
+  in the accent for a second, so the eye finds it. The owner chose the
+  pill over a search button in the action row, which would be harder to
+  reach with a thumb. The other tabs' bottom search boxes stay where they
+  are: the window now makes room for the keyboard itself, and folds the
+  mini player and tab bar away while typing.
 
 ## Open questions
 

@@ -31,6 +31,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -100,9 +103,10 @@ fun SectionLabel(
 }
 
 /**
- * Musicolet's per-tab quick search box; at the [bottom] of the queue, as there.
- * Only a tap focuses it; the keyboard's Search key, a scroll, a tapped song or
- * leaving the page puts the keyboard away and keeps the query.
+ * Musicolet's per-tab quick search box, at the [bottom] of a list, as there.
+ * Only a tap focuses it, unless it opens a search of its own ([autofocus]);
+ * the keyboard's Search key, a scroll, a tapped song or leaving the page puts
+ * the keyboard away and keeps the query.
  */
 @Composable
 fun SearchField(
@@ -110,9 +114,12 @@ fun SearchField(
     onChange: (String) -> Unit,
     hint: String,
     bottom: Boolean = false,
+    autofocus: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
     val focus = LocalFocusManager.current
+    val asked = remember { FocusRequester() }
+    if (autofocus) LaunchedEffect(Unit) { asked.requestFocus() }
     Column {
         if (bottom) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -131,7 +138,7 @@ fun SearchField(
                 BasicTextField(
                     value,
                     onChange,
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().focusRequester(asked),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
