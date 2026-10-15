@@ -112,19 +112,22 @@ Not taken from Musicolet for now: swipe to remove, share, export as
   search to clear. The filter it replaces also stopped updating after
   the first letter: the reorder helper reads its rows outside Compose's
   state, and the list was not recomposed once dragging was already off.
-- **Search moved from a box at the bottom to a pill that opens it at the
-  top** (0.14.x). On real phones the keyboard covered the box and its
+- **Search moved from a box at the bottom to a pill that opens a floating
+  box** (0.14.x). On real phones the keyboard covered the box and its
   matches: the app targets Android 15+, where an edge-to-edge window no
   longer shrinks for the keyboard, and the emulator, typing on the
   computer's keyboard, never showed it. A small **Search** pill now floats
-  over the bottom of the list; it opens the search over the whole screen,
-  box at the top and matches below it, where the keyboard cannot reach
-  them. A tap closes it, scrolls the queue to the song and washes its row
-  in the accent for a second, so the eye finds it. The owner chose the
-  pill over a search button in the action row, which would be harder to
-  reach with a thumb. The other tabs' bottom search boxes stay where they
-  are: the window now makes room for the keyboard itself, and folds the
-  mini player and tab bar away while typing.
+  over the bottom of the list. It opens into a box that sits on the
+  keyboard, in a window of its own that follows it, with the matches
+  stacked above the field (about five, the rest scroll) and the queue
+  dimmed but in sight behind. A tap outside closes it; a tap on a match
+  closes it, scrolls the queue to the song and washes its row in the
+  accent for a moment, so the eye finds it. The owner chose the pill over
+  a search button in the action row, which a thumb reaches less easily,
+  and a floating box over a full-screen search, which hid the queue. The
+  other tabs' bottom search boxes stay where they are: the window now
+  makes room for the keyboard itself, and folds the mini player and tab
+  bar away while typing.
 
 ## Open questions
 

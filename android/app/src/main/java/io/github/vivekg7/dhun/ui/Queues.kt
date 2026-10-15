@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -59,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -334,7 +336,7 @@ fun QueuesScreen(nav: Nav) {
                     }
                 }
             }
-            if (sel == null && songs.isNotEmpty()) SearchPill { searching = true }
+            if (sel == null && songs.isNotEmpty() && !searching) SearchPill { searching = true }
         }
     }
 
@@ -598,9 +600,11 @@ private fun BoxScope.SearchPill(onOpen: () -> Unit) {
 }
 
 /**
- * Searching a queue, over the whole screen with the box at the top, so the
- * keyboard covers nothing: its matches as Musicolet's dropdown, number,
- * title and artist. A tap closes it and scrolls the queue to that song.
+ * Searching a queue: the pill opened into a box that floats on the keyboard,
+ * the queue still in sight behind it, with its matches stacked above the
+ * field as Musicolet's dropdown: number, title and artist. A tap on a match
+ * closes it and scrolls the queue to that song; a tap outside, or Back,
+ * just closes it.
  */
 @Composable
 private fun QueueSearch(
@@ -623,33 +627,51 @@ private fun QueueSearch(
             }
         }
     }
-    Surface(Modifier.fillMaxSize()) {
-        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
-            SearchField(query, onQuery, "Search in this queue…", autofocus = true) { TextButton(onDismiss) { Text("Cancel") } }
-            if (query.isBlank()) return@Column
-            if (found.isEmpty()) {
-                Empty("Nothing in this queue matches “${query.trim()}”")
-                return@Column
-            }
-            LazyColumn {
-                items(found, key = { it.value.id }) { (i, s) ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("${i + 1}", Modifier.width(44.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
-                        Column(Modifier.weight(1f)) {
-                            Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                s.displayArtist,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = c.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+    // The window covers the screen so the box can follow the keyboard; a tap off the box closes it.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clickable(interactionSource = null, indication = null, onClickLabel = "Close search", onClick = onDismiss)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(12.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Surface(
+            // Taps on the box stay on it, not closing it; unlike a click handler, TalkBack does not see this.
+            Modifier.fillMaxWidth().pointerInput(Unit) { detectTapGestures() },
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 3.dp,
+            shadowElevation = 8.dp,
+        ) {
+            Column {
+                if (query.isNotBlank()) {
+                    if (found.isEmpty()) {
+                        Empty("Nothing in this queue matches “${query.trim()}”")
+                    } else {
+                        // About five matches, so the queue behind stays in sight; the rest scroll.
+                        LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 340.dp)) {
+                            items(found, key = { it.value.id }) { (i, s) ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("${i + 1}", Modifier.width(44.dp), style = MaterialTheme.typography.labelLarge, color = c.onSurfaceVariant)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(s.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            s.displayArtist,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = c.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                SearchField(query, onQuery, "Search in this queue…", bottom = query.isNotBlank(), autofocus = true)
             }
         }
     }
