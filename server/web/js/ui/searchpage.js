@@ -320,7 +320,7 @@ export function searchPage(initial, { field = false } = {}) {
   return {
     el,
     title: "Search",
-    topics: new Set(["catalog", "playlists", "thumbs", "playback"]),
+    topics: new Set(["catalog", "playlists", "thumbs", "playback", "resumes"]),
     update(t) {
       if (t.has("catalog") || t.has("playlists")) draw();
       else list.refresh();

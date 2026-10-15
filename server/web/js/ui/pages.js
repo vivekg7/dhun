@@ -169,7 +169,7 @@ function songsPage({
   return {
     el,
     title: data.title,
-    topics: new Set(["catalog", "thumbs", "playback", ...(topics ?? [])]),
+    topics: new Set(["catalog", "thumbs", "playback", "resumes", ...(topics ?? [])]),
     update(t) {
       if (t.has("playback") || t.has("thumbs")) list.refresh();
       if ([...t].some((x) => x !== "playback" && x !== "thumbs")) {
@@ -480,7 +480,7 @@ export function folderPage(path) {
   return {
     el,
     title: name,
-    topics: new Set(["catalog", "thumbs", "playback"]),
+    topics: new Set(["catalog", "thumbs", "playback", "resumes"]),
     update(t) {
       if (t.has("catalog")) show();
       else list.refresh();
@@ -759,7 +759,7 @@ export function playlistPage(id0) {
   return {
     el,
     title: p0.name,
-    topics: new Set(["playlists", "catalog", "thumbs", "playback"]),
+    topics: new Set(["playlists", "catalog", "thumbs", "playback", "resumes"]),
     update(t) {
       if (t.has("playlists") || t.has("catalog")) show();
       else list.refresh();
@@ -1028,7 +1028,7 @@ export function queuePage(id, { compact = false } = {}) {
   return {
     el,
     title: q().name,
-    topics: new Set(["queues", "catalog", "thumbs", "playback", "position"]),
+    topics: new Set(["queues", "catalog", "thumbs", "playback", "position", "resumes"]),
     update(t) {
       if (
         t.has("queues") ||
@@ -1036,7 +1036,7 @@ export function queuePage(id, { compact = false } = {}) {
         (t.has("playback") && ids() !== lastIds)
       )
         show();
-      else if (t.has("playback") || t.has("thumbs")) {
+      else if (t.has("playback") || t.has("thumbs") || t.has("resumes")) {
         list.refresh();
         showPlace();
       } else if (t.has("position")) showPlace();

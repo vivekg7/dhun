@@ -322,6 +322,7 @@ export class SongList {
                   .join(" · ")
               : "Not in the library",
         ),
+        resumeBar(s),
       ),
       h(
         "span.artist",
@@ -465,3 +466,14 @@ export class SongList {
 
 /** Songs as list items, keyed by id. */
 export const items = (songs) => songs.map((s) => ({ song: s, key: String(s.id) }));
+
+/**
+ * How far into a long file its resume point is, as a thin bar under the
+ * row's title, as on the phone (plan 009); none in the first 1%.
+ */
+function resumeBar(s) {
+  const at = s?.durationMs > 0 ? ctx.app.resume(s.id) / s.durationMs : 0;
+  return at < 0.01
+    ? null
+    : h("span.resume", { style: { "--fill": `${Math.min(at, 1) * 100}%` } });
+}
