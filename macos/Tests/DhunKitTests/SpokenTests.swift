@@ -25,6 +25,9 @@ private func song(_ id: Int, _ path: String, kind: String = "", group: String = 
     ])
     #expect(c.songs.map(\.id) == [1])
     #expect(c.folders["Lex"]!.songs.map(\.id) == [1])
+    // Folders shows them under a root of their own, after the music's.
+    #expect(c.folders[""]!.children.map(\.path) == ["Lex", "Podcasts"])
+    #expect(c.folders["Podcasts/Lex"]!.songs.map(\.id) == [3, 2])
     #expect(c.artists.allSatisfy { !$0.songs.contains(where: \.spoken) })
     #expect(c.shows.count == 1 && c.shows[0].items.map(\.id) == [3, 2])
     #expect(c.byId[2] != nil)

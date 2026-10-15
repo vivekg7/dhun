@@ -29,7 +29,7 @@ public final class Catalog: Sendable {
         albums = Catalog.albums(songs)
         artists = Catalog.group(songs) { $0.artists.isEmpty ? [$0.displayArtist] : $0.artists }
         genres = Catalog.group(songs) { $0.genres.isEmpty ? ["Unknown genre"] : $0.genres }
-        folders = Catalog.folders(songs)
+        folders = Catalog.folders(songs, all.filter(\.spoken))
         books = Catalog.shelves(all, Song.audiobook)
         shows = Catalog.shelves(all, Song.podcast)
         shelves = Dictionary((books + shows).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -85,8 +85,15 @@ public final class Catalog: Sendable {
         }.sorted { natural($0.name, $1.name) < 0 }
     }
 
-    /// Every folder, keyed by its path relative to the Music folder ("" is the top).
-    private static func folders(_ songs: [Song]) -> [String: Folder] {
+    public static let podcasts = "Podcasts"
+    public static let audiobooks = "Audiobooks"
+
+    /// Every folder, keyed by its path relative to the Music folder ("" is
+    /// the top). Episodes and books' files sit under a Podcasts and an
+    /// Audiobooks root after the music's folders, as on the phone: their
+    /// paths are relative to folders of their own, so a show's folder could
+    /// share a music folder's name.
+    private static func folders(_ songs: [Song], _ spoken: [Song]) -> [String: Folder] {
         var map: [String: Folder] = [:]
         func folder(_ path: String) -> Folder {
             if let f = map[path] { return f }
@@ -99,8 +106,16 @@ public final class Catalog: Sendable {
             return f
         }
         for s in songs { folder(s.folder).songs.append(s) }
+        for s in spoken {
+            let root = s.kind == Song.podcast ? podcasts : audiobooks
+            folder(s.folder.isEmpty ? root : root + "/" + s.folder).songs.append(s)
+        }
+        let last: Set = [podcasts, audiobooks]
         for f in map.values {
-            f.children.sort { natural($0.name, $1.name) < 0 }
+            f.children.sort {
+                last.contains($0.path) != last.contains($1.path)
+                    ? last.contains($1.path) : natural($0.name, $1.name) < 0
+            }
             f.songs.sort { a, b in
                 (a.disc, a.track) != (b.disc, b.track)
                     ? (a.disc, a.track) < (b.disc, b.track) : natural(a.path, b.path) < 0

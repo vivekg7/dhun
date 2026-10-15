@@ -228,6 +228,15 @@ func summary(_ songs: [Song]) -> String {
 /// "1 song", "12 songs"
 func count(_ n: Int) -> String { n == 1 ? "1 song" : "\(n) songs" }
 
+/// The podcasts' and audiobooks' roots take their sidebar icons.
+private func folderIcon(_ path: String) -> String {
+    switch path {
+    case Catalog.podcasts: "mic"
+    case Catalog.audiobooks: "book"
+    default: "folder"
+    }
+}
+
 /// "3 folders · 120 songs · 7:45:00": what a folder holds, its subfolders' songs too.
 func summary(_ f: Folder) -> String {
     let n = f.children.count
@@ -326,7 +335,7 @@ struct FolderView: View {
                     List(children) { c in
                         NavigationLink(value: Route.folder(c.path)) {
                             HStack(spacing: 10) {
-                                Image(systemName: "folder").foregroundStyle(.tint).frame(width: 22)
+                                Image(systemName: folderIcon(c.path)).foregroundStyle(.tint).frame(width: 22)
                                 VStack(alignment: .leading) {
                                     HStack(spacing: 4) {
                                         Text(c.name)
