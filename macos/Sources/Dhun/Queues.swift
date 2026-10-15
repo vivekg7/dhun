@@ -94,8 +94,13 @@ struct QueueSongs: View {
     @Environment(Nav.self) private var nav
     let queue: QueueRow
     @State private var selection = Set<Int>()
-    @State private var filter = ""
-    /// The songs take the focus, not the filter: Space must play and pause, not type.
+    /// The find field: it finds rather than filters, as Musicolet's queue
+    /// search does (plan 032). The matches show under it, and picking one
+    /// scrolls the queue to that song and selects it; the queue stays whole,
+    /// so a song can be dragged with its neighbours in view.
+    @State private var find = ""
+    @State private var findAt = 0
+    /// The songs take the focus, not the find field: Space must play and pause, not type.
     @FocusState private var listFocused: Bool
 
     var body: some View {
@@ -108,8 +113,8 @@ struct QueueSongs: View {
         let currentId = isActive ? app.playback.current?.id : queue.currentSong
         let numbered = Array(songs.enumerated())
         let resumeAt = app.resumeAt
-        let found = Set(app.catalog.filter(songs, filter).map(\.id))
-        let shown = filter.isEmpty ? numbered : numbered.filter { found.contains($0.element.id) }
+        let hits = Set(find.isEmpty ? [] : app.catalog.filter(songs, find).map(\.id))
+        let found = numbered.filter { hits.contains($0.element.id) }
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 // Two rows, so the controls fit the narrow inspector as well as the Queues page.
@@ -146,12 +151,25 @@ struct QueueSongs: View {
                     }
                     .disabled(songs.count < 2)
                     .fixedSize()
-                    TextField("Filter", text: $filter).textFieldStyle(.roundedBorder)
+                    TextField("Find in Queue", text: $find).textFieldStyle(.roundedBorder)
+                        .onChange(of: find) { findAt = 0 }
+                        .onKeyPress(.downArrow) { move(1, found.count) }
+                        .onKeyPress(.upArrow) { move(-1, found.count) }
+                        .onKeyPress(.escape) {
+                            find = ""
+                            return .handled
+                        }
+                        .onSubmit {
+                            if found.indices.contains(findAt) { pick(found[findAt].element.id, proxy) }
+                        }
                 }
                 .padding(12)
+                if !find.isEmpty {
+                    QueueMatches(query: find, found: found, at: findAt) { pick($0, proxy) }
+                }
                 Divider()
                 List(selection: $selection) {
-                    ForEach(shown, id: \.element.id) { i, s in
+                    ForEach(numbered, id: \.element.id) { i, s in
                         HStack(spacing: 8) {
                             Text("\(i + 1)").monospacedDigit().font(.caption).foregroundStyle(.secondary)
                                 .frame(width: 28, alignment: .trailing)
@@ -174,13 +192,10 @@ struct QueueSongs: View {
                         .id(s.id)
                         .tag(s.id)
                     }
-                    // Not while filtered: the rows shown are not the queue's positions.
-                    .onMove(
-                        perform: filter.isEmpty
-                            ? { from, to in
-                                guard let f = from.first else { return }
-                                app.playback.moveIn(queue.id, from: f, to: to > f ? to - 1 : to)
-                            } : nil)
+                    .onMove { from, to in
+                        guard let f = from.first else { return }
+                        app.playback.moveIn(queue.id, from: f, to: to > f ? to - 1 : to)
+                    }
                 }
                 .contextMenu(forSelectionType: Int.self) { chosen in
                     let picked = songs.filter { chosen.contains($0.id) }
@@ -221,6 +236,22 @@ struct QueueSongs: View {
                 .id(queue.id)
             }
         }
+    }
+
+    private func move(_ by: Int, _ count: Int) -> KeyPress.Result {
+        guard count > 0 else { return .ignored }
+        findAt = (findAt + by + count) % count
+        return .handled
+    }
+
+    /// The song in the middle of the list, selected, and the field cleared.
+    private func pick(_ id: Int, _ proxy: ScrollViewProxy) {
+        find = ""
+        selection = [id]
+        listFocused = true
+        // After the matches have closed: scrolled in the same update, the list
+        // is still laid out under them and does not move.
+        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .center) }
     }
 
     /// "3 / 40 · 1:02 left of 2:30": where the queue is, and how much is left of it.
@@ -431,5 +462,55 @@ struct PlaylistPage: View {
             cur = app.playlists.first { $0.id == p.id } ?? cur
         }
         selection = []
+    }
+}
+
+/// The songs the queue's find field matches, by their place in the queue;
+/// ↑ and ↓ in the field move through them, Return or a click picks one.
+private struct QueueMatches: View {
+    let query: String
+    let found: [(offset: Int, element: Song)]
+    let at: Int
+    let pick: (Int) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if found.isEmpty {
+                        Text("Nothing matches “\(query)”").foregroundStyle(.secondary).padding(8)
+                    }
+                    ForEach(Array(found.prefix(100).enumerated()), id: \.element.element.id) { j, m in
+                        Button {
+                            pick(m.element.id)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text("\(m.offset + 1)").monospacedDigit().font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .trailing)
+                                Text(m.element.title).lineLimit(1)
+                                Spacer(minLength: 8)
+                                Text(m.element.displayArtist).font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(
+                                j == at ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
+                                in: .rect(cornerRadius: 5)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
+            .frame(maxHeight: 200)
+            .fixedSize(horizontal: false, vertical: found.count < 8)
+            .padding(.bottom, 8)
+            .onChange(of: at) {
+                if found.indices.contains(at) { proxy.scrollTo(found[at].element.id) }
+            }
+        }
     }
 }
