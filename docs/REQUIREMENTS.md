@@ -330,7 +330,9 @@ since 0.13.0. Anything else waits for a later release.
 - Now playing: play / pause / next / previous / seek, shuffle, repeat.
   Previous restarts a song played past its first 3 s, or, by a setting
   that follows the user, always goes to the previous song (owner,
-  2026-10-11).
+  2026-10-11). Each artist and the album under the title open their page
+  in the Artists and Albums tabs; an episode's show or a book's title
+  opens it (owner, 2026-10-15).
 - **Sleep timer:** after a set time (presets or any number of minutes),
   at the end of this song, after N songs, or at the end of the queue. By
   the clock it fades out and pauses on time; by songs it pauses where a

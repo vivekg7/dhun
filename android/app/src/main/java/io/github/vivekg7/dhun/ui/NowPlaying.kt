@@ -72,7 +72,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
@@ -183,17 +189,8 @@ fun NowPlayingScreen(nav: Nav) {
         AnimatedContent(s, contentKey = { it.id }, transitionSpec = slide, label = "title") { song ->
             Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
                 Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val facts =
-                    when (song.kind) {
-                        // A book of one file is often titled as the book: not twice.
-                        Song.PODCAST -> listOf(song.groupTitle, song.day)
-
-                        Song.AUDIOBOOK -> listOf(song.groupTitle.takeIf { it != song.title }.orEmpty(), song.artist.ifEmpty { song.albumArtist })
-
-                        else -> listOf(song.displayArtist, song.album, song.year.takeIf { it > 0 }?.toString() ?: "")
-                    }.filter { it.isNotEmpty() }
                 Text(
-                    if (waiting) WAITING else facts.joinToString(" · "),
+                    if (waiting) AnnotatedString(WAITING) else facts(song, nav),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (waiting) c.primary else c.onSurfaceVariant,
                     maxLines = 1,
@@ -436,6 +433,67 @@ fun Seek(
         val x = size.width * fraction.coerceIn(0f, 1f)
         drawLine(c.primary, Offset(0f, y), Offset(x, y), stroke, StrokeCap.Round)
         drawCircle(c.primary, 6.dp.toPx(), Offset(x, y))
+    }
+}
+
+/**
+ * The line under the title: artist, album and year for a song; the show and
+ * date for an episode; the book and author for a book's file. Each artist,
+ * the album, and the show or book is a link to its page, in the tab that
+ * lists it.
+ */
+@Composable
+private fun facts(
+    song: Song,
+    nav: Nav,
+): AnnotatedString {
+    val catalog by App.app.catalog.collectAsState()
+    val link = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.onSurface))
+    val shelf = remember(song.id, catalog) { catalog.shelfOf(song) }
+    val album = remember(song.id, catalog) { if (song.spoken) null else catalog.albums.firstOrNull { a -> a.songs.any { it.id == song.id } } }
+    return buildAnnotatedString {
+        fun part(
+            text: String,
+            open: (() -> Unit)? = null,
+        ) {
+            if (text.isEmpty()) return
+            if (length > 0) append(" · ")
+            if (open == null) append(text) else withLink(LinkAnnotation.Clickable(text, link) { open() }) { append(text) }
+        }
+        val toShelf = shelf?.let { { nav.open(Tab.Playlists, Page.ShelfPage(it.key)) } }
+        when (song.kind) {
+            Song.PODCAST -> {
+                part(song.groupTitle, toShelf)
+                part(song.day)
+            }
+
+            Song.AUDIOBOOK -> {
+                // A book of one file is often titled as the book: not twice.
+                part(song.groupTitle.takeIf { it != song.title }.orEmpty(), toShelf)
+                part(song.artist.ifEmpty { song.albumArtist })
+            }
+
+            else -> {
+                // Each of several artists opens its own page, as the Artists tab lists them apart.
+                val artists = song.artistList.ifEmpty { listOf(song.displayArtist) }
+                artists.forEachIndexed { i, a ->
+                    val open = { nav.open(Tab.Artists, Page.ArtistPage(a)) }
+                    if (i == 0) {
+                        part(a, open)
+                    } else {
+                        append(", ")
+                        withLink(LinkAnnotation.Clickable(a, link) { open() }) { append(a) }
+                    }
+                }
+                part(song.album, album?.let { { nav.open(Tab.Albums, Page.AlbumPage(it.key)) } })
+                part(
+                    song.year
+                        .takeIf { it > 0 }
+                        ?.toString()
+                        .orEmpty(),
+                )
+            }
+        }
     }
 }
 
