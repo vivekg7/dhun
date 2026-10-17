@@ -6,6 +6,7 @@ import androidx.room3.ColumnInfo
 import androidx.room3.Dao
 import androidx.room3.Database
 import androidx.room3.Entity
+import androidx.room3.Index
 import androidx.room3.Insert
 import androidx.room3.PrimaryKey
 import androidx.room3.Query
@@ -26,9 +27,9 @@ import kotlinx.serialization.json.Json
 @Database(
     entities = [
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
-        Pin::class, Download::class, LyricsRow::class, Thumb::class,
+        Pin::class, Download::class, LyricsRow::class, Thumb::class, Bookmark::class,
     ],
-    version = 7,
+    version = 8,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
     autoMigrations = [
@@ -36,7 +37,7 @@ import kotlinx.serialization.json.Json
             from = 1,
             to = 2,
         ), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6),
-        AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
     ],
 )
 abstract class Db : RoomDatabase() {
@@ -159,6 +160,22 @@ data class Mark(
 data class Resume(
     @PrimaryKey val song: Long,
     val positionMs: Long,
+    val at: Long,
+    val deleted: Boolean,
+)
+
+/**
+ * A place marked in a long file, with an optional note
+ * (docs/plans/033_bookmarks.md). The id is made here, so one made offline
+ * has it at once. A deleted one is kept, so an older copy from the server
+ * never brings it back.
+ */
+@Entity(tableName = "bookmark", indices = [Index("song")])
+data class Bookmark(
+    @PrimaryKey val id: String,
+    val song: Long,
+    val positionMs: Long,
+    val note: String,
     val at: Long,
     val deleted: Boolean,
 )
@@ -296,6 +313,15 @@ interface DbDao {
     @Upsert
     suspend fun putResume(r: Resume)
 
+    @Query("SELECT * FROM bookmark WHERE deleted = 0 ORDER BY positionMs")
+    fun bookmarks(): Flow<List<Bookmark>>
+
+    @Query("SELECT * FROM bookmark WHERE id = :id")
+    suspend fun bookmark(id: String): Bookmark?
+
+    @Upsert
+    suspend fun putBookmark(b: Bookmark)
+
     @Query("SELECT * FROM setting")
     fun settings(): Flow<List<Setting>>
 
@@ -408,6 +434,9 @@ interface DbDao {
     @Query("DELETE FROM resume WHERE song > 0")
     suspend fun clearResumes()
 
+    @Query("DELETE FROM bookmark WHERE song > 0")
+    suspend fun clearBookmarks()
+
     // A phone song's own speed (speed.-…) is the phone's; every other setting the account's.
     @Query("DELETE FROM setting WHERE name NOT LIKE 'speed.-%'")
     suspend fun clearSettings()
@@ -439,6 +468,7 @@ interface DbDao {
         clearPlaylists()
         clearMarks()
         clearResumes()
+        clearBookmarks()
         clearPlayStats()
         clearSettings()
         if (!keepDownloads) {

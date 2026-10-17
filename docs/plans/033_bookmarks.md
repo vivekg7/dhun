@@ -1,6 +1,6 @@
 # 033 — Bookmarks in long files
 
-**Status:** `IN PROGRESS` — the server built; the apps next
+**Status:** `IN PROGRESS` — the server and Android built; macOS and the web next
 **Started:** 2026-10-17
 
 ## Problem

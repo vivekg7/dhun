@@ -143,5 +143,6 @@ object Icons {
         "chapters",
         "M3 9h14V7H3v2zM3 13h14v-2H3v2zM3 17h14v-2H3v2zM19 17h2v-2h-2v2zM19 7v2h2V7h-2zM19 13h2v-2h-2v2z",
     )
+    val BookmarkAdd by icon("bookmarkAdd", "M17 11v6.97l-5-2.14-5 2.14V5h6V3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V11h-2zM21 7h-2v2h-2V7h-2V5h2V3h2v2h2v2z")
     val Info by icon("info", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z")
 }

@@ -268,6 +268,19 @@ class Sync(
             if ("resume:${r.song}" in pending || (local != null && local.at > at)) continue
             dao.putResume(Resume(r.song, r.positionMs, at, r.deleted))
         }
+        for (b in s.bookmarks) {
+            val at = parseTime(b.at)
+            val local = dao.bookmark(b.id)
+            // A delete wins over any edit, as on the server (plan 033).
+            if ("bookmark:${b.id}" in pending || local?.deleted == true || (local != null && !b.deleted && local.at > at)) continue
+            dao.putBookmark(
+                if (b.deleted) {
+                    Bookmark(b.id, local?.song ?: 0, local?.positionMs ?: 0, "", at, deleted = true)
+                } else {
+                    Bookmark(b.id, b.song, b.positionMs, b.note, at, deleted = false)
+                },
+            )
+        }
         for ((name, value) in s.settings) {
             if ("setting:$name" in pending) continue
             if (value is JsonNull) dao.deleteSetting(name) else dao.putSetting(Setting(name, value.toString()))

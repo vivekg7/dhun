@@ -1,6 +1,7 @@
 package io.github.vivekg7.dhun.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,8 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,13 +29,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Bookmark
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Shelf
 import io.github.vivekg7.dhun.data.Song
@@ -229,7 +237,11 @@ fun ShelfScreen(
     }
 }
 
-/** The chapter playing, under the title on Now playing; a tap lists them all. */
+/**
+ * The chapter playing, under the title on Now playing; a tap lists them
+ * all. A file without chapters says how many bookmarks it has instead, so
+ * they are a tap away there too (docs/plans/033_bookmarks.md).
+ */
 @Composable
 fun ChapterLine(
     s: Song,
@@ -237,7 +249,13 @@ fun ChapterLine(
     onClick: () -> Unit,
 ) {
     val chapters = remember(s.chapters) { s.chapterList }
-    if (chapters.isEmpty()) return
+    val all by App.app.store.bookmarks
+        .collectAsState()
+    val marks = all.count { it.song == s.id }
+    if (chapters.isEmpty()) {
+        if (marks > 0) Line(count(marks, "bookmark"), onClick)
+        return
+    }
     val player = App.app.playback.player
     var pos by remember { mutableLongStateOf(player.currentPosition) }
     LaunchedEffect(s.id, playing) {
@@ -247,17 +265,23 @@ fun ChapterLine(
         }
     }
     val i = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
-    Text(
-        "Chapter ${i + 1} of ${chapters.size}" + chapters[i].name.let { if (it.isEmpty()) "" else " · $it" },
-        Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+    Line("Chapter ${i + 1} of ${chapters.size}" + chapters[i].name.let { if (it.isEmpty()) "" else " · $it" }, onClick)
 }
 
-/** An episode's or a book file's chapters, each a tap away, and its notes. */
+@Composable
+private fun Line(
+    text: String,
+    onClick: () -> Unit,
+) = Text(
+    text,
+    Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
+    style = MaterialTheme.typography.labelLarge,
+    color = MaterialTheme.colorScheme.primary,
+    maxLines = 1,
+    overflow = TextOverflow.Ellipsis,
+)
+
+/** An episode's or a book file's bookmarks and chapters, each a tap away, and its notes. */
 @Composable
 fun DetailsDialog(
     s: Song,
@@ -266,12 +290,28 @@ fun DetailsDialog(
     val player = App.app.playback.player
     val chapters = remember(s.chapters) { s.chapterList }
     val now = chapters.indexOfLast { it.startMs <= player.currentPosition }
+    val all by App.app.store.bookmarks
+        .collectAsState()
+    val marks = all.filter { it.song == s.id }
+    var editing by remember { mutableStateOf<Bookmark?>(null) }
+    editing?.let { b -> NoteDialog(b) { editing = null } }
     val c = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(s.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                if (marks.isNotEmpty()) {
+                    item {
+                        Text("BOOKMARKS", Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary)
+                    }
+                }
+                items(marks, key = { it.id }) { b ->
+                    BookmarkRow(b, chapters.lastOrNull { it.startMs <= b.positionMs }?.name.orEmpty(), { editing = b }) {
+                        player.seekTo(b.positionMs)
+                        onDismiss()
+                    }
+                }
                 if (chapters.isNotEmpty()) {
                     item {
                         Text("CHAPTERS", Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary)
@@ -304,6 +344,71 @@ fun DetailsDialog(
         confirmButton = { TextButton(onDismiss) { Text("Close") } },
     )
 }
+
+/** A bookmark: its time, its note or else the chapter it is in, and a menu to change the note or delete it. */
+@Composable
+private fun BookmarkRow(
+    b: Bookmark,
+    chapter: String,
+    onEdit: () -> Unit,
+    onClick: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(duration(b.positionMs), Modifier.width(80.dp), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(
+                b.note.ifEmpty { chapter.ifEmpty { "Bookmark" } },
+                style = MaterialTheme.typography.bodyLarge,
+                color = c.onSurface,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (b.note.isNotEmpty() && chapter.isNotEmpty()) {
+                Text(chapter, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Box {
+            IconButton({ menu = true }) { Icon(Icons.More, "Bookmark options", tint = c.onSurfaceVariant) }
+            DropdownMenu(menu, { menu = false }) {
+                DropdownMenuItem({ Text(if (b.note.isEmpty()) "Add a note" else "Edit the note") }, {
+                    menu = false
+                    onEdit()
+                })
+                DropdownMenuItem({ Text("Delete") }, {
+                    menu = false
+                    scope.launch { App.app.store.bookmark(b.copy(deleted = true, note = "")) }
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteDialog(
+    b: Bookmark,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var note by remember { mutableStateOf(b.note) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Note at ${duration(b.positionMs)}") },
+        text = { OutlinedTextField(note, { if (it.length <= MAX_NOTE) note = it }, Modifier.fillMaxWidth(), placeholder = { Text("What happens here") }) },
+        confirmButton = {
+            TextButton({
+                scope.launch { App.app.store.bookmark(b.copy(note = note.trim())) }
+                onDismiss()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** The server's limit on a bookmark's note. */
+private const val MAX_NOTE = 1_000
 
 /** "29 books", "1 show" */
 private fun count(

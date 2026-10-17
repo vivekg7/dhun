@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun.ui
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
@@ -70,6 +71,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -83,6 +85,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.Bookmark
 import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
@@ -90,6 +93,7 @@ import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun NowPlayingScreen(nav: Nav) {
@@ -107,6 +111,7 @@ fun NowPlayingScreen(nav: Nav) {
     val favs by app.store.favorites.collectAsState()
     val later by app.store.listenLater.collectAsState()
     val settings by app.store.settings.collectAsState()
+    val marks by app.store.bookmarks.collectAsState()
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
     var lyrics by rememberSaveable { mutableStateOf(false) }
@@ -238,6 +243,17 @@ fun NowPlayingScreen(nav: Nav) {
                     scope.launch { app.store.mark(Store.LATER, s.id, !isLater) }
                 }
             }
+            // A place to come back to in a long file (docs/plans/033_bookmarks.md); the chapter line lists them.
+            if (pb.isLong(s)) {
+                val context = LocalContext.current
+                Tip("Add a bookmark") {
+                    IconButton({
+                        val at = pb.player.currentPosition
+                        scope.launch { app.store.bookmark(Bookmark(UUID.randomUUID().toString(), s.id, at, "", 0, deleted = false)) }
+                        Toast.makeText(context, "Bookmark at ${duration(at)}", Toast.LENGTH_SHORT).show()
+                    }) { Icon(Icons.BookmarkAdd, "Add a bookmark", tint = c.onSurfaceVariant) }
+                }
+            }
             Spacer(Modifier.weight(1f))
             // An episode's transcript comes as its lyrics (docs/plans/031_podcasts_and_audiobooks.md).
             val words = if (s.spoken) "Transcript" else "Lyrics"
@@ -266,7 +282,7 @@ fun NowPlayingScreen(nav: Nav) {
             }
             // A book is heard in order: in Shuffle's place, its chapters and notes.
             if (s.spoken) {
-                val any = s.chapters.isNotEmpty() || s.notes.isNotEmpty()
+                val any = s.chapters.isNotEmpty() || s.notes.isNotEmpty() || marks.any { it.song == s.id }
                 Tip("Chapters and notes") {
                     IconButton({ details = true }, enabled = any) {
                         Icon(Icons.Chapters, "Chapters and notes", tint = c.onSurfaceVariant.copy(alpha = if (any) 1f else 0.38f))

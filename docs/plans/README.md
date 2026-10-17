@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                               | Status                                                                                                                                                  |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [033 — Bookmarks in long files](033_bookmarks.md)                                  | `IN PROGRESS` — the server built; the apps next                                                                                                         |
+| [033 — Bookmarks in long files](033_bookmarks.md)                                  | `IN PROGRESS` — the server and Android built; macOS and the web next                                                                                    |
 | [032 — Mac and web catch up with the phone](032_mac_and_web_catch_up.md)           | `RELEASED` — in the 0.14.0 GitHub release (2026-10-15); 0.14.0 on the owner's phone and Mac; server and web in `server-v0.14.0` on the NAS (2026-10-15) |
 | [031 — Podcasts and audiobooks](031_podcasts_and_audiobooks.md)                    | `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); 0.13.0 on the owner's phone and Mac; server and web in `server-v0.13.0` on the NAS (2026-10-12) |
 | [030 — The web client, at the other apps' level](030_web_client.md)                | `RELEASED` — `server-v0.12.3` on the NAS; not yet checked in Safari or on a phone                                                                       |

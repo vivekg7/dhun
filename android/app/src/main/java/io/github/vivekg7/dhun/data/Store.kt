@@ -41,6 +41,7 @@ class Store(
     val listenLater: StateFlow<List<Mark>> = dao.marks(LATER).held()
     val played: StateFlow<List<Mark>> = dao.marks(PLAYED).held()
     val resumes: StateFlow<List<Resume>> = dao.resumes().held()
+    val bookmarks: StateFlow<List<Bookmark>> = dao.bookmarks().held()
 
     /** Each resume point's place, for the progress bar under a song in any list: one subscription, not one a row. */
     val resumeAt: StateFlow<Map<Long, Long>> =
@@ -93,6 +94,22 @@ class Store(
             record("resume.set", key = "resume:$song") {
                 put("song", song)
                 put("positionMs", positionMs)
+            }
+        }
+    }
+
+    /** Makes or changes a bookmark (docs/plans/033_bookmarks.md), sent whole each time. */
+    suspend fun bookmark(b: Bookmark) {
+        val now = b.copy(at = System.currentTimeMillis())
+        dao.putBookmark(now)
+        if (now.deleted) {
+            record("bookmark.unset", key = "bookmark:${b.id}") { put("bookmark", b.id) }
+        } else {
+            record("bookmark.set", key = "bookmark:${b.id}") {
+                put("bookmark", b.id)
+                put("song", b.song)
+                put("positionMs", b.positionMs)
+                put("note", b.note)
             }
         }
     }

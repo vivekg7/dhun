@@ -206,6 +206,10 @@ Owner, 2026-10-10; how it is built is in
   file, and the place is lost to one mistaken press. A long press on them
   goes by chapter (owner, 2026-10-17; a tap went by chapter on the screen
   from 2026-10-11).
+- **Bookmarks** in a long file: a button on Now playing marks the place,
+  and a note can be added to it later. They are listed with the file's
+  chapters, a tap away, and follow the user to every device (owner,
+  2026-10-17; [plan 033](plans/033_bookmarks.md)).
 - **Transcripts** show the way lyrics do, from a `.transcript.md` or a
   `.vtt` subtitle file beside the episode.
 - **Speed** can be set for all podcasts and for all audiobooks, as well as
@@ -426,7 +430,7 @@ A plan for an Android feature also says what the web does —
 the current curation tool runs until then), uploads into that review, live hand-off ("Play
 here"), predicting songs to cache from history, the Subsonic-compatible API, Android Auto,
 Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,
-bookmarks, widgets, most-played stats, lyrics editor, tag editor, audio cutter,
+widgets, most-played stats, lyrics editor, tag editor, audio cutter,
 and the rest of the inventory.
 
 ## Open questions

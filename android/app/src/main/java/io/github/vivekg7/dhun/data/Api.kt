@@ -378,6 +378,15 @@ data class QueueDto(
     val at: String = "",
 )
 
+@Serializable data class BookmarkDto(
+    val id: String,
+    val deleted: Boolean = false,
+    val song: Long = 0,
+    val positionMs: Long = 0,
+    val note: String = "",
+    val at: String = "",
+)
+
 @Serializable
 data class NowPlaying(
     val deviceId: Long = 0,
@@ -412,6 +421,7 @@ data class SyncState(
     val listenLater: List<ListItemDto> = emptyList(),
     val resume: List<ResumeDto> = emptyList(),
     val played: List<ListItemDto> = emptyList(),
+    val bookmarks: List<BookmarkDto> = emptyList(),
     val settings: Map<String, JsonElement> = emptyMap(),
     val nowPlaying: NowPlaying? = null,
     val results: List<OpResult> = emptyList(),
