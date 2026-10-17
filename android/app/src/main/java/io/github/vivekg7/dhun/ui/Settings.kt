@@ -226,6 +226,14 @@ private fun PlaybackSettings() {
         synced = true,
     ) { set("longFiles.previous", JsonPrimitive(it)) }
     ChoiceRow(
+        "Next in one",
+        listOf("next", "seek"),
+        settings.string("longFiles.next", "next"),
+        { if (it == "seek") "Seek forward from a headset" else "Next file" },
+        note = "Seeking forward, Next goes to the next file only on the screen.",
+        synced = true,
+    ) { set("longFiles.next", JsonPrimitive(it)) }
+    ChoiceRow(
         "Seek back",
         listOf(5, 10, 15, 30, 60),
         settings.int("longFiles.seekBack", 10),

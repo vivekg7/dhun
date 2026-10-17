@@ -456,7 +456,7 @@ class Playback(
      * press. It goes to the previous file instead, which keeps its place;
      * from a headset it may do nothing, or seek back. It never goes by
      * chapter, which moves the place as a restart does: the chapter list
-     * does that. Next always goes to the next file.
+     * does that.
      */
     fun previous(onScreen: Boolean) {
         val s = current.value ?: return
@@ -470,6 +470,15 @@ class Playback(
             player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
             restart -> player.seekTo(0)
         }
+    }
+
+    /**
+     * Next goes to the next file; from a headset, in a long file, it may
+     * seek forward instead ("longFiles.next"), as Previous may seek back.
+     */
+    fun next(onScreen: Boolean) {
+        val s = current.value ?: return
+        if (!onScreen && isLong(s) && settings.value.string("longFiles.next", "next") == "seek") seekForward() else player.seekToNext()
     }
 
     /** Back or on within the file, by the seconds set for long files. */

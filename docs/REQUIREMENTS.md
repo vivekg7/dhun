@@ -371,8 +371,9 @@ since 0.13.0. Anything else waits for a later release.
   a long file**, which would lose its place: it goes to the previous file,
   the place kept. A setting makes headsets and the lock screen ignore it
   or seek back instead, or Previous act as with songs (owner, 2026-10-11
-  and 2026-10-17). Now playing has **seek buttons** for a long file, back
-  10 s and forward 30 s. **Going on after a pause** of 5 minutes or more
+  and 2026-10-17); another makes Next from a headset seek forward. Now
+  playing, the notification and the lock screen have **seek buttons** for
+  a long file, back 10 s and forward 30 s. **Going on after a pause** of 5 minutes or more
   starts 10 s before where the file stopped, so a sentence cut off is
   heard again. All four numbers are settings that follow the user
   (owner, 2026-10-17; [plans/009](plans/009_resume_long_files.md)).

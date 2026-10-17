@@ -19,6 +19,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -28,12 +29,15 @@ import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.Covers
+import io.github.vivekg7.dhun.data.int
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.io.IOException
 
@@ -48,6 +52,7 @@ import java.io.IOException
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
         super.onCreate()
@@ -67,6 +72,42 @@ class PlaybackService : MediaSessionService() {
                 .setBitmapLoader(CoverLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build()))
                 .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_stat) })
+        scope.launch {
+            combine(app.playback.current, app.store.settings) { _, _ -> buttons(app) }
+                .distinctUntilChanged()
+                .collect { session?.setMediaButtonPreferences(it) }
+        }
+    }
+
+    /**
+     * A long file's notification and lock screen seek either side of Play,
+     * as Now playing does, and keep Previous and Next in the overflow;
+     * a song's keep Media3's own, Previous and Next.
+     */
+    private fun buttons(app: App): List<CommandButton> {
+        val s = app.playback.current.value
+        if (s == null || !app.playback.isLong(s)) return emptyList()
+        val settings = app.store.settings.value
+        val back = settings.int("longFiles.seekBack", 10)
+        val on = settings.int("longFiles.seekForward", 30)
+
+        fun button(
+            icon: Int,
+            name: String,
+            command: Int,
+            slot: Int,
+        ) = CommandButton
+            .Builder(icon)
+            .setDisplayName(name)
+            .setPlayerCommand(command)
+            .setSlots(slot)
+            .build()
+        return listOf(
+            button(BACK_ICONS[back] ?: CommandButton.ICON_SKIP_BACK, "Back $back seconds", Player.COMMAND_SEEK_BACK, CommandButton.SLOT_BACK),
+            button(FORWARD_ICONS[on] ?: CommandButton.ICON_SKIP_FORWARD, "Forward $on seconds", Player.COMMAND_SEEK_FORWARD, CommandButton.SLOT_FORWARD),
+            button(CommandButton.ICON_PREVIOUS, "Previous", Player.COMMAND_SEEK_TO_PREVIOUS, CommandButton.SLOT_OVERFLOW),
+            button(CommandButton.ICON_NEXT, "Next", Player.COMMAND_SEEK_TO_NEXT, CommandButton.SLOT_OVERFLOW),
+        )
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -78,6 +119,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
         (session?.player as? SleepAware)?.close()
         session?.release()
         session = null
@@ -85,12 +127,29 @@ class PlaybackService : MediaSessionService() {
     }
 }
 
+/** The seek icons with their seconds drawn in; any other number gets the plain arrow. */
+private val BACK_ICONS =
+    mapOf(
+        5 to CommandButton.ICON_SKIP_BACK_5,
+        10 to CommandButton.ICON_SKIP_BACK_10,
+        15 to CommandButton.ICON_SKIP_BACK_15,
+        30 to CommandButton.ICON_SKIP_BACK_30,
+    )
+private val FORWARD_ICONS =
+    mapOf(
+        5 to CommandButton.ICON_SKIP_FORWARD_5,
+        10 to CommandButton.ICON_SKIP_FORWARD_10,
+        15 to CommandButton.ICON_SKIP_FORWARD_15,
+        30 to CommandButton.ICON_SKIP_FORWARD_30,
+    )
+
 /**
  * The player as the session sees it: with a sleep timer set, the artist line
  * says so ("Coldplay · Sleep in 23 min"), so the notification and the lock
  * screen show it (docs/plans/014_sleep_timer.md). Refreshed every half
- * minute while a timer runs. Previous goes to [Playback], which keeps a
- * long file's place from a headset (docs/plans/009_resume_long_files.md).
+ * minute while a timer runs. Previous, Next and seeking go to [Playback],
+ * which keeps a long file's place from a headset
+ * (docs/plans/009_resume_long_files.md).
  */
 @OptIn(UnstableApi::class)
 private class SleepAware(
@@ -119,6 +178,13 @@ private class SleepAware(
     }
 
     override fun seekToPrevious() = App.app.playback.previous(onScreen = false)
+
+    override fun seekToNext() = App.app.playback.next(onScreen = false)
+
+    // The notification's and lock screen's seek buttons, by the seconds set for long files.
+    override fun seekBack() = App.app.playback.seekBack()
+
+    override fun seekForward() = App.app.playback.seekForward()
 
     override fun addListener(listener: Player.Listener) {
         listeners += listener

@@ -52,14 +52,15 @@ and every device sees the same one.
   | `longFiles.minMinutes`  | a number of minutes                   | `15`     |
   | `longFiles.resume`      | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
   | `longFiles.previous`    | `"keep"`, `"ignore"`, `"songs"`       | `"keep"` |
+  | `longFiles.next`        | `"next"`, `"seek"`                    | `"next"` |
   | `previous.restart`      | `true`, `false`                       | `true`   |
   | `longFiles.seekBack`    | seconds                               | `10`     |
   | `longFiles.seekForward` | seconds                               | `30`     |
   | `longFiles.rewind`      | seconds, `0` for none                 | `10`     |
   | `longFiles.rewindAfter` | minutes                               | `5`      |
 
-  The last four came later (see below). `longFiles.previous` also took
-  `"seek"` then.
+  `longFiles.next` and the last four came later (see below).
+  `longFiles.previous` also took `"seek"` then.
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,
@@ -124,8 +125,13 @@ What the owner missed with podcasts:
   file's end, which finishes it as reaching the end always does.
 - **`longFiles.previous: "seek"`**: Previous from a headset, buds, the
   notification or the lock screen seeks back by `longFiles.seekBack`;
-  on the screen it goes to the previous file, as `keep`. Next from a
-  headset still goes to the next file: the owner asked for Previous only.
+  on the screen it goes to the previous file, as `keep`. And
+  **`longFiles.next: "seek"`**, the same for Next: from a headset it seeks
+  forward by `longFiles.seekForward`.
+- **The notification and lock screen seek too** in a long file: back and
+  forward either side of Play (Media3's `SLOT_BACK` and `SLOT_FORWARD`),
+  with the seconds in the icon for 5, 10, 15 and 30, and Previous and
+  Next moved to the overflow. A song keeps Previous and Next there.
 - **Going on after a pause** of at least `longFiles.rewindAfter` minutes
   (5) starts `longFiles.rewind` seconds (10) before where the file
   stopped, so a sentence cut off is heard again from its start; `0` turns
