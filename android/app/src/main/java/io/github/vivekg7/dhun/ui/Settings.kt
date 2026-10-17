@@ -239,6 +239,24 @@ private fun PlaybackSettings() {
         { "$it seconds" },
         synced = true,
     ) { set("longFiles.seekForward", JsonPrimitive(it)) }
+    val rewind = settings.int("longFiles.rewind", 10)
+    ChoiceRow(
+        "Going on after a pause",
+        listOf(0, 5, 10, 15, 30),
+        rewind,
+        { if (it == 0) "Exactly where it stopped" else "Go back $it seconds" },
+        note = "So a sentence cut off by the pause is heard again from its start.",
+        synced = true,
+    ) { set("longFiles.rewind", JsonPrimitive(it)) }
+    ChoiceRow(
+        "A pause counts after",
+        listOf(1, 5, 10, 30, 60),
+        settings.int("longFiles.rewindAfter", 5),
+        { if (it == 1) "1 minute" else "$it minutes" },
+        synced = true,
+        enabled = rewind > 0,
+    ) { set("longFiles.rewindAfter", JsonPrimitive(it)) }
+
     SectionLabel("Listen Later")
     val autoRemove = settings.bool("listenLater.autoRemove", true)
     SwitchRow("Remove what you finish", "On all your devices", autoRemove) { set("listenLater.autoRemove", JsonPrimitive(it)) }

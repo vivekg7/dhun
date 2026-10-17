@@ -55,8 +55,10 @@ and every device sees the same one.
   | `previous.restart`      | `true`, `false`                       | `true`   |
   | `longFiles.seekBack`    | seconds                               | `10`     |
   | `longFiles.seekForward` | seconds                               | `30`     |
+  | `longFiles.rewind`      | seconds, `0` for none                 | `10`     |
+  | `longFiles.rewindAfter` | minutes                               | `5`      |
 
-  The last two came later (see below). `longFiles.previous` also took
+  The last four came later (see below). `longFiles.previous` also took
   `"seek"` then.
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
@@ -124,9 +126,22 @@ What the owner missed with podcasts:
   notification or the lock screen seeks back by `longFiles.seekBack`;
   on the screen it goes to the previous file, as `keep`. Next from a
   headset still goes to the next file: the owner asked for Previous only.
+- **Going on after a pause** of at least `longFiles.rewindAfter` minutes
+  (5) starts `longFiles.rewind` seconds (10) before where the file
+  stopped, so a sentence cut off is heard again from its start; `0` turns
+  it off. It counts from when the file stopped playing, whatever stopped
+  it (Pause, a call, a lost connection), and for a file started again
+  from its resume point, from that point's time, so it holds across
+  devices and restarts of the app. A seek while stopped chose the place,
+  so nothing goes back from it. Never before the file's start.
+
+Rejected: rewinding by how long the pause was (10 s after five minutes,
+more after a day). The owner asked for a fixed amount, and one number is
+easier to predict than a curve.
 
 Android first. macOS and the web still go by chapter on the screen, and
-have no seek buttons: they ignore the new settings until they catch up.
+have neither the buttons nor the rewind: they ignore the new settings
+until they catch up.
 
 ### Progress in lists (owner, 2026-10-15)
 

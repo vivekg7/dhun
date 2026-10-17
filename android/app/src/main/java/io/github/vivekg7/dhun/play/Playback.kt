@@ -709,6 +709,7 @@ class Playback(
         player.shuffleModeEnabled = q.shuffle
         player.repeatMode = repeatMode(q.repeat)
         player.prepare()
+        stoppedAt = 0
         if (play) player.play()
         current.value = song
         store.putQueue(q)
@@ -764,13 +765,14 @@ class Playback(
                 .dao()
                 .resume(s.id)
                 ?.takeIf { !it.deleted && it.positionMs > 0 } ?: return null
+        val pos = rewind(r.positionMs, r.at)
         return when (settings.value.string("longFiles.resume", "auto")) {
             "auto" -> {
-                r.positionMs
+                pos
             }
 
             "ask" -> {
-                offerResume.value = s to r.positionMs
+                offerResume.value = s to pos
                 null
             }
 
@@ -778,6 +780,35 @@ class Playback(
                 null
             }
         }
+    }
+
+    /**
+     * When the long file playing last stopped, so continuing it after a
+     * while goes back a little ([rewind]); 0 while it plays, and once it is
+     * left: a file started again rewinds from its resume point's time.
+     */
+    private var stoppedAt = 0L
+
+    /** [pos] in a long file stopped at [since], gone back "longFiles.rewind" seconds if that was a while ago. */
+    private fun rewind(
+        pos: Long,
+        since: Long,
+    ) = rewound(
+        pos,
+        System.currentTimeMillis() - since,
+        settings.value.int("longFiles.rewind", 10) * 1_000L,
+        settings.value.int("longFiles.rewindAfter", 5) * 60_000L,
+    )
+
+    /** Picks up where the file stopped, gone back a little after a long pause: the sentence it stopped in. */
+    private fun continued() {
+        val s = current.value
+        val since = stoppedAt
+        stoppedAt = 0
+        if (s == null || since == 0L || !isLong(s)) return
+        val pos = player.currentPosition
+        val to = rewind(pos, since)
+        if (to != pos) player.seekTo(to)
     }
 
     /**
@@ -898,6 +929,7 @@ class Playback(
     private inner class Events : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             playing.value = isPlaying
+            if (isPlaying) continued() else stoppedAt = System.currentTimeMillis()
             if (isPlaying) failures = 0
             val o = open
             if (o != null) {
@@ -935,7 +967,9 @@ class Playback(
                     }
 
                     sameSong -> {
-                        // A seek within the song: the listen goes on.
+                        // A seek within the song: the listen goes on. One
+                        // while stopped chose the place, so nothing rewinds it.
+                        if (!player.isPlaying) stoppedAt = 0
                         return
                     }
 
@@ -976,6 +1010,7 @@ class Playback(
             sleep.onNextSong()
             val song = item?.mediaId?.toLongOrNull()?.let { app.catalog.value.byId[it] } ?: return
             current.value = song
+            stoppedAt = 0
             scope.launch {
                 val start = startPosition(song)
                 if (start != null) player.seekTo(start)
@@ -1079,6 +1114,18 @@ class Playback(
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val IO_ERRORS = 2000..2999
+
+        /**
+         * Where to continue a long file stopped at [pos] [stoppedFor] ago:
+         * [back] earlier once that is at least [after], so a sentence cut
+         * off is heard again from its start.
+         */
+        fun rewound(
+            pos: Long,
+            stoppedFor: Long,
+            back: Long,
+            after: Long,
+        ) = if (back > 0 && stoppedFor >= after) (pos - back).coerceAtLeast(0) else pos
 
         fun repeatMode(r: String) =
             when (r) {

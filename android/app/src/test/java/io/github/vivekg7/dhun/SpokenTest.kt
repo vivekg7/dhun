@@ -96,4 +96,14 @@ class SpokenTest {
         assertEquals("2025-12-30", s.copy(date = "2025-12-30T08:00:00Z").day)
         assertEquals("2025", s.copy(date = "2025").day)
     }
+
+    /** Stopped mid-sentence in an episode: going on later starts the sentence again, a short pause does not. */
+    @Test
+    fun aLongPauseGoesBackALittle() {
+        val minute = 60_000L
+        assertEquals(80_000L, Playback.rewound(90_000, 6 * minute, 10_000, 5 * minute))
+        assertEquals("a moment's pause", 90_000L, Playback.rewound(90_000, 30_000, 10_000, 5 * minute))
+        assertEquals("never before the start", 0L, Playback.rewound(4_000, 6 * minute, 10_000, 5 * minute))
+        assertEquals("turned off", 90_000L, Playback.rewound(90_000, 6 * minute, 0, 5 * minute))
+    }
 }
