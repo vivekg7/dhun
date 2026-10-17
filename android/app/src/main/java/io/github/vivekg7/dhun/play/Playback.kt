@@ -447,28 +447,39 @@ class Playback(
             load(q.copy(usedAt = System.currentTimeMillis()), play = true)
         }
 
-    // --- Previous (plan 009) ----------------------------------------------
+    // --- Previous and seeking (plan 009) -----------------------------------
 
     /**
      * Previous restarts the song first, unless "previous.restart" is off. In
      * a long file it never does ("longFiles.previous"): the restart would be
      * saved as the place to resume, and the place lost to one mistaken
-     * press. It goes to the previous file instead, which keeps its place, or
-     * does nothing from a headset. It never goes by chapter, which moves the
-     * place as a restart does: the chapter list does that. Next always goes
-     * to the next file.
+     * press. It goes to the previous file instead, which keeps its place;
+     * from a headset it may do nothing, or seek back. It never goes by
+     * chapter, which moves the place as a restart does: the chapter list
+     * does that. Next always goes to the next file.
      */
     fun previous(onScreen: Boolean) {
         val s = current.value ?: return
         val long = settings.value.string("longFiles.previous", "keep")
         val keep = isLong(s) && long != "songs"
         if (keep && !onScreen && long == "ignore") return
+        if (keep && !onScreen && long == "seek") return seekBack()
         val restart = !keep && settings.value.bool("previous.restart", true)
         when {
             restart && player.currentPosition > player.maxSeekToPreviousPosition -> player.seekTo(0)
             player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
             restart -> player.seekTo(0)
         }
+    }
+
+    /** Back or on within the file, by the seconds set for long files. */
+    fun seekBack() = seekBy(-settings.value.int("longFiles.seekBack", 10) * 1_000L)
+
+    fun seekForward() = seekBy(settings.value.int("longFiles.seekForward", 30) * 1_000L)
+
+    private fun seekBy(ms: Long) {
+        val end = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + ms).coerceIn(0, end))
     }
 
     /** Plays [song] of the active queue. */
@@ -742,7 +753,7 @@ class Playback(
     // --- Long files (plan 009) ---------------------------------------------
 
     /** Every episode and book file keeps its place, however short (docs/plans/031_podcasts_and_audiobooks.md). */
-    private fun isLong(s: Song) = s.spoken || s.durationMs >= settings.value.int("longFiles.minMinutes", 15) * 60_000L
+    fun isLong(s: Song) = s.spoken || s.durationMs >= settings.value.int("longFiles.minMinutes", 15) * 60_000L
 
     /** Where to start [s]: its resume point under "auto"; under "ask", offered instead. */
     private suspend fun startPosition(s: Song): Long? {

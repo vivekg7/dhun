@@ -81,10 +81,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
+import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,6 +105,7 @@ fun NowPlayingScreen(nav: Nav) {
     val offer by pb.offerResume.collectAsState()
     val favs by app.store.favorites.collectAsState()
     val later by app.store.listenLater.collectAsState()
+    val settings by app.store.settings.collectAsState()
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
     var lyrics by rememberSaveable { mutableStateOf(false) }
@@ -284,7 +287,10 @@ fun NowPlayingScreen(nav: Nav) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A long file steps back and on within itself, by the seconds set for long files (plan 009).
+            val long = pb.isLong(s)
             Tip("Previous") { IconButton({ pb.previous(onScreen = true) }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
+            if (long) SeekButton(settings.int("longFiles.seekBack", 10), forward = false, pb::seekBack)
             Tip(if (going) "Pause" else "Play") {
                 // Gives a little under the finger, and the icon turns from one to the other.
                 val press = remember { MutableInteractionSource() }
@@ -308,7 +314,28 @@ fun NowPlayingScreen(nav: Nav) {
                     ) { g -> Icon(if (g) Icons.Pause else Icons.Play, if (g) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
                 }
             }
+            if (long) SeekButton(settings.int("longFiles.seekForward", 30), forward = true, pb::seekForward)
             Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
+        }
+    }
+}
+
+/** Back or on by [seconds], the number inside the arrow's circle. */
+@Composable
+private fun SeekButton(
+    seconds: Int,
+    forward: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = if (forward) "Forward $seconds seconds" else "Back $seconds seconds"
+    Tip(label) {
+        IconButton(onClick, Modifier.size(56.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                // The arrow turned round goes forward.
+                Icon(Icons.Continue, label, Modifier.size(36.dp).graphicsLayer { if (forward) scaleX = -1f })
+                // The circle sits a little below the icon's middle.
+                Text("$seconds", Modifier.padding(top = 3.dp), style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+            }
         }
     }
 }

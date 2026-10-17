@@ -210,21 +210,35 @@ private fun PlaybackSettings() {
     ) { set("longFiles.resume", JsonPrimitive(it)) }
     ChoiceRow(
         "Previous in one",
-        listOf("keep", "ignore", "songs"),
+        listOf("keep", "seek", "ignore", "songs"),
         settings.string("longFiles.previous", "keep"),
         {
             when (it) {
                 "keep" -> "Previous file, keep my place"
+                "seek" -> "Seek back from a headset"
                 "ignore" -> "Ignore headsets and the lock screen"
                 else -> "Same as songs"
             }
         },
         note =
             "Restarting a long file loses where you were, and buds miscount taps. Keeping your place, Previous goes to the " +
-                "previous file and you continue here when you come back. Ignoring, it does that only on the screen.",
+                "previous file and you continue here when you come back. Seeking back or ignoring, it does that only on the screen.",
         synced = true,
     ) { set("longFiles.previous", JsonPrimitive(it)) }
-
+    ChoiceRow(
+        "Seek back",
+        listOf(5, 10, 15, 30, 60),
+        settings.int("longFiles.seekBack", 10),
+        { "$it seconds" },
+        synced = true,
+    ) { set("longFiles.seekBack", JsonPrimitive(it)) }
+    ChoiceRow(
+        "Seek forward",
+        listOf(10, 15, 30, 60, 120),
+        settings.int("longFiles.seekForward", 30),
+        { "$it seconds" },
+        synced = true,
+    ) { set("longFiles.seekForward", JsonPrimitive(it)) }
     SectionLabel("Listen Later")
     val autoRemove = settings.bool("listenLater.autoRemove", true)
     SwitchRow("Remove what you finish", "On all your devices", autoRemove) { set("listenLater.autoRemove", JsonPrimitive(it)) }

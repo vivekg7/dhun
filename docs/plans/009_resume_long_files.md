@@ -47,12 +47,17 @@ and every device sees the same one.
   them to every device, so it is built generally rather than as two special
   columns:
 
-  | Setting                | Values                                | Default  |
-  | ---------------------- | ------------------------------------- | -------- |
-  | `longFiles.minMinutes` | a number of minutes                   | `15`     |
-  | `longFiles.resume`     | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
-  | `longFiles.previous`   | `"keep"`, `"ignore"`, `"songs"`       | `"keep"` |
-  | `previous.restart`     | `true`, `false`                       | `true`   |
+  | Setting                 | Values                                | Default  |
+  | ----------------------- | ------------------------------------- | -------- |
+  | `longFiles.minMinutes`  | a number of minutes                   | `15`     |
+  | `longFiles.resume`      | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
+  | `longFiles.previous`    | `"keep"`, `"ignore"`, `"songs"`       | `"keep"` |
+  | `previous.restart`      | `true`, `false`                       | `true`   |
+  | `longFiles.seekBack`    | seconds                               | `10`     |
+  | `longFiles.seekForward` | seconds                               | `30`     |
+
+  The last two came later (see below). `longFiles.previous` also took
+  `"seek"` then.
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,
@@ -110,8 +115,18 @@ What the owner missed with podcasts:
   headset's did, and the owner lost their place to it. Next goes to the
   next file, and Previous as set above; a chapter is reached from the
   chapter list, which the chapter line under the title opens.
+- **Seek buttons for long files** on Now playing, either side of Play:
+  back `longFiles.seekBack` (10 s) and forward `longFiles.seekForward`
+  (30 s), the number drawn inside the arrow. Not for songs, nor in the
+  mini players, where there is no room. Seeking forward stops at the
+  file's end, which finishes it as reaching the end always does.
+- **`longFiles.previous: "seek"`**: Previous from a headset, buds, the
+  notification or the lock screen seeks back by `longFiles.seekBack`;
+  on the screen it goes to the previous file, as `keep`. Next from a
+  headset still goes to the next file: the owner asked for Previous only.
 
-Android first. macOS and the web still go by chapter on the screen.
+Android first. macOS and the web still go by chapter on the screen, and
+have no seek buttons: they ignore the new settings until they catch up.
 
 ### Progress in lists (owner, 2026-10-15)
 
