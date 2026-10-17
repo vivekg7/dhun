@@ -101,7 +101,8 @@ fun NowPlayingScreen(nav: Nav) {
     // Waiting counts as playing: the button pauses, rather than offering a play that is already wanted.
     val going = playing || waiting
     val queue by pb.active.collectAsState()
-    val queues by pb.queues.collectAsState()
+    // In the order the queue picker shows and numbers them, not as stored.
+    val queues by pb.ordered.collectAsState()
     val offer by pb.offerResume.collectAsState()
     val favs by app.store.favorites.collectAsState()
     val later by app.store.listenLater.collectAsState()
