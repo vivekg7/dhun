@@ -101,8 +101,8 @@ fun NowPlayingScreen(nav: Nav) {
     val queue by pb.active.collectAsState()
     val queues by pb.queues.collectAsState()
     val offer by pb.offerResume.collectAsState()
-    val favs by app.store.favorites.collectAsState(emptyList())
-    val later by app.store.listenLater.collectAsState(emptyList())
+    val favs by app.store.favorites.collectAsState()
+    val later by app.store.listenLater.collectAsState()
     val scope = rememberCoroutineScope()
     val c = MaterialTheme.colorScheme
     var lyrics by rememberSaveable { mutableStateOf(false) }

@@ -127,7 +127,7 @@ fun AddToPlaylistDialog(
 ) {
     val app = App.app
     val context = LocalContext.current
-    val playlists by app.store.playlists.collectAsState(emptyList())
+    val playlists by app.store.playlists.collectAsState()
     var naming by remember { mutableStateOf(false) }
     if (naming) {
         NameDialog("New playlist", newName, "Create") { name ->

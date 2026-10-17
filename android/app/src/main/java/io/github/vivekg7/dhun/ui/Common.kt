@@ -384,8 +384,8 @@ fun SongMenuButton(
         }
         DropdownMenu(open, { open = false }) {
             // Read only while the menu is open: one database observer per row would add up in a long list.
-            val favs by app.store.favorites.collectAsState(emptyList())
-            val later by app.store.listenLater.collectAsState(emptyList())
+            val favs by app.store.favorites.collectAsState()
+            val later by app.store.listenLater.collectAsState()
             val isFav = favs.any { it.song == song.id }
             val isLater = later.any { it.song == song.id }
             val close = { open = false }
@@ -395,7 +395,7 @@ fun SongMenuButton(
             MenuItem(if (isFav) "Remove from Favorites" else "Add to Favorites", close) { scope.launch { app.store.mark(Store.FAV, song.id, !isFav) } }
             MenuItem(if (isLater) "Remove from Listen Later" else "Listen later", close) { scope.launch { app.store.mark(Store.LATER, song.id, !isLater) } }
             if (song.spoken) {
-                val played by app.store.played.collectAsState(emptyList())
+                val played by app.store.played.collectAsState()
                 val isPlayed = played.any { it.song == song.id }
                 // Either way it starts from the beginning next time.
                 MenuItem(if (isPlayed) "Mark as not played" else "Mark as played", close) {

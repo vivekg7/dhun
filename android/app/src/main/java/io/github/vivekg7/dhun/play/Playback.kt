@@ -129,7 +129,7 @@ class Playback(
     /** A long file with a resume point, waiting for the user's answer ("ask", plan 009). */
     val offerResume = MutableStateFlow<Pair<Song, Long>?>(null)
 
-    private val settings = app.store.settings.stateIn(scope, SharingStarted.Eagerly, emptyMap())
+    private val settings = app.store.settings
 
     /**
      * The queues in the user's order, numbered from 1 as in Musicolet

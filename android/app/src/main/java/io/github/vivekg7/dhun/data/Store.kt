@@ -32,19 +32,26 @@ class Store(
 ) {
     private val dao get() = app.db.dao()
 
-    // One instance each: Compose re-subscribes when handed a new Flow object.
-    val favorites: Flow<List<Mark>> = dao.marks(FAV)
-    val listenLater: Flow<List<Mark>> = dao.marks(LATER)
-    val played: Flow<List<Mark>> = dao.marks(PLAYED)
-    val resumes: Flow<List<Resume>> = dao.resumes()
+    // Held, not read afresh by each screen: a screen coming back must have its
+    // rows in its first frame, or the scroll it saved is lost to a list still
+    // empty (the Playlists tab went back to its top after every playlist).
+    // Empty only until the database first answers, so nothing that acts on
+    // what is missing from them may read these: Downloads reads the database.
+    val favorites: StateFlow<List<Mark>> = dao.marks(FAV).held()
+    val listenLater: StateFlow<List<Mark>> = dao.marks(LATER).held()
+    val played: StateFlow<List<Mark>> = dao.marks(PLAYED).held()
+    val resumes: StateFlow<List<Resume>> = dao.resumes().held()
 
     /** Each resume point's place, for the progress bar under a song in any list: one subscription, not one a row. */
     val resumeAt: StateFlow<Map<Long, Long>> =
         resumes.map { rows -> rows.associate { it.song to it.positionMs } }.stateIn(app.scope, SharingStarted.Eagerly, emptyMap())
-    val playlists: Flow<List<Playlist>> = dao.playlists()
-    val playStats: Flow<List<PlayStat>> = dao.playStats()
-    val settings: Flow<Map<String, JsonElement>> =
-        dao.settings().map { rows -> rows.associate { it.name to app.api.json.parseToJsonElement(it.value) } }
+    val playlists: StateFlow<List<Playlist>> = dao.playlists().held()
+    val playStats: StateFlow<List<PlayStat>> = dao.playStats().held()
+
+    private fun <T> Flow<List<T>>.held() = stateIn(app.scope, SharingStarted.Eagerly, emptyList())
+
+    private val stored = dao.settings().map { rows -> rows.associate { it.name to app.api.json.parseToJsonElement(it.value) } }
+    val settings: StateFlow<Map<String, JsonElement>> = stored.stateIn(app.scope, SharingStarted.Eagerly, emptyMap())
 
     suspend fun mark(
         kind: String,
@@ -325,7 +332,7 @@ class Store(
             val old = dao.playStat(l.song)
             dao.putPlayStats(listOf(PlayStat(l.song, (old?.count ?: 0) + 1, maxOf(old?.lastPlayedAt ?: 0, l.startedAt))))
         }
-        val s = settings.first()
+        val s = stored.first()
         val pct = s.int("listenLater.finishedPercent", 90).takeIf { it in 1..100 } ?: 90
         val listed = dao.mark(LATER, l.song)?.deleted == false
         if (s.bool("listenLater.autoRemove", true) && listed && l.toMs * 100 >= pct * length) {

@@ -78,10 +78,10 @@ fun listSongs(kind: ListKind): List<Song> = rememberLists()(kind)
 fun rememberLists(): (ListKind) -> List<Song> {
     val app = App.app
     val catalog by app.catalog.collectAsState()
-    val favs by app.store.favorites.collectAsState(emptyList())
-    val later by app.store.listenLater.collectAsState(emptyList())
-    val resumes by app.store.resumes.collectAsState(emptyList())
-    val stats by app.store.playStats.collectAsState(emptyList())
+    val favs by app.store.favorites.collectAsState()
+    val later by app.store.listenLater.collectAsState()
+    val resumes by app.store.resumes.collectAsState()
+    val stats by app.store.playStats.collectAsState()
     return remember(catalog, favs, later, resumes, stats) {
         val cache = HashMap<ListKind, List<Song>>()
         val lists: (ListKind) -> List<Song> = { k -> cache.getOrPut(k) { compute(k, catalog, favs, later, resumes, stats) } }
@@ -131,7 +131,7 @@ private fun compute(
 @Composable
 fun PlaylistsScreen(nav: Nav) {
     val app = App.app
-    val playlists by app.store.playlists.collectAsState(emptyList())
+    val playlists by app.store.playlists.collectAsState()
     val catalog by app.catalog.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim()
@@ -287,7 +287,7 @@ fun PlaylistScreen(
     onBack: () -> Unit,
 ) {
     val app = App.app
-    val playlists by app.store.playlists.collectAsState(emptyList())
+    val playlists by app.store.playlists.collectAsState()
     val catalog by app.catalog.collectAsState()
     // One made on this phone is replaced by the server's copy after a sync.
     val p = playlists.firstOrNull { it.id == id } ?: playlists.firstOrNull { it.id == app.sync.replaced[id] } ?: return Empty("", page = true)

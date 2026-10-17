@@ -81,8 +81,8 @@ val Song.day: String
 @Composable
 fun rememberHeard(): Heard {
     val app = App.app
-    val played by app.store.played.collectAsState(emptyList())
-    val resumes by app.store.resumes.collectAsState(emptyList())
+    val played by app.store.played.collectAsState()
+    val resumes by app.store.resumes.collectAsState()
     return remember(played, resumes) { Heard(played.map { it.song }.toSet(), resumes.associate { it.song to it.positionMs }) }
 }
 
@@ -175,7 +175,7 @@ fun ShelfScreen(
 ) {
     val app = App.app
     val catalog by app.catalog.collectAsState()
-    val settings by app.store.settings.collectAsState(emptyMap())
+    val settings by app.store.settings.collectAsState()
     val heard = rememberHeard()
     val shelf = catalog.shelves[key] ?: return Empty("This is gone from the library", page = true)
     val hidePlayed = !shelf.isBook && settings.bool(HIDE_PLAYED, true)

@@ -106,33 +106,44 @@ private fun find(
     ).sortedBy { it.best }
 }
 
+// The last results and what they were for, kept while the tab is away.
+private var lastFound: Pair<List<Any>, List<Found>> = emptyList<Any>() to emptyList()
+private var lastInLyrics: Pair<List<Any>, List<Pair<Song, String>>?> = emptyList<Any>() to emptyList()
+
 @Composable
 fun SearchScreen(nav: Nav) {
     val app = App.app
     val catalog by app.catalog.collectAsState()
-    val playlists by app.store.playlists.collectAsState(emptyList())
-    val favorites by app.store.favorites.collectAsState(emptyList())
-    val stats by app.store.playStats.collectAsState(emptyList())
+    val playlists by app.store.playlists.collectAsState()
+    val favorites by app.store.favorites.collectAsState()
+    val stats by app.store.playStats.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     val q = remember(query) { SearchQuery(query) }
     // Off the main thread: the first search builds the catalog's indexes.
-    val found by produceState(emptyList(), catalog, playlists, q) {
+    // Starts from the last results when they still hold: the tab coming back
+    // from one must show them in its first frame, or its saved scroll is lost.
+    val foundFor = listOf(catalog, playlists, query)
+    val found by produceState(lastFound.takeIf { it.first == foundFor }?.second ?: emptyList(), catalog, playlists, q) {
         val favs = favorites.map { it.song }.toSet()
         val plays = stats.associate { it.song to it.count }
         value =
             withContext(Dispatchers.Default) {
                 find(catalog, playlists, q) { s -> (if (s.id in favs) 3 else 0) + minOf(2, (plays[s.id] ?: 0) / 5) }
             }
+        lastFound = foundFor to value
     }
     // The server's, once typing stops; null while it is asked.
-    val inLyrics by produceState<List<Pair<Song, String>>?>(emptyList(), catalog, q) {
+    val lyricsFor = listOf(catalog, query)
+    val inLyrics by produceState<List<Pair<Song, String>>?>(lastInLyrics.takeIf { it.first == lyricsFor }?.second ?: emptyList(), catalog, q) {
         if (q.lyrics.length < 3) {
             value = emptyList()
             return@produceState
         }
+        if (lastInLyrics.first == lyricsFor) return@produceState
         value = null
         delay(400)
         value = app.lyrics.search(q).mapNotNull { h: LyricsHit -> catalog.byId[h.song]?.let { it to h.line } }
+        lastInLyrics = lyricsFor to value
     }
     var expanded by rememberSaveable(query) { mutableStateOf("") }
     val heard = rememberHeard()

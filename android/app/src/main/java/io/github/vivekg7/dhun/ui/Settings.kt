@@ -168,7 +168,7 @@ private fun AppearanceSettings() {
 @Composable
 private fun PlaybackSettings() {
     val app = App.app
-    val settings by app.store.settings.collectAsState(emptyMap())
+    val settings by app.store.settings.collectAsState()
     val scope = rememberCoroutineScope()
 
     fun set(

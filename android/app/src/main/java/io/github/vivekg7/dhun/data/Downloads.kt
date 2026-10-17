@@ -45,7 +45,8 @@ class Downloads(
 
     /** The songs the pins cover now ([covered]). */
     val wanted: StateFlow<List<Song>?> =
-        combine(pins, app.catalog, app.store.playlists, app.store.favorites, app.store.listenLater, ::covered)
+        // From the database, not the Store's held lists: those start empty, and would leave a pinned playlist's songs out until they load.
+        combine(pins, app.catalog, dao.playlists(), dao.marks(Store.FAV), dao.marks(Store.LATER), ::covered)
             .stateIn(app.scope, SharingStarted.Eagerly, null)
 
     enum class State { Idle, Downloading, NoNetwork, WaitingForWifi, Full, NoSpace, Failed }
