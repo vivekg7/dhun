@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/vivekg7/dhun/server/internal/library"
 	"github.com/vivekg7/dhun/server/internal/store"
@@ -61,6 +62,9 @@ type op struct {
 	UTCOffset *int   `json:"utcOffset,omitempty"` // minutes
 
 	Value json.RawMessage `json:"value,omitempty"` // setting.set
+
+	Bookmark string `json:"bookmark,omitempty"` // bookmark.set/unset: the client's id
+	Note     string `json:"note,omitempty"`
 }
 
 type opResult struct {
@@ -213,6 +217,8 @@ func (a *applier) apply(o op) error {
 		return a.resume(o)
 	case "setting.set":
 		return a.setting(o)
+	case "bookmark.set", "bookmark.unset":
+		return a.bookmark(o)
 	case "playlist.create":
 		return a.playlistCreate(o)
 	case "playlist.rename", "playlist.delete", "playlist.insert", "playlist.remove", "playlist.move", "playlist.replace":
@@ -613,6 +619,74 @@ func (a *applier) resume(o op) error {
 		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, song_id) DO UPDATE SET position_ms = excluded.position_ms,
 		at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
 		a.sess.UserID, o.Song, max(o.PositionMS, 0), a.at, o.Type == "resume.unset", v)
+	return err
+}
+
+// Bookmarks are the user's own notes; these limits only keep one user from
+// filling the database.
+const (
+	maxBookmarks    = 10000
+	maxBookmarkNote = 1000 // characters
+)
+
+// bookmark makes or changes one bookmark, or deletes it. Each merges on its
+// own: the later change wins, but a delete wins over any edit, as for
+// queues, so a bookmark deleted on one device stays deleted however late
+// an offline edit arrives (docs/plans/033_bookmarks.md).
+func (a *applier) bookmark(o op) error {
+	if o.Bookmark == "" || len(o.Bookmark) > 64 {
+		return rejected("bookmark id must be 1–64 characters")
+	}
+	var at string
+	var deleted bool
+	err := a.tx.QueryRowContext(a.ctx, `SELECT at, deleted FROM bookmarks WHERE user_id = ? AND id = ?`,
+		a.sess.UserID, o.Bookmark).Scan(&at, &deleted)
+	exists := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if deleted {
+		return nil
+	}
+	if o.Type == "bookmark.unset" {
+		if !exists {
+			return nil // never seen: nothing to delete
+		}
+		v, err := a.bump()
+		if err != nil {
+			return err
+		}
+		_, err = a.tx.ExecContext(a.ctx, `UPDATE bookmarks SET deleted = 1, note = '', at = ?, version = ? WHERE user_id = ? AND id = ?`,
+			max(a.at, at), v, a.sess.UserID, o.Bookmark)
+		return err
+	}
+	if exists && a.at < at {
+		return nil
+	}
+	if utf8.RuneCountInString(o.Note) > maxBookmarkNote {
+		return rejected("a bookmark's note is at most %d characters", maxBookmarkNote)
+	}
+	if err := a.songsExist([]int64{o.Song}); err != nil {
+		return err
+	}
+	if !exists {
+		var n int
+		if err := a.tx.QueryRowContext(a.ctx, `SELECT count(*) FROM bookmarks WHERE user_id = ? AND NOT deleted`,
+			a.sess.UserID).Scan(&n); err != nil {
+			return err
+		}
+		if n >= maxBookmarks {
+			return rejected("more than %d bookmarks", maxBookmarks)
+		}
+	}
+	v, err := a.bump()
+	if err != nil {
+		return err
+	}
+	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO bookmarks (user_id, id, song_id, position_ms, note, at, version)
+		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, id) DO UPDATE SET song_id = excluded.song_id,
+		position_ms = excluded.position_ms, note = excluded.note, at = excluded.at, version = excluded.version`,
+		a.sess.UserID, o.Bookmark, o.Song, max(o.PositionMS, 0), o.Note, a.at, v)
 	return err
 }
 
@@ -1035,12 +1109,39 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	}
 	rows.Close()
 
+	type bookmarkJSON struct {
+		ID         string `json:"id"`
+		Deleted    bool   `json:"deleted,omitempty"`
+		Song       int64  `json:"song,omitempty"`
+		PositionMS int64  `json:"positionMs,omitempty"`
+		Note       string `json:"note,omitempty"`
+		At         string `json:"at,omitempty"`
+	}
+	bookmarks := []bookmarkJSON{}
+	rows, err = tx.QueryContext(ctx, `SELECT id, deleted, song_id, position_ms, note, at FROM bookmarks
+		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, userID, since, since)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var b bookmarkJSON
+		if err := rows.Scan(&b.ID, &b.Deleted, &b.Song, &b.PositionMS, &b.Note, &b.At); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if b.Deleted {
+			b = bookmarkJSON{ID: b.ID, Deleted: true}
+		}
+		bookmarks = append(bookmarks, b)
+	}
+	rows.Close()
+
 	np, err := nowPlaying(ctx, tx, userID, since)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"version": version, "queues": queues, "favorites": favs, "listenLater": later, "played": played, "resume": resume,
-		"settings": settings, "nowPlaying": np}, nil
+		"bookmarks": bookmarks, "settings": settings, "nowPlaying": np}, nil
 }
 
 type markJSON struct {

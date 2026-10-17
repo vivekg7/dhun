@@ -42,6 +42,13 @@ type syncResp struct {
 		Deleted    bool
 		PositionMS int64 `json:"positionMs"`
 	}
+	Bookmarks []struct {
+		ID         string
+		Deleted    bool
+		Song       int64
+		PositionMS int64 `json:"positionMs"`
+		Note       string
+	}
 	Settings   map[string]json.RawMessage
 	NowPlaying *nowPlayingJSON
 	Results    []opResult
@@ -221,6 +228,49 @@ func TestLongFileResumesOnAnotherDevice(t *testing.T) {
 	e.push(phone, 0, o("resume.unset", map[string]any{"song": 1}))
 	if got := e.push(mac, before); len(got.Resume) != 1 || !got.Resume[0].Deleted {
 		t.Errorf("after finishing, laptop sees %+v, want song 1 deleted", got.Resume)
+	}
+}
+
+// Bookmarks added on two devices are both kept, a later note wins, and a
+// delete wins over an edit that arrives after it from an offline device
+// (docs/plans/033_bookmarks.md).
+func TestBookmarksMergeOneByOne(t *testing.T) {
+	e, phone, mac := syncEnv(t, 2)
+	e.push(phone, 0, o("bookmark.set", map[string]any{"bookmark": "p1", "song": 1, "positionMs": 60_000}))
+	e.push(mac, 0, o("bookmark.set", map[string]any{"bookmark": "m1", "song": 1, "positionMs": 90_000, "note": "the book he recommends"}))
+	got := e.push(phone, 0).Bookmarks
+	if len(got) != 2 {
+		t.Fatalf("phone sees %+v, want both bookmarks", got)
+	}
+
+	// The phone, offline an hour, wrote a note before the Mac changed it: the Mac's stays.
+	e.push(mac, 0, o("bookmark.set", map[string]any{"bookmark": "p1", "song": 1, "positionMs": 60_000, "note": "newer"}))
+	e.push(phone, 0, o("bookmark.set", map[string]any{"bookmark": "p1", "song": 1, "positionMs": 60_000, "note": "older",
+		"at": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)}))
+	for _, b := range e.push(mac, 0).Bookmarks {
+		if b.ID == "p1" && b.Note != "newer" {
+			t.Errorf("note = %q, want the later \"newer\"", b.Note)
+		}
+	}
+
+	// Deleted on the Mac; the phone's edit made earlier arrives afterwards with a later time.
+	before := e.push(phone, 0).Version
+	e.push(mac, 0, o("bookmark.unset", map[string]any{"bookmark": "m1"}))
+	e.push(phone, 0, o("bookmark.set", map[string]any{"bookmark": "m1", "song": 1, "positionMs": 90_000, "note": "edited",
+		"at": time.Now().Add(time.Minute).UTC().Format(time.RFC3339)}))
+	if got := e.push(phone, before).Bookmarks; len(got) != 1 || got[0].ID != "m1" || !got[0].Deleted {
+		t.Errorf("after the delete, phone sees %+v, want m1 deleted", got)
+	}
+
+	long := strings.Repeat("ä", maxBookmarkNote+1)
+	r := e.push(phone, 0,
+		o("bookmark.set", map[string]any{"bookmark": "p2", "song": 1, "positionMs": 1, "note": long}),
+		o("bookmark.set", map[string]any{"bookmark": "", "song": 1}),
+		o("bookmark.set", map[string]any{"bookmark": "p3", "song": 999}))
+	for i, res := range r.Results {
+		if res.Status != "rejected" {
+			t.Errorf("op %d = %+v, want rejected", i, res)
+		}
 	}
 }
 

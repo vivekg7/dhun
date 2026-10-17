@@ -690,14 +690,30 @@ components:
               deleted: { type: boolean, description: Finished; forget it }
               positionMs: { type: integer }
               at: { type: string, format: date-time }
+        bookmarks:
+          description: Places marked in long files, each with an optional note (docs/plans/033_bookmarks.md)
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              deleted: { type: boolean, description: Deleted; forget it }
+              song: { type: integer }
+              positionMs: { type: integer }
+              note: { type: string }
+              at: { type: string, format: date-time, description: Of the latest change }
         settings:
           description: |
             App settings changed since the cursor, as name → JSON value. A
             missing setting or null means the app's default.
             `longFiles.minMinutes` (default 15) and `longFiles.resume`
             ("auto", "ask" or "off"; default "auto"), `longFiles.previous`
-            ("keep", "ignore" or "songs"; default "keep") and
-            `previous.restart` (default true), read by the apps;
+            ("keep", "seek", "ignore" or "songs"; default "keep"),
+            `longFiles.next` ("next" or "seek"; default "next"),
+            `longFiles.seekBack` and `longFiles.seekForward` (seconds;
+            default 10 and 30), `longFiles.rewind` (seconds, 0 for none;
+            default 10) and `longFiles.rewindAfter` (minutes; default 5),
+            and `previous.restart` (default true), read by the apps;
             `listenLater.autoRemove` (default true) and
             `listenLater.finishedPercent` (default 90), read by the server;
             `speed.<song id>` (`{"speed": 1.5, "semitones": 0}`), a song's
@@ -732,6 +748,8 @@ components:
         | listen_later.add / listen_later.remove | song | later `at` wins |
         | played.set / played.unset | song | later `at` wins; marks an episode or book file played or unplayed |
         | resume.set / resume.unset | song, positionMs | later `at` wins; where a long file was left |
+        | bookmark.set | bookmark, song, positionMs, note? | the whole bookmark each time; later `at` wins; ≤ 10,000 per user not counting deleted ones |
+        | bookmark.unset | bookmark | wins over any edit, later or not |
         | setting.set | name, value | later `at` wins; name 1–64 of [A-Za-z0-9._-], value any JSON ≤ 4 KB, ≤ 1000 per user not counting nulls |
         | play | song, ms, endedAt?, fromMs?, toMs?, end?, source?, queue?, shuffle?, utcOffset? | append only; one per listen, skips included; `at` is when it started; a `toMs` past 90% removes the song from Listen Later and marks a podcast or audiobook file played |
         | playback.state | queue, song, positionMs, playing | later `at` wins; feeds /now-playing |
@@ -788,3 +806,13 @@ components:
           }
         utcOffset: { type: integer, description: "The device's UTC offset, in minutes" }
         value: { description: "setting.set: any JSON" }
+        bookmark:
+          {
+            type: string,
+            description: "bookmark.set/unset: the bookmark's id, made by the client, 1–64 characters",
+          }
+        note:
+          {
+            type: string,
+            description: "bookmark.set: at most 1,000 characters; empty for none",
+          }
