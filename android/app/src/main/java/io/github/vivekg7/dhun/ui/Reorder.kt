@@ -58,7 +58,9 @@ class Reorder<T> internal constructor(
     private val edgePx: Float,
     private val lift: () -> Unit,
 ) {
-    internal var items: List<T> = emptyList()
+    // State, not a plain field: a list in a dialog is composed apart from the
+    // screen that hands these in, and would otherwise keep showing the old items.
+    internal var items by mutableStateOf<List<T>>(emptyList())
     internal var onMove: (from: Int, to: Int) -> Unit = { _, _ -> }
 
     // The items when the drag began, and their order since; null when not reordering.
