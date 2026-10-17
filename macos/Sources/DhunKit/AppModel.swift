@@ -33,6 +33,8 @@ public final class AppModel {
     /// Episodes and books' files heard (plan 031).
     public private(set) var played: Set<Int> = []
     public private(set) var resumes: [Resume] = []
+    /// Every long file's bookmarks, by place (plan 033).
+    public private(set) var bookmarks: [Bookmark] = []
     public private(set) var settings: [String: JSON] = [:]
     public private(set) var playStats: [Int: PlayStat] = [:]
     public private(set) var pins: [Pin] = []
@@ -125,6 +127,7 @@ public final class AppModel {
         reloadQueues()
         reloadMarks()
         reloadResumes()
+        reloadBookmarks()
         reloadSettings()
         reloadStats()
         reloadPins()
@@ -147,6 +150,7 @@ public final class AppModel {
         played = Set(db.marks(Store.played).map(\.song))
     }
     public func reloadResumes() { resumes = db.resumes() }
+    public func reloadBookmarks() { bookmarks = db.bookmarks() }
     public func reloadSettings() { settings = db.settings() }
     public func reloadStats() { playStats = db.playStats() }
     public func reloadPins() { pins = db.pins() }

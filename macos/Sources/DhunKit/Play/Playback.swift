@@ -146,11 +146,13 @@ public final class Playback {
 
     public func play() {
         guard let s = current else { return }
+        let back = continued(s)
         if ended || needsRestart {
             // The queue ran out: play its song again, as Media3 does on Play.
-            start(s, at: ended ? 0 : position, paused: false)
+            start(s, at: ended ? 0 : back ?? position, paused: false)
             return
         }
+        if let back { seek(to: back) }
         setPlaying(true)
         control.async { [engine] in try? engine.resume() }
     }
@@ -161,13 +163,13 @@ public final class Playback {
         setPlaying(false)
     }
 
-    /// The next chapter of a file that has them (plan 031), else the next
-    /// song. By chapter only `onScreen`: media keys, AirPods and Control
-    /// Center go to the next file, so a press miscounted by buds never moves
-    /// the place in a book (plan 009).
+    /// The next file. From media keys, AirPods or Control Center, in a long
+    /// file, it may seek forward instead ("longFiles.next"), as Previous may
+    /// seek back. It never goes by chapter: that moves the place in a book
+    /// as surely as a restart does, so it takes a deliberate `chapterOn`.
     public func next(onScreen: Bool) {
-        if onScreen, let at = Playback.nextChapter(chapterStarts, Int(position * 1000)) {
-            return seek(to: Double(at) / 1000)
+        if !onScreen, let s = current, isLong(s), app.setting("longFiles.next", "next") == "seek" {
+            return seekForward()
         }
         guard let i = currentIndex, let n = nextIndex(after: i, repeat: repeatMode == "queue") else { return }
         jump(to: n, end: "skipped")
@@ -178,17 +180,16 @@ public final class Playback {
     /// long file never back to its start ("longFiles.previous"): the restart
     /// would be saved as the place to resume, and the place lost to one
     /// mistaken press. It goes to the previous file instead, which keeps its
-    /// place, or does nothing from media keys. By chapter only `onScreen`, as Next.
+    /// place; from media keys it may do nothing, or seek back. Never by
+    /// chapter, as Next: `chapterBack` does that.
     public func previous(onScreen: Bool) {
         guard let i = currentIndex, let s = current else { return }
         let long = app.setting("longFiles.previous", "keep")
         let keep = isLong(s) && long != "songs"
         if keep && !onScreen && long == "ignore" { return }
+        if keep && !onScreen && long == "seek" { return seekBack() }
         let restart = !keep && app.setting("previous.restart", true)
-        let starts = onScreen && !chapterStarts.isEmpty ? chapterStarts : [0]
-        if let at = Playback.previousChapter(starts, Int(position * 1000), window: restart ? 3000 : .max) {
-            return seek(to: Double(at) / 1000)
-        }
+        if restart && position > Playback.restartWindow { return seek(to: 0) }
         if let p = previousIndex(before: i) {
             jump(to: p, end: "previous")
         } else if restart {
@@ -196,28 +197,56 @@ public final class Playback {
         }
     }
 
+    /// Previous restarts a song played past this many seconds, as Media3's default.
+    static let restartWindow = 3.0
+
+    /// The next chapter (plan 031), never the next file; nothing without chapters.
+    public func chapterOn() {
+        if let at = Playback.chapterAfter(chapterStarts, Int(position * 1000)) { seek(to: Double(at) / 1000) }
+    }
+
+    /// Back to this chapter's start, or within its first seconds to the one
+    /// before. Asked for by name, so unlike Previous it may go back in a
+    /// long file; never to the previous file.
+    public func chapterBack() {
+        let window = Int(Playback.restartWindow * 1000)
+        if let at = Playback.chapterBefore(chapterStarts, Int(position * 1000), window: window) {
+            seek(to: Double(at) / 1000)
+        }
+    }
+
+    public var hasChapters: Bool { !(current?.chapters.isEmpty ?? true) }
     private var chapterStarts: [Int] { current?.chapters.map(\.startMs) ?? [] }
 
-    /// Where Next goes in a file whose chapters start at `starts`: the next
-    /// chapter, or nil for the next file. A chapter starting within a second
-    /// is the one just sought to, not the next.
-    nonisolated public static func nextChapter(_ starts: [Int], _ pos: Int) -> Int? {
+    /// The chapter after `pos` among chapters starting at `starts`, or nil
+    /// after the last. One starting within a second is the one just sought
+    /// to, not the next.
+    nonisolated public static func chapterAfter(_ starts: [Int], _ pos: Int) -> Int? {
         starts.first { $0 > pos + 1000 }
     }
 
-    /// Where Previous goes in a file whose chapters start at `starts`: back to
-    /// the start of this chapter, or, within `window` of it, to the one
-    /// before; nil for the previous file. A file without chapters is one
-    /// starting at 0, and a window of `.max` never restarts it.
-    nonisolated public static func previousChapter(_ starts: [Int], _ pos: Int, window: Int) -> Int? {
+    /// The start of the chapter `pos` is in, or within `window` of it the
+    /// one before; nil at the first chapter's start, or with none.
+    nonisolated public static func chapterBefore(_ starts: [Int], _ pos: Int, window: Int) -> Int? {
         guard let i = starts.lastIndex(where: { $0 <= pos }) else { return nil }
         if pos - starts[i] > window { return starts[i] }
         return i > 0 ? starts[i - 1] : nil
     }
 
+    /// Back or on within the file, by the seconds set for long files (plan 009).
+    public func seekBack() { seekBy(-app.setting("longFiles.seekBack", 10)) }
+    public func seekForward() { seekBy(app.setting("longFiles.seekForward", 30)) }
+
+    private func seekBy(_ seconds: Int) {
+        let end = duration > 0 ? duration : .infinity
+        seek(to: min(max(0, position + Double(seconds)), end))
+    }
+
     public func seek(to seconds: Double) {
         guard let s = current else { return }
         position = max(0, seconds)
+        // Stopped, a seek chooses the place to go on from: nothing rewinds it.
+        if !isPlaying { stoppedAt = 0 }
         defer { media.update() }
         // Paused, nothing else saves where it now is: quitting or the other devices would get the old place.
         if !isPlaying, let q = active { savePlace(q, s, Int(position * 1000)) }
@@ -650,6 +679,8 @@ public final class Playback {
             }
         }
         setPlaying(!paused)
+        // A new song, or the same one opened again: any pause before was another place's.
+        stoppedAt = 0
         app.cache.poke()
         media.update()
     }
@@ -802,6 +833,7 @@ public final class Playback {
         }
         sleep.onNextSong()
         current = s
+        stoppedAt = 0
         failures = 0
         position = 0
         applyTempo()
@@ -857,6 +889,7 @@ public final class Playback {
         let changed = playing != isPlaying
         isPlaying = playing
         if playing { failures = 0 }
+        if changed && !playing { stoppedAt = nowMs() }
         if let o = open {
             if playing {
                 started(o)
@@ -885,7 +918,7 @@ public final class Playback {
     // MARK: Long files (plan 009)
 
     /// Every episode and book file keeps its place, however short (plan 031).
-    private func isLong(_ s: Song) -> Bool {
+    public func isLong(_ s: Song) -> Bool {
         s.spoken || s.durationMs >= app.setting("longFiles.minMinutes", 15) * 60_000
     }
 
@@ -893,13 +926,47 @@ public final class Playback {
     private func startPosition(_ s: Song) -> Int? {
         offerResume = nil
         guard isLong(s), let r = app.db.resume(s.id), !r.deleted, r.positionMs > 0 else { return nil }
+        // Left there when the point was saved: on another device, or before the app quit.
+        let pos = rewind(r.positionMs, since: r.at)
         switch app.setting("longFiles.resume", "auto") {
-        case "auto": return r.positionMs
+        case "auto": return pos
         case "ask":
-            offerResume = (s, r.positionMs)
+            offerResume = (s, pos)
             return nil
         default: return nil
         }
+    }
+
+    /// When the file playing last stopped, so going on after a while goes
+    /// back a little (`rewind`); 0 while it plays, after a seek made while
+    /// stopped, and once the song changes: a file started again rewinds
+    /// from its resume point's time instead.
+    @ObservationIgnored private var stoppedAt = 0
+
+    /// `pos` in a long file stopped at `since`, gone back "longFiles.rewind"
+    /// seconds if that was "longFiles.rewindAfter" minutes ago or more.
+    private func rewind(_ pos: Int, since: Int) -> Int {
+        Playback.rewound(
+            pos, stoppedFor: nowMs() - since, back: app.setting("longFiles.rewind", 10) * 1000,
+            after: app.setting("longFiles.rewindAfter", 5) * 60_000)
+    }
+
+    /// Where Play picks up a long file after a long pause, in seconds: a
+    /// little before where it stopped, so the sentence cut off is heard
+    /// from its start; nil to go on where it is.
+    private func continued(_ s: Song) -> Double? {
+        let since = stoppedAt
+        stoppedAt = 0
+        guard since > 0, isLong(s) else { return nil }
+        let pos = Int(position * 1000)
+        let to = rewind(pos, since: since)
+        return to == pos ? nil : Double(to) / 1000
+    }
+
+    /// Where to continue a long file stopped at `pos` `stoppedFor` ago:
+    /// `back` earlier once that is at least `after`, never before the start.
+    nonisolated public static func rewound(_ pos: Int, stoppedFor: Int, back: Int, after: Int) -> Int {
+        back > 0 && stoppedFor >= after ? max(0, pos - back) : pos
     }
 
     /// Not in the last seconds: a file that plays to its end also stops

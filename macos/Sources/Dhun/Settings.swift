@@ -133,14 +133,36 @@ struct PlaybackSettings: View {
                 }
                 Picker("Previous in one", selection: synced("longFiles.previous", "keep")) {
                     Text("Previous file, keep my place").tag("keep")
+                    Text("Seek back from a headset").tag("seek")
                     Text("Ignore media keys and headsets").tag("ignore")
                     Text("Same as songs").tag("songs")
                 }
+                Picker("Next in one", selection: synced("longFiles.next", "next")) {
+                    Text("Next file").tag("next")
+                    Text("Seek forward from a headset").tag("seek")
+                }
+                Picker("Seek back", selection: synced("longFiles.seekBack", 10)) {
+                    ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) seconds").tag($0) }
+                }
+                Picker("Seek forward", selection: synced("longFiles.seekForward", 30)) {
+                    ForEach([10, 15, 30, 60, 120], id: \.self) { Text("\($0) seconds").tag($0) }
+                }
+                Picker("Going on after a pause", selection: synced("longFiles.rewind", 10)) {
+                    ForEach([0, 5, 10, 15, 30], id: \.self) {
+                        Text($0 == 0 ? "Exactly where it stopped" : "Go back \($0) seconds").tag($0)
+                    }
+                }
+                Picker("A pause counts after", selection: synced("longFiles.rewindAfter", 5)) {
+                    ForEach([1, 5, 10, 30, 60], id: \.self) {
+                        Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0)
+                    }
+                }
+                .disabled(app.setting("longFiles.rewind", 10) == 0)
             } header: {
                 Text("Long files")
             } footer: {
                 Text(
-                    "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back."
+                    "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back. Seeking or ignoring, it does that only on the screen: media keys, headsets and Control Center seek or do nothing. After a pause, a long file goes back a little, so a sentence cut off is heard again from its start."
                 )
                 .font(.caption).foregroundStyle(.secondary)
             }

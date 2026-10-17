@@ -45,6 +45,25 @@ public struct Store {
         app.reloadResumes()
     }
 
+    /// Makes or changes a bookmark (plan 033), sent whole each time; only
+    /// the latest change of each is worth sending.
+    public func bookmark(_ b: Bookmark) {
+        var now = b
+        now.at = nowMs()
+        db.putBookmark(now)
+        if b.deleted {
+            record("bookmark.unset", key: "bookmark:\(b.id)", ["bookmark": .string(b.id)])
+        } else {
+            record(
+                "bookmark.set", key: "bookmark:\(b.id)",
+                [
+                    "bookmark": .string(b.id), "song": JSON(b.song), "positionMs": JSON(b.positionMs),
+                    "note": .string(b.note),
+                ])
+        }
+        app.reloadBookmarks()
+    }
+
     // MARK: Queues
 
     /// A local write only: the player's own bookkeeping (usedAt) that needs no op.

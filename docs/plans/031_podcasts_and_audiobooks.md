@@ -254,7 +254,8 @@ in the catalogue.
   Transcript.
 - **Next and Previous go by chapter in `Playback` itself,** so the
   buttons, the Controls menu, ⌘→ and ⌘←, the media keys and Control
-  Center all do.
+  Center all do (until 2026-10-17: now they go by file, and chapters
+  are in the Controls menu; [009](009_resume_long_files.md#seeking-and-going-on-after-a-pause-owner-2026-10-17)).
 - **The playlist rule is kept in `Store`,** which drops episodes and
   books' files from every playlist edit: the song menu, a drag onto a
   playlist in the sidebar, and Save as Playlist from a queue.

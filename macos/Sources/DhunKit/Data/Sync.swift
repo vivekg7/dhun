@@ -235,6 +235,27 @@ public final class Sync {
             db.putResume(
                 Resume(song: r.song, positionMs: r.positionMs ?? 0, at: at, deleted: r.deleted ?? false))
         }
+        for b in s.bookmarks ?? [] {
+            let at = parseTime(b.at)
+            let local = db.bookmark(b.id)
+            let deleted = b.deleted ?? false
+            // A delete wins over any edit, as on the server (plan 033).
+            if pending.contains("bookmark:\(b.id)") || local?.deleted == true
+                || (local.map { !deleted && $0.at > at } ?? false)
+            {
+                continue
+            }
+            db.putBookmark(
+                deleted
+                    ? Bookmark(
+                        id: b.id, song: local?.song ?? 0, positionMs: local?.positionMs ?? 0, note: "",
+                        at: at,
+                        deleted: true)
+                    : Bookmark(
+                        id: b.id, song: b.song ?? 0, positionMs: b.positionMs ?? 0, note: b.note ?? "",
+                        at: at,
+                        deleted: false))
+        }
         for (name, value) in s.settings ?? [:] where !pending.contains("setting:\(name)") {
             db.putSetting(name, value)
         }
@@ -243,6 +264,7 @@ public final class Sync {
         app.reloadQueues()
         app.reloadMarks()
         app.reloadResumes()
+        app.reloadBookmarks()
         app.reloadSettings()
         app.playback.queuesSynced()
     }

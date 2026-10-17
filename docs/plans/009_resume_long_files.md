@@ -151,9 +151,20 @@ Rejected: rewinding by how long the pause was (10 s after five minutes,
 more after a day). The owner asked for a fixed amount, and one number is
 easier to predict than a curve.
 
-Android first. macOS and the web still go by chapter on the screen, and
-have neither the buttons nor the rewind: they ignore the new settings
-until they catch up.
+**On the Mac** (built the same day), the same rules, in the Mac's way:
+
+- **Chapters by name, not by holding:** "Next Chapter" and "Previous
+  Chapter" in the Controls menu (⌥⌘→, ⌥⌘←) and on a right click of the
+  Next and Previous buttons. A long press on a SwiftUI button does not
+  sit reliably beside its click on macOS, and a menu is how a Mac offers
+  a second action. Seeking is in the Controls menu too (⇧⌘←, ⇧⌘→), and
+  the seek buttons sit in the Now playing bar and the menu-bar player,
+  not the compact mini player.
+- **Control Center** gets skip back and forward for a long file, with the
+  seconds set, and its Previous and Next count as a headset's.
+
+The web still goes by chapter on the screen, and has neither the buttons
+nor the rewind: it ignores the new settings until it catches up.
 
 ### Progress in lists (owner, 2026-10-15)
 

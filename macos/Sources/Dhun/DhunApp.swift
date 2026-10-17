@@ -74,8 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchKeys()
     }
 
-    /// Space plays or pauses and ⌘← ⌘→ skip wherever the focus is, as in
-    /// Music: a list or the sidebar would otherwise take Space for itself.
+    /// Space plays or pauses and ⌘← ⌘→ skip (⇧ to seek, ⌥ by chapter)
+    /// wherever the focus is, as in Music: a list or the sidebar would
+    /// otherwise take Space for itself.
     /// While typing they stay the text's own keys, and a file opened from
     /// Finder keeps Space for its own player.
     private func watchKeys() {
@@ -91,8 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case (49, []) where !typing:
                     app.playback.toggle()
                     return true
-                case (123, .command) where typing, (124, .command) where typing:
-                    // Before the Controls menu sees them: the start or end of the line.
+                case (123, .command) where typing, (124, .command) where typing,
+                    (123, [.command, .shift]) where typing, (124, [.command, .shift]) where typing,
+                    (123, [.command, .option]) where typing, (124, [.command, .option]) where typing:
+                    // Before the Controls menu sees them: the start or end of the line, or selecting to it.
                     w.firstResponder?.keyDown(with: e)
                     return true
                 default:

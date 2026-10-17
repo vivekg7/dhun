@@ -304,6 +304,18 @@ struct Commands: SwiftUI.Commands {
                 .rightArrow, modifiers: .command)
             Button("Previous") { app.playback.previous(onScreen: true) }.keyboardShortcut(
                 .leftArrow, modifiers: .command)
+            // A long file's own moves (plan 009). A chapter is never a click of
+            // Next or Previous, which go by file, so it has keys of its own.
+            let p = app.playback
+            let long = p.current.map(p.isLong) == true
+            Button("Skip Forward \(app.setting("longFiles.seekForward", 30)) Seconds") { p.seekForward() }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .shift]).disabled(!long)
+            Button("Skip Back \(app.setting("longFiles.seekBack", 10)) Seconds") { p.seekBack() }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .shift]).disabled(!long)
+            Button("Next Chapter") { p.chapterOn() }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(!p.hasChapters)
+            Button("Previous Chapter") { p.chapterBack() }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(!p.hasChapters)
             Divider()
             Button("Shuffle") { app.playback.toggleShuffle() }.keyboardShortcut(
                 "s", modifiers: [.command, .option])

@@ -24,7 +24,7 @@ import SwiftUI
 let hidePlayedSetting = "podcasts.hidePlayed"
 
 /// "29 books", "1 show"
-private func count(_ n: Int, _ what: String) -> String { "\(n) \(what)" + (n == 1 ? "" : "s") }
+func count(_ n: Int, _ what: String) -> String { "\(n) \(what)" + (n == 1 ? "" : "s") }
 
 /// A book's or a show's line under its title, in lists.
 @MainActor private func detail(_ s: Shelf, _ heard: Heard) -> String {
@@ -208,20 +208,31 @@ struct ShelfPage: View {
     return "Chapter \(i + 1) of \(s.chapters.count)" + (name.isEmpty ? "" : " · \(name)")
 }
 
-/// An episode's or a book file's chapters, each a click away, and its notes.
+/// A long file's bookmarks (plan 033) and chapters, each a click away, and its notes.
 struct ChaptersPanel: View {
     @Environment(AppModel.self) private var app
     let song: Song
     let done: () -> Void
+    /// The bookmark whose note is being written, and the note so far.
+    @State private var editing: String?
+    @State private var note = ""
 
     var body: some View {
         let p = app.playback
         let now = song.chapters.lastIndex { $0.startMs <= Int(p.position * 1000) }
+        let marks = app.bookmarks.filter { $0.song == song.id }
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
                 Text(song.title).font(.headline).lineLimit(2).padding(.bottom, 6)
+                if !marks.isEmpty {
+                    Text("Bookmarks").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(marks) { b in
+                        if editing == b.id { noteEditor(b) } else { row(b) }
+                    }
+                }
                 if !song.chapters.isEmpty {
                     Text("Chapters").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.top, marks.isEmpty ? 0 : 8)
                     ForEach(Array(song.chapters.enumerated()), id: \.offset) { i, ch in
                         Button {
                             p.seek(to: Double(ch.startMs) / 1000)
@@ -256,6 +267,81 @@ struct ChaptersPanel: View {
         }
         .frame(width: 380)
         .frame(maxHeight: 480)
+    }
+
+    /// Its time, its note or else the chapter it falls in, and a menu to
+    /// write the note or delete it.
+    private func row(_ b: Bookmark) -> some View {
+        let chapter = song.chapters.last { $0.startMs <= b.positionMs }?.name ?? ""
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Button {
+                app.playback.seek(to: Double(b.positionMs) / 1000)
+                done()
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(clock(Double(b.positionMs) / 1000)).monospacedDigit().foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(b.note.isEmpty ? (chapter.isEmpty ? "Bookmark" : chapter) : b.note).lineLimit(3)
+                        if !b.note.isEmpty && !chapter.isEmpty {
+                            Text(chapter).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .contextMenu { actions(b) }
+            Menu {
+                actions(b)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Bookmark options")
+        }
+    }
+
+    @ViewBuilder private func actions(_ b: Bookmark) -> some View {
+        Button(b.note.isEmpty ? "Add a Note…" : "Edit the Note…") {
+            note = b.note
+            editing = b.id
+        }
+        Button("Delete", role: .destructive) {
+            var gone = b
+            gone.deleted = true
+            gone.note = ""
+            app.store.bookmark(gone)
+        }
+    }
+
+    /// The note, written in place in the list rather than in a dialog over the popover.
+    private func noteEditor(_ b: Bookmark) -> some View {
+        let save = {
+            var changed = b
+            changed.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            app.store.bookmark(changed)
+            editing = nil
+        }
+        return VStack(alignment: .trailing, spacing: 6) {
+            TextField(
+                "Note at \(clock(Double(b.positionMs) / 1000))",
+                text: Binding(get: { note }, set: { note = String($0.prefix(Bookmark.maxNote)) }),
+                prompt: Text("What happens here"), axis: .vertical
+            )
+            .lineLimit(1...5)
+            .onSubmit(save)
+            HStack {
+                Button("Cancel") { editing = nil }.keyboardShortcut(.cancelAction)
+                Button("Save", action: save).keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, 4)
     }
 }
 

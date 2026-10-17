@@ -58,25 +58,26 @@ private func song(_ id: Int, _ path: String, kind: String = "", group: String = 
     #expect(s.day == "2025")
 }
 
-@Test func previousGoesToThisChapterThenTheOneBefore() {
+// Next and Previous go by file; a chapter is asked for by name (plan 009).
+@Test func aChapterJumpStaysInTheFile() {
     let starts = [0, 60_000, 120_000]
-    #expect(Playback.previousChapter(starts, 90_000, window: 3000) == 60_000)
-    #expect(Playback.previousChapter(starts, 61_000, window: 3000) == 0)
-    #expect(
-        Playback.previousChapter(starts, 1000, window: 3000) == nil,
-        "the first chapter goes to the previous file")
-    #expect(Playback.previousChapter([], 90_000, window: 3000) == nil)
-    // Just sought to a chapter, a little before its start: Next goes to the one after.
-    #expect(Playback.nextChapter(starts, 59_900) == 120_000)
-    #expect(Playback.nextChapter(starts, 130_000) == nil, "the last chapter goes on to the next file")
+    #expect(Playback.chapterBefore(starts, 90_000, window: 3000) == 60_000, "this chapter's start")
+    #expect(Playback.chapterBefore(starts, 61_000, window: 3000) == 0, "just into it: the one before")
+    #expect(Playback.chapterBefore(starts, 1000, window: 3000) == nil, "the first chapter's start stays")
+    #expect(Playback.chapterBefore([], 90_000, window: 3000) == nil)
+    // Just sought to a chapter, a little before its start: the one after, not that one again.
+    #expect(Playback.chapterAfter(starts, 59_900) == 120_000)
+    #expect(Playback.chapterAfter(starts, 130_000) == nil, "the last chapter stays")
 }
 
-/// One mistaken press of Previous restarted a book half heard, and its place was lost.
-@Test func previousNeverRestartsALongFile() {
-    #expect(
-        Playback.previousChapter([0], 5 * 3_600_000, window: .max) == nil, "no chapters: the previous file")
-    #expect(
-        Playback.previousChapter([0, 60_000], 90_000, window: .max) == 0,
-        "chapters: the one before, not this one's start")
-    #expect(Playback.previousChapter([0], 90_000, window: 3000) == 0, "a song still restarts")
+/// Stopped mid-sentence in an episode: going on later starts the sentence again, a short pause does not.
+@Test func aLongPauseGoesBackALittle() {
+    let minute = 60_000
+    func rewound(_ pos: Int, _ stoppedFor: Int, back: Int = 10_000) -> Int {
+        Playback.rewound(pos, stoppedFor: stoppedFor, back: back, after: 5 * minute)
+    }
+    #expect(rewound(90_000, 6 * minute) == 80_000)
+    #expect(rewound(90_000, 30_000) == 90_000, "a moment's pause")
+    #expect(rewound(4000, 6 * minute) == 0, "never before the start")
+    #expect(rewound(90_000, 6 * minute, back: 0) == 90_000, "turned off")
 }

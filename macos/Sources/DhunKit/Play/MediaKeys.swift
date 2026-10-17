@@ -20,6 +20,9 @@ final class MediaKeys {
         c.previousTrackCommand.addTarget { [weak self] _ in
             self?.run { $0.previous(onScreen: false) } ?? .commandFailed
         }
+        // A long file's Control Center seeks either side of Play, as Now playing does (plan 009).
+        c.skipBackwardCommand.addTarget { [weak self] _ in self?.run { $0.seekBack() } ?? .commandFailed }
+        c.skipForwardCommand.addTarget { [weak self] _ in self?.run { $0.seekForward() } ?? .commandFailed }
         c.changePlaybackPositionCommand.addTarget { [weak self] e in
             guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             return self?.run { $0.seek(to: e.positionTime) } ?? .commandFailed
@@ -36,6 +39,19 @@ final class MediaKeys {
     /// After a new song, play or pause, or a seek.
     func update() {
         let center = MPNowPlayingInfoCenter.default()
+        let long = playback.current.map(playback.isLong) ?? false
+        let c = MPRemoteCommandCenter.shared()
+        c.skipBackwardCommand.isEnabled = long
+        c.skipForwardCommand.isEnabled = long
+        if long {
+            let app = playback.app
+            c.skipBackwardCommand.preferredIntervals = [
+                NSNumber(value: app.setting("longFiles.seekBack", 10))
+            ]
+            c.skipForwardCommand.preferredIntervals = [
+                NSNumber(value: app.setting("longFiles.seekForward", 30))
+            ]
+        }
         guard let s = playback.current else {
             center.nowPlayingInfo = nil
             center.playbackState = .stopped

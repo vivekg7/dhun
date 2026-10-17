@@ -55,6 +55,11 @@ public final class DB: @unchecked Sendable {
             ALTER TABLE song ADD COLUMN groupTitle TEXT NOT NULL DEFAULT '';
             ALTER TABLE song ADD COLUMN groupIndex INTEGER NOT NULL DEFAULT 0;
             """,
+            // Bookmarks in long files (plan 033).
+            """
+            CREATE TABLE bookmark (id TEXT PRIMARY KEY, song INTEGER NOT NULL, positionMs INTEGER NOT NULL,
+              note TEXT NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL);
+            """,
         ]
         let have = sql.userVersion
         for (i, step) in steps.enumerated() where i >= have {
@@ -69,7 +74,7 @@ public final class DB: @unchecked Sendable {
             """
             DELETE FROM song; DELETE FROM playlist; DELETE FROM queue; DELETE FROM mark; DELETE FROM resume;
             DELETE FROM setting; DELETE FROM outbox; DELETE FROM play_stat; DELETE FROM pin; DELETE FROM download;
-            DELETE FROM lyrics;
+            DELETE FROM lyrics; DELETE FROM bookmark;
             """)
     }
 
@@ -184,6 +189,27 @@ public final class DB: @unchecked Sendable {
         try? sql.run(
             "INSERT OR REPLACE INTO resume VALUES (?,?,?,?)",
             ([r.song, r.positionMs, r.at, r.deleted] as [any SQLBindable]).sql)
+    }
+
+    public func bookmarks() -> [Bookmark] {
+        (try? sql.query("SELECT * FROM bookmark WHERE deleted = 0 ORDER BY positionMs") { bookmark($0) })
+            ?? []
+    }
+
+    public func bookmark(_ id: String) -> Bookmark? {
+        try? sql.query("SELECT * FROM bookmark WHERE id = ?", [.text(id)]) { bookmark($0) }.first
+    }
+
+    private func bookmark(_ r: SQLite.Row) -> Bookmark {
+        Bookmark(
+            id: r.text(0), song: r.int(1), positionMs: r.int(2), note: r.text(3), at: r.int(4),
+            deleted: r.bool(5))
+    }
+
+    public func putBookmark(_ b: Bookmark) {
+        try? sql.run(
+            "INSERT OR REPLACE INTO bookmark VALUES (?,?,?,?,?,?)",
+            ([b.id, b.song, b.positionMs, b.note, b.at, b.deleted] as [any SQLBindable]).sql)
     }
 
     public func settings() -> [String: JSON] {

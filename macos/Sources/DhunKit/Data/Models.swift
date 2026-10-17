@@ -136,6 +136,30 @@ public struct Resume: Hashable, Sendable {
     public var deleted: Bool
 }
 
+/// A place marked in a long file, with an optional note (plan 033). The id
+/// is made here, so one made offline has it at once. A deleted one is kept,
+/// so an older copy from the server never brings it back.
+public struct Bookmark: Hashable, Sendable, Identifiable {
+    public var id: String
+    public var song: Int
+    public var positionMs: Int
+    public var note: String
+    public var at: Int
+    public var deleted: Bool
+
+    public init(id: String, song: Int, positionMs: Int, note: String, at: Int, deleted: Bool) {
+        self.id = id
+        self.song = song
+        self.positionMs = positionMs
+        self.note = note
+        self.at = at
+        self.deleted = deleted
+    }
+
+    /// The server's limit on a note.
+    public static let maxNote = 1000
+}
+
 /// A change not yet acknowledged by the server, as the JSON op it sends.
 /// `key` groups ops where only the latest matters.
 public struct OutboxOp: Sendable {

@@ -250,6 +250,15 @@ public struct ResumeDTO: Decodable, Sendable {
     var at: String?
 }
 
+public struct BookmarkDTO: Decodable, Sendable {
+    var id: String
+    var deleted: Bool?
+    var song: Int?
+    var positionMs: Int?
+    var note: String?
+    var at: String?
+}
+
 public struct OpResult: Decodable, Sendable {
     var id: String
     var status: String
@@ -263,6 +272,7 @@ public struct SyncState: Decodable, Sendable {
     var listenLater: [ListItemDTO]?
     var resume: [ResumeDTO]?
     var played: [ListItemDTO]?
+    var bookmarks: [BookmarkDTO]?
     var settings: [String: JSON]?
     var nowPlaying: NowPlaying?
     var results: [OpResult]?

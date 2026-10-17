@@ -1,6 +1,6 @@
 # 033 — Bookmarks in long files
 
-**Status:** `IN PROGRESS` — the server and Android built; macOS and the web next
+**Status:** `IN PROGRESS` — the server, Android and macOS built; the web next
 **Started:** 2026-10-17
 
 ## Problem
@@ -89,4 +89,5 @@ so a bookmark made against it would stay on that one device.
 1. Server: migration `0010_bookmarks.sql`, the two operations, the pull
    field, `api/openapi.yaml`, tests.
 2. Android: the table, the outbox ops, the button and the sheet.
-3. macOS and the web: the same.
+3. macOS and the web: the same. On the Mac a note is written in place
+   in the popover's row, and the row's menu is also its right-click menu.

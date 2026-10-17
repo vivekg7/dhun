@@ -23,6 +23,9 @@ struct NowPlayingBar: View {
                                 .environment(\.openURL, openLinks)
                         }
                     }
+                    .popover(isPresented: $details, arrowEdge: .top) {
+                        if let s = p.current { ChaptersPanel(song: s) { details = false } }
+                    }
                 }
                 .frame(width: 250, alignment: .leading)
                 // The next song comes in from the right, the previous from the left, as on the
@@ -53,6 +56,7 @@ struct NowPlayingBar: View {
             HStack(spacing: 4) {
                 FavoriteButton()
                 LaterButton()
+                BookmarkButton()
                 SpeedButton()
                 SleepButton()
                 Button {
@@ -85,6 +89,7 @@ struct NowPlayingBar: View {
     }
 
     @State private var direction = Direction()
+    @State private var details = false
 
     /// The line under the title. Each artist, the album, and an episode's
     /// show or a book's title link to their pages (plan 032), through our
@@ -121,7 +126,12 @@ struct NowPlayingBar: View {
             }
             parts = [line, s.album.isEmpty ? "" : link(s.album, "album")]
         }
-        if let ch = chapterLabel(s, Int(p.position * 1000)) { parts.insert(AttributedString(ch), at: 0) }
+        // The chapter playing opens the chapter list; without chapters, the
+        // bookmarks do, so a long music file reaches them too (plan 033).
+        let marks = app.bookmarks.count { $0.song == s.id }
+        if let ch = chapterLabel(s, Int(p.position * 1000)) ?? (marks > 0 ? count(marks, "bookmark") : nil) {
+            parts.insert(link(ch, "details"), at: 0)
+        }
         if let sleep = p.sleep.label { parts.append(AttributedString("Sleep \(sleep)")) }
         var out = AttributedString()
         for part in parts where !part.characters.isEmpty {
@@ -135,9 +145,12 @@ struct NowPlayingBar: View {
     private var openLinks: OpenURLAction {
         let app = self.app
         let nav = self.nav
+        let details = $details
         return OpenURLAction { url in
             guard url.scheme == "dhun", let s = app.playback.current else { return .systemAction }
-            if url.host == "artist" {
+            if url.host == "details" {
+                details.wrappedValue = true
+            } else if url.host == "artist" {
                 nav.open(.artists, .artist(String(url.path.dropFirst())))
             } else {
                 nav.goToAlbum(s, app)
@@ -183,7 +196,9 @@ struct Transport: View {
                 }
                 .help("Chapters and notes")
                 .accessibilityLabel("Chapters and notes")
-                .disabled(s.chapters.isEmpty && s.notes.isEmpty)
+                .disabled(
+                    s.chapters.isEmpty && s.notes.isEmpty && !app.bookmarks.contains { $0.song == s.id }
+                )
                 .popover(isPresented: $details, arrowEdge: .top) {
                     ChaptersPanel(song: s) { details = false }
                 }
@@ -202,7 +217,12 @@ struct Transport: View {
                 p.previous(onScreen: true)
             } label: {
                 Image(systemName: "backward.fill")
-            }.help("Previous").accessibilityLabel("Previous")
+            }
+            .help("Previous").accessibilityLabel("Previous")
+            .contextMenu { ChapterItems(next: false) }
+            // A long file steps back and on within itself (plan 009).
+            let long = !compact && p.current.map(p.isLong) == true
+            if long { SeekButton(forward: false) }
             Button {
                 p.toggle()
             } label: {
@@ -214,11 +234,14 @@ struct Transport: View {
             }
             .help(p.isPlaying ? "Pause" : "Play")
             .accessibilityLabel(p.isPlaying ? "Pause" : "Play")
+            if long { SeekButton(forward: true) }
             Button {
                 p.next(onScreen: true)
             } label: {
                 Image(systemName: "forward.fill")
-            }.help("Next").accessibilityLabel("Next")
+            }
+            .help("Next").accessibilityLabel("Next")
+            .contextMenu { ChapterItems(next: true) }
             if !compact {
                 Button {
                     p.cycleRepeat()
@@ -240,6 +263,84 @@ struct Transport: View {
         }
         .buttonStyle(.borderless)
         .disabled(p.current == nil)
+    }
+}
+
+/// Back or on by the seconds set for long files, the number in the arrow
+/// where SF Symbols has one for it.
+struct SeekButton: View {
+    @Environment(AppModel.self) private var app
+    let forward: Bool
+
+    var body: some View {
+        let seconds = app.setting(forward ? "longFiles.seekForward" : "longFiles.seekBack", forward ? 30 : 10)
+        let base = forward ? "goforward" : "gobackward"
+        let numbered = "\(base).\(seconds)"
+        let label = forward ? "Forward \(seconds) seconds" : "Back \(seconds) seconds"
+        Button {
+            forward ? app.playback.seekForward() : app.playback.seekBack()
+        } label: {
+            Image(
+                systemName: NSImage(systemSymbolName: numbered, accessibilityDescription: nil) == nil
+                    ? base : numbered)
+        }
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A chapter back or on, from the right-click menu of Previous and Next.
+/// A click goes by file: the chapter is asked for by name, never by a
+/// press that could be miscounted (plan 009).
+struct ChapterItems: View {
+    @Environment(AppModel.self) private var app
+    let next: Bool
+
+    var body: some View {
+        if app.playback.hasChapters {
+            if next {
+                Button("Next Chapter") { app.playback.chapterOn() }
+            } else {
+                Button("Previous Chapter") { app.playback.chapterBack() }
+            }
+        }
+    }
+}
+
+/// Marks the place playing in a long file (plan 033); it fills for a moment
+/// and says where, as the phone's toast does.
+struct BookmarkButton: View {
+    @Environment(AppModel.self) private var app
+    @State private var added: String?
+
+    var body: some View {
+        let p = app.playback
+        if let s = p.current, p.isLong(s) {
+            Button {
+                let ms = Int(p.position * 1000)
+                app.store.bookmark(
+                    Bookmark(
+                        id: UUID().uuidString.lowercased(), song: s.id, positionMs: ms, note: "", at: 0,
+                        deleted: false))
+                added = "Bookmark at \(clock(Double(ms) / 1000))"
+            } label: {
+                Image(systemName: added == nil ? "bookmark" : "bookmark.fill")
+                    .foregroundStyle(added == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .help("Add a Bookmark")
+            .accessibilityLabel("Add a Bookmark")
+            .popover(
+                isPresented: Binding(get: { added != nil }, set: { if !$0 { added = nil } }), arrowEdge: .top
+            ) {
+                Text(added ?? "").padding(10)
+            }
+            .task(id: added) {
+                guard added != nil else { return }
+                try? await Task.sleep(for: .seconds(1.5))
+                added = nil
+            }
+        }
     }
 }
 
