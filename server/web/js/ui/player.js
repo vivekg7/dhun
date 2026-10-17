@@ -2,38 +2,100 @@
 // phone's mini player, and the phone's Now playing page; with the speed and
 // sleep panels, the hand-off and resume banners, and the lyrics.
 
-import { h, clock } from "../util.js";
+import { h, clock, uuid } from "../util.js";
 import { icon } from "../icons.js";
-import { iconButton, popover, menuAt, reducedMotion, toast } from "./kit.js";
+import {
+  iconButton,
+  holdButton,
+  popover,
+  menuAt,
+  reducedMotion,
+  toast,
+} from "./kit.js";
 import { cover, songMenu } from "./songs.js";
 import { parseLyrics, lineAt } from "../lyrics.js";
 import { formatSpeed, minSpeed, maxSpeed } from "../queue.js";
-import { chapterLabel, chaptersPanel, spokenFacts } from "./spoken.js";
+import { chapterLine, chaptersPanel, spokenFacts } from "./spoken.js";
 import { ctx } from "./ctx.js";
 
 // MARK: Controls shared by the bar and the page
 
-/** Shuffle, previous, play or pause, next, repeat; for an episode or a book, Chapters and notes in Shuffle's place. */
+/**
+ * Previous or Next. A click goes by file; held, it goes by chapter in a file
+ * that has them (plan 009), which a click never does: a mistaken one would
+ * lose the place in a book.
+ */
+export function skipButton(next) {
+  const p = ctx.playback;
+  // A mini player opens Now playing on a click anywhere else.
+  return next
+    ? holdButton(
+        "next",
+        "Next",
+        (e) => (e.stopPropagation(), p.next(true)),
+        () => p.chapterOn(),
+      )
+    : holdButton(
+        "previous",
+        "Previous",
+        (e) => (e.stopPropagation(), p.previous(true)),
+        () => p.chapterBack(),
+      );
+}
+
+/** Back or forward in a long file by the seconds set for long files, the number inside the arrow (plan 009). */
+function seekButton(forward) {
+  const p = ctx.playback;
+  const seconds = h("span.seconds");
+  const b = h(
+    "button.icon-button.seekbutton",
+    { type: "button", onclick: () => (forward ? p.seekForward() : p.seekBack()) },
+    icon("replay", forward ? "mirrored" : ""),
+    seconds,
+  );
+  return {
+    el: b,
+    update() {
+      const n = forward
+        ? ctx.app.setting("longFiles.seekForward", 30)
+        : ctx.app.setting("longFiles.seekBack", 10);
+      seconds.textContent = n;
+      b.title = `${forward ? "Forward" : "Back"} ${n} seconds`;
+      b.setAttribute("aria-label", b.title);
+      b.hidden = !p.current || !p.isLong(p.current);
+    },
+  };
+}
+
+/**
+ * Shuffle, previous, play or pause, next, repeat; for an episode or a book,
+ * Chapters and notes in Shuffle's place; for a long file, seeking either
+ * side of Play.
+ */
 function transport(compact = false) {
   const p = ctx.playback;
   const shuffle = iconButton("shuffle", "Shuffle", () => p.toggleShuffle(), "toggle");
   const chapters = iconButton("chapters", "Chapters and notes", () =>
     popover(chapters, chaptersPanel),
   );
-  const prev = iconButton("previous", "Previous", () => p.previous(true));
+  const prev = skipButton(false);
+  const back = seekButton(false);
   const play = h(
     "button.play",
     { type: "button", onclick: () => p.toggle() },
     icon("play"),
   );
-  const next = iconButton("next", "Next", () => p.next(true));
+  const forward = seekButton(true);
+  const next = skipButton(true);
   const repeat = iconButton("repeat", "Repeat", () => p.cycleRepeat(), "toggle");
   const el = h(
     "div.transport",
     compact ? null : shuffle,
     compact ? null : chapters,
     prev,
+    compact ? null : back.el,
     play,
+    compact ? null : forward.el,
     next,
     compact ? null : repeat,
   );
@@ -43,10 +105,15 @@ function transport(compact = false) {
     update() {
       const none = !p.current;
       for (const b of [shuffle, prev, play, next, repeat]) b.disabled = none;
+      back.update();
+      forward.update();
       // A book is not shuffled (plan 031).
-      const spoken = !!p.current?.spoken;
+      const s = p.current;
+      const spoken = !!s?.spoken;
       shuffle.hidden = spoken;
       chapters.hidden = !spoken;
+      chapters.disabled =
+        !s || (!s.chapters.length && !s.notes && !ctx.app.bookmarks(s.id).length);
       shuffle.classList.toggle("on", p.shuffle);
       shuffle.title = p.shuffle ? "Shuffle is on" : "Shuffle";
       const r = p.repeat;
@@ -238,6 +305,30 @@ function speedPanel(close) {
   );
 }
 
+/** A place to come back to in a long file (plan 033); the chapters panel lists them. */
+function bookmarkButton() {
+  const p = ctx.playback;
+  const b = iconButton("bookmarkAdd", "Add a bookmark", () => {
+    const s = p.current;
+    if (!s) return;
+    const at = Math.round(p.position * 1000);
+    ctx.app.bookmark({
+      id: uuid(),
+      song: s.id,
+      positionMs: at,
+      note: "",
+      deleted: false,
+    });
+    toast(`Bookmark at ${clock(at / 1000)}`);
+  });
+  return {
+    el: b,
+    update() {
+      b.hidden = !p.current || !p.isLong(p.current);
+    },
+  };
+}
+
 function sleepButton() {
   const b = iconButton("sleep", "Sleep timer", () => popover(b, sleepPanel));
   return {
@@ -350,11 +441,20 @@ function nowTitle(cls = "", links = false) {
     const parts = [...nowFacts(s), [[p.sleepLabel && `Sleep ${p.sleepLabel}`]]]
       .map((part) => part.filter(([text]) => text))
       .filter((part) => part.length);
+    // A page's link, or an action: the chapter line opens the chapters panel.
+    const link = (text, to) =>
+      typeof to === "function"
+        ? h(
+            "button.link",
+            { type: "button", onclick: (e) => to(e.currentTarget) },
+            text,
+          )
+        : h("a", { href: to }, text);
     return parts.flatMap((part, i) => [
       i ? " · " : "",
-      ...part.flatMap(([text, href], j) => [
+      ...part.flatMap(([text, to], j) => [
         j ? ", " : "",
-        links && href ? h("a", { href }, text) : text,
+        links && to ? link(text, to) : text,
       ]),
     ]);
   };
@@ -394,21 +494,21 @@ function nowTitle(cls = "", links = false) {
 }
 
 /**
- * The parts of the line under the title, each a list of [text, page]: the
- * artists and the album as on the phone, or an episode's chapter, show and
- * day, or a book file's chapter, book and author.
+ * The parts of the line under the title, each a list of [text, page or
+ * action]: the artists and the album as on the phone, or an episode's
+ * chapter, show and day, or a book file's chapter, book and author. The
+ * chapter, or the bookmarks of a file without, open the chapters panel.
  */
 function nowFacts(s) {
   const c = ctx.app.catalog;
   const nav = ctx.nav;
+  const chapters = [
+    [chapterLine(s, ctx.playback.position * 1000), (at) => popover(at, chaptersPanel)],
+  ];
   if (s.spoken) {
     const shelf = c.shelfOf(s);
     const [group, rest] = spokenFacts(s);
-    return [
-      [[chapterLabel(s, ctx.playback.position * 1000)]],
-      [[group, shelf && nav.href("shelf", shelf.id)]],
-      [[rest]],
-    ];
+    return [chapters, [[group, shelf && nav.href("shelf", shelf.id)]], [[rest]]];
   }
   const album = c.albumOf.get(s.id);
   return [
@@ -418,6 +518,7 @@ function nowFacts(s) {
       nav.href("artist", a),
     ]),
     [[s.album, album && nav.href("album", album.id)]],
+    chapters,
   ];
 }
 
@@ -448,6 +549,7 @@ export function nowBar() {
   const seek = seeker();
   const fav = markButton("fav");
   const later = markButton("later");
+  const mark = bookmarkButton();
   const speed = speedButton();
   const sleep = sleepButton();
   const lyrics = iconButton(
@@ -482,9 +584,19 @@ export function nowBar() {
     "footer.nowbar",
     left,
     h("div.nowcenter", t.el, seek.el),
-    h("div.nowright", fav.el, later.el, speed.el, sleep.el, lyrics, queue, pip),
+    h(
+      "div.nowright",
+      fav.el,
+      later.el,
+      mark.el,
+      speed.el,
+      sleep.el,
+      lyrics,
+      queue,
+      pip,
+    ),
   );
-  const parts = [art, title, t, seek, fav, later, speed, sleep];
+  const parts = [art, title, t, seek, fav, later, mark, speed, sleep];
   return {
     el,
     update() {
@@ -514,7 +626,7 @@ export function miniPlayer() {
     type: "button",
     onclick: (e) => (e.stopPropagation(), p.toggle()),
   });
-  const next = iconButton("next", "Next", (e) => (e.stopPropagation(), p.next(true)));
+  const next = skipButton(true);
   const bar = h("div.miniprogress");
   const el = h(
     "div.mini",
@@ -559,6 +671,7 @@ export function nowPage() {
   const seek = seeker();
   const fav = markButton("fav");
   const later = markButton("later");
+  const mark = bookmarkButton();
   const speed = speedButton();
   const sleep = sleepButton();
   const lyr = lyricsView();
@@ -602,10 +715,10 @@ export function nowPage() {
       title.el,
       seek.el,
       t.el,
-      h("div.nowactions", fav.el, later.el, speed.el, sleep.el, lyricsBtn),
+      h("div.nowactions", fav.el, later.el, mark.el, speed.el, sleep.el, lyricsBtn),
     ),
   );
-  const parts = [art, title, t, seek, fav, later, speed, sleep];
+  const parts = [art, title, t, seek, fav, later, mark, speed, sleep];
   const draw = () => {
     stage.classList.toggle("lyrics", showLyrics);
     lyricsBtn.classList.toggle("on", showLyrics);
@@ -614,7 +727,14 @@ export function nowPage() {
   return {
     el,
     title: "Now playing",
-    topics: new Set(["playback", "position", "marks", "settings", "thumbs"]),
+    topics: new Set([
+      "playback",
+      "position",
+      "marks",
+      "bookmarks",
+      "settings",
+      "thumbs",
+    ]),
     destroy: () => lyr.destroy(),
     update(topics) {
       if (topics.has("position") && topics.size === 1) {

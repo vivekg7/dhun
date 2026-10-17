@@ -308,7 +308,8 @@ in the catalogue.
   microphone, which is Podcasts' icon.
 - **The other apps' rules and fixes are here too:** the playlist rule in
   `App`, played marks made from a listen that reaches 90%, Next and
-  Previous by chapter, the collection's speed, a resume point for every
+  Previous by chapter (by file since 2026-10-17, a long press for
+  chapters), the collection's speed, a resume point for every
   spoken file but none in the last 5 seconds, and a finished listen that
   says where the player got to.
 - **A far seek does not stall here:** the browser asks the server for

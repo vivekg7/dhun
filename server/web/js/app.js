@@ -75,6 +75,8 @@ export class App extends EventTarget {
     this.queues = [];
     this.marks = noMarks();
     this.resumeMap = new Map();
+    /** Bookmarks by id (plan 033). A deleted one is kept, so an older copy from the server never brings it back. */
+    this.bookmarkMap = new Map();
     this.settings = {};
     this.playStats = new Map();
     this.nowPlaying = null;
@@ -95,7 +97,7 @@ export class App extends EventTarget {
     this.pending = 0;
   }
 
-  /** Tells the pages what changed: catalog, playlists, queues, marks, resumes, settings, stats, sync, nowPlaying, thumbs, account. */
+  /** Tells the pages what changed: catalog, playlists, queues, marks, resumes, bookmarks, settings, stats, sync, nowPlaying, thumbs, account. */
   emit(topic) {
     this.dispatchEvent(new CustomEvent("change", { detail: topic }));
   }
@@ -136,6 +138,7 @@ export class App extends EventTarget {
       // A copy kept before plan 031 has no played marks.
       this.marks = { ...noMarks(), ...data.marks };
       this.resumeMap = data.resumes ?? this.resumeMap;
+      this.bookmarkMap = data.bookmarks ?? this.bookmarkMap;
       this.settings = data.settings ?? {};
       this.playStats = data.playStats ?? this.playStats;
       // The cursors as kept with the data, never ahead of it; without the songs, the library comes again whole.
@@ -153,6 +156,7 @@ export class App extends EventTarget {
       "queues",
       "marks",
       "resumes",
+      "bookmarks",
       "settings",
       "stats",
       "thumbs",
@@ -174,6 +178,7 @@ export class App extends EventTarget {
       queues: this.queues,
       marks: this.marks,
       resumes: this.resumeMap,
+      bookmarks: this.bookmarkMap,
       settings: this.settings,
       playStats: this.playStats,
     });
@@ -275,6 +280,7 @@ export class App extends EventTarget {
     this.queues = [];
     this.marks = noMarks();
     this.resumeMap = new Map();
+    this.bookmarkMap = new Map();
     this.settings = {};
     this.playStats = new Map();
     this.nowPlaying = null;
@@ -376,6 +382,30 @@ export class App extends EventTarget {
       .filter(([, r]) => !r.deleted && r.positionMs > 0)
       .sort((a, b) => b[1].at - a[1].at)
       .map(([song]) => song);
+  }
+
+  /**
+   * Makes, changes or deletes a bookmark ({id, song, positionMs, note,
+   * deleted}), sent whole each time (plan 033).
+   */
+  bookmark(b) {
+    this.bookmarkMap.set(b.id, { ...b, at: nowMs() });
+    const key = { key: `bookmark:${b.id}` };
+    if (b.deleted) this.record("bookmark.unset", { bookmark: b.id }, key);
+    else
+      this.record(
+        "bookmark.set",
+        { bookmark: b.id, song: b.song, positionMs: b.positionMs, note: b.note },
+        key,
+      );
+    this.changed("bookmarks");
+  }
+
+  /** A file's bookmarks, by place in it. */
+  bookmarks(song) {
+    return [...this.bookmarkMap.values()]
+      .filter((b) => b.song === song && !b.deleted)
+      .sort((a, b) => a.positionMs - b.positionMs);
   }
 
   // Queues. `putQueue` is the player's own bookkeeping (usedAt), needing no op.
@@ -862,6 +892,30 @@ export class App extends EventTarget {
         deleted: !!r.deleted,
       });
     }
+    for (const b of s.bookmarks ?? []) {
+      const at = parseTime(b.at);
+      const local = this.bookmarkMap.get(b.id);
+      // A delete wins over any edit, as on the server (plan 033).
+      if (
+        pending.has(`bookmark:${b.id}`) ||
+        local?.deleted ||
+        (local && !b.deleted && local.at > at)
+      )
+        continue;
+      this.bookmarkMap.set(
+        b.id,
+        b.deleted
+          ? { ...local, id: b.id, note: "", at, deleted: true }
+          : {
+              id: b.id,
+              song: b.song ?? 0,
+              positionMs: b.positionMs ?? 0,
+              note: b.note ?? "",
+              at,
+              deleted: false,
+            },
+      );
+    }
     for (const [name, value] of Object.entries(s.settings ?? {})) {
       if (pending.has(`setting:${name}`)) continue;
       if (value === null) delete this.settings[name];
@@ -875,7 +929,8 @@ export class App extends EventTarget {
     // Marked, so the player can tell another device's change from its own.
     this.applying = true;
     try {
-      for (const t of ["queues", "marks", "resumes", "settings"]) this.emit(t);
+      for (const t of ["queues", "marks", "resumes", "bookmarks", "settings"])
+        this.emit(t);
     } finally {
       this.applying = false;
     }

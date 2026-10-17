@@ -91,26 +91,34 @@ export const songSetting = (song) => `speed.${song}`;
 export const kindSetting = (kind) => `speed.${kind}`;
 
 /**
- * Where Next goes in a file whose chapters start at `starts` (ms): the next
- * chapter, or null for the next file. A chapter starting within a second is
- * the one just sought to, not the next.
+ * A long press on Next (plan 009): the chapter after `pos` among chapters
+ * starting at `starts` (ms), or null after the last. One starting within a
+ * second is the one just sought to, not the next.
  */
-export function nextChapter(starts, pos) {
+export function chapterAfter(starts, pos) {
   return starts.find((x) => x > pos + 1000) ?? null;
 }
 
 /**
- * Where Previous goes in a file whose chapters start at `starts` (ms): back
- * to the start of this chapter, or, within `window` ms of it, to the one
- * before; null for the previous file. A file without chapters is one
- * starting at 0, and a window of Infinity never restarts it.
+ * A long press on Previous: the start of the chapter `pos` is in, or within
+ * `window` ms of it, the one before; null at the first chapter's start, or
+ * with none.
  */
-export function previousChapter(starts, pos, window) {
+export function chapterBefore(starts, pos, window) {
   let i = -1;
   for (let j = 0; j < starts.length; j++) if (starts[j] <= pos) i = j;
   if (i < 0) return null;
   if (pos - starts[i] > window) return starts[i];
   return i > 0 ? starts[i - 1] : null;
+}
+
+/**
+ * Where to continue a long file stopped at `pos` `stoppedFor` ms ago: `back`
+ * ms earlier once that is at least `after`, so a sentence cut off by the
+ * pause is heard again from its start (plan 009).
+ */
+export function rewound(pos, stoppedFor, back, after) {
+  return back > 0 && stoppedFor >= after ? Math.max(0, pos - back) : pos;
 }
 
 /** 1.25 → "1.25", 1.5 → "1.5", 2 → "2", in every locale. */

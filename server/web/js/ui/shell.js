@@ -13,7 +13,14 @@ import * as pages from "./pages.js";
 import { searchPage } from "./searchpage.js";
 import { shelvesPage, shelfPage } from "./spoken.js";
 import { settingsPage, signInPage } from "./settings.js";
-import { nowBar, miniPlayer, nowPage, banners, lyricsView } from "./player.js";
+import {
+  nowBar,
+  miniPlayer,
+  nowPage,
+  banners,
+  lyricsView,
+  skipButton,
+} from "./player.js";
 import { ctx } from "./ctx.js";
 
 const wideQuery = matchMedia("(min-width: 900px)");
@@ -347,7 +354,7 @@ export class Shell {
         : new Set([...t].filter((x) => this.page.topics.has(x)));
       this.page.update(mine);
     }
-    if (has("playback", "marks", "settings", "thumbs", "catalog")) {
+    if (has("playback", "marks", "bookmarks", "settings", "thumbs", "catalog")) {
       this.bar?.update();
       this.mini?.update();
       this.drawTitle();
@@ -604,13 +611,15 @@ export class Shell {
       ctx.playback.toggle();
     } else if (
       mod &&
-      !e.shiftKey &&
       !e.altKey &&
       (e.key === "ArrowLeft" || e.key === "ArrowRight") &&
       !typing
     ) {
       e.preventDefault();
-      e.key === "ArrowLeft" ? ctx.playback.previous(true) : ctx.playback.next(true);
+      const p = ctx.playback;
+      // With Shift, by chapter, as a long press on the buttons (plan 009).
+      if (e.shiftKey) e.key === "ArrowLeft" ? p.chapterBack() : p.chapterOn();
+      else e.key === "ArrowLeft" ? p.previous(true) : p.next(true);
     } else if (
       (e.key === "/" && !typing && !mod) ||
       (mod && e.key.toLowerCase() === "k")
@@ -653,12 +662,7 @@ export class Shell {
           "div.pipinfo",
           title,
           sub,
-          h(
-            "div.transport",
-            iconButton("previous", "Previous", () => p.previous(true)),
-            play,
-            iconButton("next", "Next", () => p.next(true)),
-          ),
+          h("div.transport", skipButton(false), play, skipButton(true)),
         ),
       ),
       bar,

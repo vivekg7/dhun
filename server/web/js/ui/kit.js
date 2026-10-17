@@ -17,6 +17,38 @@ export function iconButton(name, label, onclick, cls = "") {
   );
 }
 
+/**
+ * An icon button that does `hold` when held for half a second, by mouse,
+ * touch or pen, and then not its click. `hold` returns false when it did
+ * nothing, and the click goes ahead as usual.
+ */
+export function holdButton(name, label, onclick, hold) {
+  let timer = 0;
+  let held = false;
+  const b = iconButton(name, label, (e) => {
+    if (!held) return onclick(e);
+    // Nothing under it hears the click either: a mini player would open Now playing.
+    held = false;
+    e.stopPropagation();
+  });
+  b.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    held = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => (held = hold() !== false), 500);
+  });
+  b.addEventListener("pointerup", () => clearTimeout(timer));
+  b.addEventListener("pointercancel", () => ((held = false), clearTimeout(timer)));
+  // A touch leaves only after it lifts, before its click; a mouse leaving held down never clicks.
+  b.addEventListener("pointerleave", (e) => {
+    clearTimeout(timer);
+    if (e.pointerType === "mouse") held = false;
+  });
+  // A finger held down would open the browser's own menu.
+  b.addEventListener("contextmenu", (e) => e.preventDefault());
+  return b;
+}
+
 // MARK: The virtual list
 
 /**

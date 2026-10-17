@@ -127,6 +127,12 @@ export function settingsPage() {
     const [resume, setResume] = synced("longFiles.resume", "auto");
     const [restart, setRestart] = synced("previous.restart", true, (v) => v === "true");
     const [longPrevious, setLongPrevious] = synced("longFiles.previous", "keep");
+    const [longNext, setLongNext] = synced("longFiles.next", "next");
+    const [seekBack, setSeekBack] = synced("longFiles.seekBack", 10, Number);
+    const [seekForward, setSeekForward] = synced("longFiles.seekForward", 30, Number);
+    const [rewind, setRewind] = synced("longFiles.rewind", 10, Number);
+    const [rewindAfter, setRewindAfter] = synced("longFiles.rewindAfter", 5, Number);
+    const seconds = (list) => list.map((n) => [n, `${n} seconds`]);
     const [autoRemove, setAutoRemove] = synced("listenLater.autoRemove", true);
     const [percent, setPercent] = synced("listenLater.finishedPercent", 90, Number);
     const palette = app.prefs.palette ?? 0;
@@ -221,11 +227,53 @@ export function settingsPage() {
           select(
             [
               ["keep", "Previous file, keep my place"],
+              ["seek", "Seek back from media keys and headsets"],
               ["ignore", "Ignore media keys and headsets"],
               ["songs", "Same as songs"],
             ],
             longPrevious,
             setLongPrevious,
+          ),
+          "Seeking back or ignoring, it goes to the previous file only on the screen.",
+        ),
+        row(
+          "Next in one",
+          select(
+            [
+              ["next", "Next file"],
+              ["seek", "Seek forward from media keys and headsets"],
+            ],
+            longNext,
+            setLongNext,
+          ),
+          "Seeking forward, Next goes to the next file only on the screen.",
+        ),
+        row("Seek back", select(seconds([5, 10, 15, 30, 60]), seekBack, setSeekBack)),
+        row(
+          "Seek forward",
+          select(seconds([10, 15, 30, 60, 120]), seekForward, setSeekForward),
+        ),
+        row(
+          "Going on after a pause",
+          select(
+            [0, 5, 10, 15, 30].map((n) => [
+              n,
+              n ? `Go back ${n} seconds` : "Exactly where it stopped",
+            ]),
+            rewind,
+            (v) => (setRewind(v), draw()),
+          ),
+          "So a sentence cut off by the pause is heard again from its start.",
+        ),
+        row(
+          "A pause counts after",
+          Object.assign(
+            select(
+              [1, 5, 10, 30, 60].map((n) => [n, n === 1 ? "1 minute" : `${n} minutes`]),
+              rewindAfter,
+              setRewindAfter,
+            ),
+            { disabled: !rewind },
           ),
         ),
       ),
@@ -338,6 +386,7 @@ export function settingsPage() {
           [
             ["Space", "Play or pause"],
             ["⌘ ← / ⌘ →  (Ctrl on Windows and Linux)", "Previous and next song"],
+            ["⇧ ⌘ ← / ⇧ ⌘ →", "Previous and next chapter"],
             ["/  or  ⌘ K", "Search"],
             ["Return", "Play the selected song"],
             ["Delete", "Remove the selected songs from a queue or playlist"],

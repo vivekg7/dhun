@@ -1144,6 +1144,11 @@ h3.section {
   color: var(--fg);
   text-decoration: underline;
 }
+/* The chapter line, which opens the chapters panel. */
+.nowsub button.link {
+  display: inline;
+  font-size: inherit;
+}
 .nowqueue {
   color: var(--fg2);
   font-size: 13px;
@@ -1186,6 +1191,23 @@ h3.section {
 .transport .play .icon {
   width: 24px;
   height: 24px;
+}
+/* A long file's seek buttons: the seconds sit inside the arrow's circle, a little below its middle (plan 009). */
+.seekbutton > * {
+  grid-area: 1 / 1;
+}
+.seekbutton .icon {
+  width: 28px;
+  height: 28px;
+}
+.seekbutton .icon.mirrored {
+  transform: scaleX(-1);
+}
+.seekbutton .seconds {
+  padding-top: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .seeker {
   display: flex;
@@ -1481,6 +1503,10 @@ input.seek:focus-visible::-webkit-slider-thumb {
 .nowpage .transport {
   gap: 20px;
 }
+/* Seven buttons fit a phone's width only closer together. */
+.nowpage .transport:has(.seekbutton:not([hidden])) {
+  gap: 6px;
+}
 .nowpage .transport .play {
   width: 60px;
   height: 60px;
@@ -1706,6 +1732,33 @@ input.seek:focus-visible::-webkit-slider-thumb {
   color: var(--accent);
   font-weight: 600;
 }
+.pop .bookmark {
+  display: flex;
+  align-items: center;
+}
+.pop .bookmark .chapter {
+  flex: 1;
+  min-width: 0;
+}
+.pop .bookmark .main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  white-space: normal;
+}
+.pop .bookmark .title {
+  overflow-wrap: anywhere;
+}
+.pop .bookmark .sub {
+  color: var(--fg2);
+  font-size: 12px;
+}
+.pop .bookmark .icon-button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  color: var(--fg2);
+}
 .pop .notes {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1759,6 +1812,16 @@ dialog h2 {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+textarea.notefield {
+  min-height: 90px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  font: inherit;
+  color: inherit;
+  resize: vertical;
 }
 .dialog-error {
   color: var(--danger);

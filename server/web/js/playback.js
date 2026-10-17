@@ -17,8 +17,9 @@ import {
   tempoOf,
   songSetting,
   kindSetting,
-  nextChapter,
-  previousChapter,
+  chapterAfter,
+  chapterBefore,
+  rewound,
 } from "./queue.js";
 import { nowMs, parseTime, uuid, distinct } from "./util.js";
 
@@ -71,6 +72,11 @@ export class Playback extends EventTarget {
     this.notice = null;
     this.sleep = { mode: null };
     this.pauseAfter = null;
+    /**
+     * When the playing long file last stopped, so going on after a while goes
+     * back a little; 0 while it plays and once another song starts (plan 009).
+     */
+    this.stoppedAt = 0;
     this.stateAt = app.prefs.stateAt ?? 0;
     this.closeInterrupted();
     this.applyTempo();
@@ -178,6 +184,7 @@ export class Playback extends EventTarget {
       // The queue ran out: play its song again, as Media3 does on Play.
       return this.start(s, 0, false);
     }
+    this.continued();
     if (this.needsRestart) {
       // The server could not be reached: open the song again where it was.
       return this.start(s, this.position, false);
@@ -193,16 +200,19 @@ export class Playback extends EventTarget {
   }
 
   /**
-   * The next chapter of a file that has them (plan 031), else the next song.
-   * By chapter only `onScreen`: media keys, headsets and the lock screen go
-   * to the next file, so a press miscounted by buds never moves the place in
-   * a book (plan 009).
+   * The next song. From media keys, a headset or the lock screen (not
+   * `onScreen`), a long file may seek forward instead ("longFiles.next"),
+   * as Previous may seek back.
    */
   next(onScreen) {
-    const at = onScreen
-      ? nextChapter(this.chapterStarts, Math.round(this.position * 1000))
-      : null;
-    if (at != null) return this.seek(at / 1000);
+    const s = this.current;
+    if (
+      !onScreen &&
+      s &&
+      this.isLong(s) &&
+      this.app.setting("longFiles.next", "next") === "seek"
+    )
+      return this.seekForward();
     const n = this.nextIndex(this.currentIndex, this.repeat === "queue");
     if (n >= 0) this.jump(n, "skipped");
   }
@@ -213,7 +223,9 @@ export class Playback extends EventTarget {
    * long file never back to its start ("longFiles.previous"): the restart
    * would be saved as the place to resume, and the place lost to one
    * mistaken press. It goes to the previous file instead, which keeps its
-   * place, or does nothing from media keys. By chapter only `onScreen`, as Next.
+   * place; from media keys it may do nothing, or seek back. A click never
+   * goes by chapter, which moves the place as a restart does: a long press
+   * does (`chapterBack`), or the chapter list (plan 009).
    */
   previous(onScreen) {
     const i = this.currentIndex;
@@ -222,27 +234,55 @@ export class Playback extends EventTarget {
     const long = this.app.setting("longFiles.previous", "keep");
     const keep = this.isLong(s) && long !== "songs";
     if (keep && !onScreen && long === "ignore") return;
+    if (keep && !onScreen && long === "seek") return this.seekBack();
     const restart = !keep && this.app.setting("previous.restart", true) !== false;
-    const starts = onScreen && this.chapterStarts.length ? this.chapterStarts : [0];
-    const at = previousChapter(
-      starts,
-      Math.round(this.position * 1000),
-      restart ? 3000 : Infinity,
-    );
-    if (at != null) return this.seek(at / 1000);
+    if (restart && this.position > 3) return this.seek(0);
     const p = this.previousIndex(i);
     if (p >= 0) this.jump(p, "previous");
     else if (restart) this.seek(0);
+  }
+
+  /** A long press on Next: the next chapter, never the next file. False in a file without chapters. */
+  chapterOn() {
+    const at = chapterAfter(this.chapterStarts, Math.round(this.position * 1000));
+    if (at != null) this.seek(at / 1000);
+    return this.chapterStarts.length > 0;
+  }
+
+  /**
+   * A long press on Previous: back to this chapter's start, or within its
+   * first seconds to the one before. A long press is meant, so unlike a
+   * click it may go back in a long file; never to the previous file.
+   */
+  chapterBack() {
+    const at = chapterBefore(
+      this.chapterStarts,
+      Math.round(this.position * 1000),
+      3000,
+    );
+    if (at != null) this.seek(at / 1000);
+    return this.chapterStarts.length > 0;
   }
 
   get chapterStarts() {
     return this.current?.chapters.map((c) => c.startMs) ?? [];
   }
 
+  /** Back or on within the file, by the seconds set for long files (plan 009). */
+  seekBack() {
+    this.seek(this.position - this.app.setting("longFiles.seekBack", 10));
+  }
+
+  seekForward() {
+    this.seek(this.position + this.app.setting("longFiles.seekForward", 30));
+  }
+
   seek(seconds) {
     const s = this.current;
     if (!s) return;
     this.position = Math.max(0, Math.min(seconds, this.duration || seconds));
+    // A seek while stopped chose the place, so nothing goes back from it.
+    if (!this.isPlaying) this.stoppedAt = 0;
     // Paused, nothing else saves where it now is: a reload or the other devices would get the old place.
     if (!this.isPlaying && this.active)
       this.savePlace(this.active, s, Math.round(this.position * 1000));
@@ -701,6 +741,8 @@ export class Playback extends EventTarget {
     }
     this.clearSpare();
     this.setPlaying(!paused);
+    // Another song, or this one opened afresh: a start from its resume point has gone back already.
+    this.stoppedAt = 0;
     if (!paused) this.resumeElement();
     else this.quietly(() => el.pause());
     this.updateSession();
@@ -969,6 +1011,7 @@ export class Playback extends EventTarget {
     this.isPlaying = playing;
     // Not on a skip past a song that failed, which plays on: the count must reach the queue's length.
     if (playing && changed) this.failures = 0;
+    if (changed && !playing) this.stoppedAt = nowMs();
     const o = this.open;
     if (o) {
       if (playing) this.started(o);
@@ -1003,11 +1046,16 @@ export class Playback extends EventTarget {
     );
   }
 
-  /** Where to start `s`: its resume point under "auto"; under "ask", offered instead. */
+  /**
+   * Where to start `s`: its resume point under "auto"; under "ask", offered
+   * instead. Gone back a little if it was left a while ago, by the point's
+   * time, so that holds across devices and reloads.
+   */
   startPosition(s) {
     this.offerResume = null;
-    const ms = this.isLong(s) ? this.app.resume(s.id) : 0;
-    if (!ms) return null;
+    const left = this.isLong(s) ? this.app.resume(s.id) : 0;
+    if (!left) return null;
+    const ms = this.rewind(left, this.app.resumeMap.get(s.id).at);
     switch (this.app.setting("longFiles.resume", "auto")) {
       case "auto":
         return ms;
@@ -1017,6 +1065,29 @@ export class Playback extends EventTarget {
       default:
         return null;
     }
+  }
+
+  /** `pos` (ms) in a long file stopped at `since`, gone back "longFiles.rewind" seconds if that was a while ago. */
+  rewind(pos, since) {
+    return rewound(
+      pos,
+      nowMs() - since,
+      this.app.setting("longFiles.rewind", 10) * 1000,
+      this.app.setting("longFiles.rewindAfter", 5) * 60_000,
+    );
+  }
+
+  /** Play after a stop: picks up where the file stopped, gone back a little after a long pause. */
+  continued() {
+    const s = this.current;
+    const since = this.stoppedAt;
+    this.stoppedAt = 0;
+    if (!s || !since || !this.isLong(s)) return;
+    const pos = Math.round(this.position * 1000);
+    const to = this.rewind(pos, since);
+    if (to === pos) return;
+    this.position = to / 1000;
+    this.el.currentTime = this.position;
   }
 
   /** Not in the last seconds: a file that plays to its end also stops, and the pause would save its end as the place to resume. */
@@ -1247,14 +1318,37 @@ export class Playback extends EventTarget {
     on("previoustrack", () => this.previous(false));
     on("nexttrack", () => this.next(false));
     on("seekto", (d) => this.seek(d.seekTime));
-    on("seekbackward", (d) => this.seek(this.position - (d.seekOffset ?? 10)));
-    on("seekforward", (d) => this.seek(this.position + (d.seekOffset ?? 10)));
+  }
+
+  /**
+   * A long file seeks back and forward from the OS's controls, by the
+   * seconds set for long files; a song has none, so a phone's lock screen
+   * keeps Previous and Next for it (plan 009).
+   */
+  sessionSeeks(ms) {
+    const s = this.current;
+    const back = this.app.setting("longFiles.seekBack", 10);
+    const on = this.app.setting("longFiles.seekForward", 30);
+    const key = s && this.isLong(s) ? `${back}/${on}` : "";
+    if (key === this.seekKey) return;
+    this.seekKey = key;
+    for (const [action, f] of [
+      ["seekbackward", () => this.seekBack()],
+      ["seekforward", () => this.seekForward()],
+    ]) {
+      try {
+        ms.setActionHandler(action, key ? f : null);
+      } catch {
+        // An action this browser does not know.
+      }
+    }
   }
 
   updateSession() {
     const ms = navigator.mediaSession;
     if (!ms) return;
     const s = this.current;
+    this.sessionSeeks(ms);
     if (!s) {
       ms.metadata = null;
       ms.playbackState = "none";

@@ -1,11 +1,11 @@
 // Audiobooks and podcasts (plan 031): every book or show, one's files, and
-// the chapters and notes of the file playing.
+// the bookmarks (plan 033), chapters and notes of the file playing.
 
 import { h, clock, count } from "../util.js";
 import { icon } from "../icons.js";
 import { chapterName, day } from "../catalog.js";
 import { Query } from "../search.js";
-import { VList, menuAt, showMenu, emptyNote } from "./kit.js";
+import { VList, menuAt, showMenu, emptyNote, iconButton, dialog } from "./kit.js";
 import { SongList, items, thumb, cover } from "./songs.js";
 import { frame, filterBox, missing } from "./pages.js";
 import { ctx } from "./ctx.js";
@@ -217,43 +217,114 @@ export function spokenFacts(s) {
   return [s.groupTitle === s.title ? "" : s.groupTitle, s.artist || s.albumArtist];
 }
 
-/** An episode's or a book file's chapters, each a click away, and its notes. */
+/**
+ * The line under the title on Now playing that opens the chapters panel: the
+ * chapter playing, or, in a file without chapters, how many bookmarks it
+ * has, so a long music file reaches them too (plan 033). Null for neither.
+ */
+export function chapterLine(s, positionMs) {
+  if (s.spoken && s.chapters.length) return chapterLabel(s, positionMs);
+  const n = ctx.app.bookmarks(s.id).length;
+  return n ? count(n, "bookmark") : null;
+}
+
+/** The server's limit on a bookmark's note, in characters. */
+const maxNote = 1000;
+
+/** An episode's or a book file's bookmarks and chapters, each a click away, and its notes. */
 export function chaptersPanel(close) {
   const p = ctx.playback;
   const s = p.current;
   if (!s) return h("div.pop", h("p.note", "Nothing playing"));
-  const now = chapterAt(s, p.position * 1000);
+  const el = h("div.pop.chapters");
+  const chapterOf = (ms) => {
+    const i = chapterAt(s, ms);
+    return i < 0 ? "" : chapterName(s.chapters[i]) || `Chapter ${i + 1}`;
+  };
+  const play = (ms) => () => {
+    p.seek(ms / 1000);
+    close();
+  };
+  // A bookmark: its time, its note or else its chapter, and buttons to change the note or delete it.
+  const mark = (b) => {
+    const chapter = chapterOf(b.positionMs);
+    return h(
+      "div.bookmark",
+      h(
+        "button.plain.chapter",
+        { type: "button", onclick: play(b.positionMs) },
+        h("span.time", clock(b.positionMs / 1000)),
+        h(
+          "span.main",
+          h("span.title", b.note || chapter || "Bookmark"),
+          b.note && chapter ? h("span.sub", chapter) : null,
+        ),
+      ),
+      iconButton("edit", b.note ? "Edit the note" : "Add a note", async () => {
+        if (await editNote(b)) draw();
+      }),
+      iconButton("close", "Delete", () => {
+        ctx.app.bookmark({ ...b, note: "", deleted: true });
+        draw();
+      }),
+    );
+  };
+  const draw = () => {
+    const marks = ctx.app.bookmarks(s.id);
+    const now = chapterAt(s, p.position * 1000);
+    const parts = [
+      h("h3", s.title),
+      marks.length ? [h("p.pophead", "Bookmarks"), marks.map(mark)] : null,
+      s.chapters.length
+        ? [
+            h("p.pophead", "Chapters"),
+            s.chapters.map((c, i) =>
+              h(
+                "button.plain.chapter",
+                {
+                  type: "button",
+                  class: i === now ? "on" : "",
+                  onclick: play(c.startMs),
+                },
+                h("span.time", clock(c.startMs / 1000)),
+                h("span", chapterName(c) || `Chapter ${i + 1}`),
+              ),
+            ),
+          ]
+        : null,
+      s.notes ? [h("p.pophead", "Notes"), h("p.notes", s.notes)] : null,
+      !s.chapters.length && !s.notes && !marks.length
+        ? h("p.note", "No chapters or notes")
+        : null,
+    ];
+    el.replaceChildren(...parts.flat(2).filter(Boolean));
+  };
+  draw();
   // The chapter playing in view and focused, once the panel is placed, rather than the first.
   setTimeout(() => {
     const on = el.querySelector(".chapter.on");
     on?.focus({ preventScroll: true });
     on?.scrollIntoView({ block: "center" });
   });
-  const el = h(
-    "div.pop.chapters",
-    h("h3", s.title),
-    s.chapters.length
-      ? [
-          h("p.pophead", "Chapters"),
-          s.chapters.map((c, i) =>
-            h(
-              "button.plain.chapter",
-              {
-                type: "button",
-                class: i === now ? "on" : "",
-                onclick: () => {
-                  p.seek(c.startMs / 1000);
-                  close();
-                },
-              },
-              h("span.time", clock(c.startMs / 1000)),
-              h("span", chapterName(c) || `Chapter ${i + 1}`),
-            ),
-          ),
-        ]
-      : null,
-    s.notes ? [h("p.pophead", "Notes"), h("p.notes", s.notes)] : null,
-    !s.chapters.length && !s.notes ? h("p.note", "No chapters or notes") : null,
-  );
   return el;
+}
+
+/** Writes or changes a bookmark's note; true when saved. */
+async function editNote(b) {
+  const input = h("textarea.notefield", {
+    rows: 4,
+    maxlength: maxNote,
+    placeholder: "What happens here",
+    "aria-label": "Note",
+  });
+  input.value = b.note;
+  const r = await dialog(
+    `Note at ${clock(b.positionMs / 1000)}`,
+    [input],
+    [{ label: "Cancel" }, { label: "Save", submit: true, primary: true, value: "ok" }],
+    { onOpen: () => input.focus() },
+  );
+  if (r !== "ok") return false;
+  ctx.app.bookmark({ ...b, note: input.value.trim() });
+  return true;
 }

@@ -1,6 +1,6 @@
 # 033 — Bookmarks in long files
 
-**Status:** `IN PROGRESS` — the server, Android and macOS built; the web next
+**Status:** `MERGED` — on `main` for the server, Android, macOS and the web; not yet released
 **Started:** 2026-10-17
 
 ## Problem
@@ -90,4 +90,6 @@ so a bookmark made against it would stay on that one device.
    field, `api/openapi.yaml`, tests.
 2. Android: the table, the outbox ops, the button and the sheet.
 3. macOS and the web: the same. On the Mac a note is written in place
-   in the popover's row, and the row's menu is also its right-click menu.
+   in the popover's row, and the row's menu is also its right-click menu;
+   on the web each row has edit and delete buttons rather than a menu,
+   since the web's menu closes any open panel and would close this one.

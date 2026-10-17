@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Catalog, Heard, song, day } from "../js/catalog.js";
-import { nextChapter, previousChapter } from "../js/queue.js";
+import { chapterAfter, chapterBefore, rewound } from "../js/queue.js";
 
 const s = (id, path, { kind = "", group = "", index = 0 } = {}) =>
   song({
@@ -85,36 +85,30 @@ test("a compact date reads as a day", () => {
   assert.equal(d("2025"), "2025");
 });
 
-test("Previous goes to this chapter, then the one before", () => {
+test("a long press goes by chapter, and never off the file", () => {
   const starts = [0, 60_000, 120_000];
-  assert.equal(previousChapter(starts, 90_000, 3000), 60_000);
-  assert.equal(previousChapter(starts, 61_000, 3000), 0);
+  assert.equal(chapterBefore(starts, 90_000, 3000), 60_000, "this chapter's start");
+  assert.equal(chapterBefore(starts, 61_000, 3000), 0, "just into it: the one before");
   assert.equal(
-    previousChapter(starts, 1000, 3000),
+    chapterBefore(starts, 1000, 3000),
     null,
-    "the first chapter goes to the previous file",
+    "the first chapter's start stays",
   );
-  assert.equal(previousChapter([], 90_000, 3000), null);
-  // Just sought to a chapter, a little before its start: Next goes to the one after.
-  assert.equal(nextChapter(starts, 59_900), 120_000);
-  assert.equal(
-    nextChapter(starts, 130_000),
-    null,
-    "the last chapter goes on to the next file",
-  );
+  assert.equal(chapterBefore([], 90_000, 3000), null);
+  // Just sought to a chapter, a little before its start: the one after, not that one again.
+  assert.equal(chapterAfter(starts, 59_900), 120_000);
+  assert.equal(chapterAfter(starts, 130_000), null, "the last chapter stays");
 });
 
-test("Previous never restarts a long file", () => {
-  // One mistaken press restarted a book half heard, and its place was lost.
+// Stopped mid-sentence in an episode: going on later starts the sentence again, a short pause does not.
+test("a long pause goes back a little", () => {
+  const minute = 60_000;
+  assert.equal(rewound(90_000, 6 * minute, 10_000, 5 * minute), 80_000);
+  assert.equal(rewound(90_000, 30_000, 10_000, 5 * minute), 90_000, "a moment's pause");
   assert.equal(
-    previousChapter([0], 5 * 3_600_000, Infinity),
-    null,
-    "no chapters: the previous file",
-  );
-  assert.equal(
-    previousChapter([0, 60_000], 90_000, Infinity),
+    rewound(4000, 6 * minute, 10_000, 5 * minute),
     0,
-    "chapters: the one before, not this one's start",
+    "never before the start",
   );
-  assert.equal(previousChapter([0], 90_000, 3000), 0, "a song still restarts");
+  assert.equal(rewound(90_000, 6 * minute, 0, 5 * minute), 90_000, "turned off");
 });
