@@ -542,7 +542,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
                 }
             }
-            Tip("Next") { IconButton({ app.playback.next(onScreen = true) }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
+            Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next", Modifier.size(26.dp)) } }
         }
     }
 }
@@ -650,7 +650,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                     Icon(Icons.Play, null, Modifier.size(26.dp), tint = Color.White)
                 }
             }
-            Tip("Next") { IconButton({ app.playback.next(onScreen = true) }) { Icon(Icons.Next, "Next") } }
+            Tip("Next") { IconButton({ app.playback.player.seekToNext() }) { Icon(Icons.Next, "Next") } }
         }
     }
 }

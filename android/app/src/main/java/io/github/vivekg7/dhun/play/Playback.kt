@@ -447,24 +447,16 @@ class Playback(
             load(q.copy(usedAt = System.currentTimeMillis()), play = true)
         }
 
-    // --- Next and Previous (plans 009 and 031) -----------------------------
-
-    /**
-     * Next goes by chapter in a file that has them, but only [onScreen]: a
-     * headset, the notification or the lock screen goes to the next file, so
-     * a press miscounted by buds never moves the place in a book.
-     */
-    fun next(onScreen: Boolean) {
-        val at = if (onScreen) nextChapter(chapterStarts(), player.currentPosition) else null
-        if (at != null) player.seekTo(at) else player.seekToNext()
-    }
+    // --- Previous (plan 009) ----------------------------------------------
 
     /**
      * Previous restarts the song first, unless "previous.restart" is off. In
      * a long file it never does ("longFiles.previous"): the restart would be
      * saved as the place to resume, and the place lost to one mistaken
      * press. It goes to the previous file instead, which keeps its place, or
-     * does nothing from a headset. By chapter only [onScreen], as Next.
+     * does nothing from a headset. It never goes by chapter, which moves the
+     * place as a restart does: the chapter list does that. Next always goes
+     * to the next file.
      */
     fun previous(onScreen: Boolean) {
         val s = current.value ?: return
@@ -472,20 +464,12 @@ class Playback(
         val keep = isLong(s) && long != "songs"
         if (keep && !onScreen && long == "ignore") return
         val restart = !keep && settings.value.bool("previous.restart", true)
-        val starts = chapterStarts().takeIf { onScreen && it.isNotEmpty() } ?: listOf(0L)
-        val at = previousChapter(starts, player.currentPosition, if (restart) player.maxSeekToPreviousPosition else Long.MAX_VALUE)
         when {
-            at != null -> player.seekTo(at)
+            restart && player.currentPosition > player.maxSeekToPreviousPosition -> player.seekTo(0)
             player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
             restart -> player.seekTo(0)
         }
     }
-
-    private fun chapterStarts() =
-        current.value
-            ?.chapterList
-            ?.map { it.startMs }
-            .orEmpty()
 
     /** Plays [song] of the active queue. */
     fun playAt(index: Int) {
@@ -1084,36 +1068,6 @@ class Playback(
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val IO_ERRORS = 2000..2999
-
-        /**
-         * Where Next goes in a file whose chapters start at [starts]: the next
-         * chapter, or null for the next file. A chapter starting within a
-         * second is the one just sought to, not the next.
-         */
-        fun nextChapter(
-            starts: List<Long>,
-            pos: Long,
-        ) = starts.firstOrNull { it > pos + 1_000 }
-
-        /**
-         * Where Previous goes in a file whose chapters start at [starts]: back
-         * to the start of this chapter, or, within [window] of it, to the one
-         * before; null for the previous file. A file without chapters is one
-         * starting at 0, and a window of [Long.MAX_VALUE] never restarts it.
-         */
-        fun previousChapter(
-            starts: List<Long>,
-            pos: Long,
-            window: Long,
-        ): Long? {
-            val i = starts.indexOfLast { it <= pos }
-            return when {
-                i < 0 -> null
-                pos - starts[i] > window -> starts[i]
-                i > 0 -> starts[i - 1]
-                else -> null
-            }
-        }
 
         fun repeatMode(r: String) =
             when (r) {

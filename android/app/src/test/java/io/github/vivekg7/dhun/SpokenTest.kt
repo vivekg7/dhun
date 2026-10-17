@@ -6,7 +6,6 @@ import io.github.vivekg7.dhun.play.Playback
 import io.github.vivekg7.dhun.ui.Heard
 import io.github.vivekg7.dhun.ui.day
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,26 +95,5 @@ class SpokenTest {
         assertEquals("2025-12-30", s.copy(date = "20251230").day)
         assertEquals("2025-12-30", s.copy(date = "2025-12-30T08:00:00Z").day)
         assertEquals("2025", s.copy(date = "2025").day)
-    }
-
-    @Test
-    fun previousGoesToThisChapterThenTheOneBefore() {
-        val starts = listOf(0L, 60_000L, 120_000L)
-        assertEquals(60_000L, Playback.previousChapter(starts, 90_000, 3_000))
-        assertEquals(0L, Playback.previousChapter(starts, 61_000, 3_000))
-        assertNull("the first chapter's start goes to the previous file", Playback.previousChapter(starts, 1_000, 3_000))
-        assertNull(Playback.previousChapter(emptyList(), 90_000, 3_000))
-        // Just sought to a chapter, a little before its start: Next goes to the one after.
-        assertEquals(120_000L, Playback.nextChapter(starts, 59_900))
-        assertNull("the last chapter goes on to the next file", Playback.nextChapter(starts, 130_000))
-    }
-
-    /** One mistaken press of Previous restarted a book half heard, and its place was lost. */
-    @Test
-    fun previousNeverRestartsALongFile() {
-        val never = Long.MAX_VALUE
-        assertNull("no chapters: the previous file", Playback.previousChapter(listOf(0L), 5 * 3_600_000L, never))
-        assertEquals("chapters: the one before, not this one's start", 0L, Playback.previousChapter(listOf(0L, 60_000L), 90_000, never))
-        assertEquals("a song still restarts", 0L, Playback.previousChapter(listOf(0L), 90_000, 3_000))
     }
 }

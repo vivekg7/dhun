@@ -186,8 +186,9 @@ in the catalogue.
 - **Every episode and book file keeps a resume point,** however short.
   `longFiles.minMinutes` (009) is for music: a book split into 10-minute
   files would otherwise start each one from the beginning.
-- **Next and Previous go by chapter** in a file that has chapters, on Now
-  playing and in the mini players. Previous goes to the chapter before,
+- **Next and Previous go by chapter** (until 2026-10-17, when they went
+  by file everywhere: [009](009_resume_long_files.md#seeking-and-going-on-after-a-pause-owner-2026-10-17))
+  in a file that has chapters, on Now playing and in the mini players. Previous goes to the chapter before,
   never back to the start of the one playing, as it never restarts a long
   file. A headset, the notification and the lock screen go by file (the
   session's player tells the app where a press came from), so a tap

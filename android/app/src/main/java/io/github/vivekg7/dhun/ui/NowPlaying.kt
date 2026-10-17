@@ -308,7 +308,7 @@ fun NowPlayingScreen(nav: Nav) {
                     ) { g -> Icon(if (g) Icons.Pause else Icons.Play, if (g) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
                 }
             }
-            Tip("Next") { IconButton({ pb.next(onScreen = true) }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
+            Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
         }
     }
 }

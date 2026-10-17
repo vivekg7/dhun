@@ -94,11 +94,24 @@ mistaken Previous could cost the owner their place hours into a book. So:
   lock screen go by file, Next as well as Previous: a chapter skip moves
   the place within the file just as a restart does. Now playing and the
   mini players still go by chapter, and Previous there never restarts the
-  chapter playing in a long file.
+  chapter playing in a long file. Since 2026-10-17 they go by file
+  everywhere (below).
 
 Rejected: ignoring Previous in long files everywhere (a button on screen
 that does nothing looks broken), and an undo after a restart (the place is
 already gone by the time it is noticed, in a pocket).
+
+### Seeking, and going on after a pause (owner, 2026-10-17)
+
+What the owner missed with podcasts:
+
+- **Next and Previous never go by chapter,** on the screen either. A
+  chapter skip on Now playing moved the place in an episode just as the
+  headset's did, and the owner lost their place to it. Next goes to the
+  next file, and Previous as set above; a chapter is reached from the
+  chapter list, which the chapter line under the title opens.
+
+Android first. macOS and the web still go by chapter on the screen.
 
 ### Progress in lists (owner, 2026-10-15)
 
