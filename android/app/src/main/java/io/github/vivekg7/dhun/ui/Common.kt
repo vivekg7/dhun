@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -29,6 +30,7 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Downloads
@@ -163,6 +166,41 @@ fun Tip(
     tip: String,
     content: @Composable () -> Unit,
 ) = TooltipBox(TooltipDefaults.rememberPlainTooltipPositionProvider(), { PlainTooltip { Text(tip) } }, rememberTooltipState(), content = content)
+
+/**
+ * Previous or Next on the screen. A tap goes by file; in a file with
+ * chapters a long press goes by chapter (docs/plans/009_resume_long_files.md),
+ * and there is no tooltip, which holding the button would show instead.
+ */
+@Composable
+fun SkipButton(
+    next: Boolean,
+    song: Song,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 24.dp,
+) {
+    val pb = App.app.playback
+    val label = if (next) "Next" else "Previous"
+    val icon = if (next) Icons.Next else Icons.Previous
+    val tap = { if (next) pb.player.seekToNext() else pb.previous(onScreen = true) }
+    if (song.chapters.isEmpty()) {
+        Tip(label) { IconButton(tap, modifier) { Icon(icon, label, Modifier.size(iconSize)) } }
+        return
+    }
+    Box(
+        modifier
+            .minimumInteractiveComponentSize()
+            .size(40.dp)
+            .clip(CircleShape)
+            .combinedClickable(
+                onClickLabel = label,
+                onLongClickLabel = if (next) "Next chapter" else "Previous chapter",
+                onLongClick = { if (next) pb.chapterOn() else pb.chapterBack() },
+                onClick = tap,
+            ),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, label, Modifier.size(iconSize)) }
+}
 
 /**
  * A detail page's top: back, title, a line of facts, Play / Shuffle /

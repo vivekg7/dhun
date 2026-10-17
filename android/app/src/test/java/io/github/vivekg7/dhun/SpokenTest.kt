@@ -6,6 +6,7 @@ import io.github.vivekg7.dhun.play.Playback
 import io.github.vivekg7.dhun.ui.Heard
 import io.github.vivekg7.dhun.ui.day
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -95,6 +96,19 @@ class SpokenTest {
         assertEquals("2025-12-30", s.copy(date = "20251230").day)
         assertEquals("2025-12-30", s.copy(date = "2025-12-30T08:00:00Z").day)
         assertEquals("2025", s.copy(date = "2025").day)
+    }
+
+    /** A long press on Previous or Next goes by chapter, and never off the file. */
+    @Test
+    fun aLongPressGoesByChapter() {
+        val starts = listOf(0L, 60_000L, 120_000L)
+        assertEquals("this chapter's start", 60_000L, Playback.chapterBefore(starts, 90_000, 3_000))
+        assertEquals("just into it: the one before", 0L, Playback.chapterBefore(starts, 61_000, 3_000))
+        assertNull("the first chapter's start stays", Playback.chapterBefore(starts, 1_000, 3_000))
+        assertNull(Playback.chapterBefore(emptyList(), 90_000, 3_000))
+        // Just sought to a chapter, a little before its start: the one after, not that one again.
+        assertEquals(120_000L, Playback.chapterAfter(starts, 59_900))
+        assertNull("the last chapter stays", Playback.chapterAfter(starts, 130_000))
     }
 
     /** Stopped mid-sentence in an episode: going on later starts the sentence again, a short pause does not. */

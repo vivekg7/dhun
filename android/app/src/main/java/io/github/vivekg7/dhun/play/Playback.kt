@@ -454,9 +454,9 @@ class Playback(
      * a long file it never does ("longFiles.previous"): the restart would be
      * saved as the place to resume, and the place lost to one mistaken
      * press. It goes to the previous file instead, which keeps its place;
-     * from a headset it may do nothing, or seek back. It never goes by
-     * chapter, which moves the place as a restart does: the chapter list
-     * does that.
+     * from a headset it may do nothing, or seek back. A tap never goes by
+     * chapter, which moves the place as a restart does: a long press does
+     * ([chapterBack]), or the chapter list.
      */
     fun previous(onScreen: Boolean) {
         val s = current.value ?: return
@@ -480,6 +480,26 @@ class Playback(
         val s = current.value ?: return
         if (!onScreen && isLong(s) && settings.value.string("longFiles.next", "next") == "seek") seekForward() else player.seekToNext()
     }
+
+    /** A long press on Next: the next chapter, never the next file. */
+    fun chapterOn() {
+        chapterAfter(chapterStarts(), player.currentPosition)?.let(player::seekTo)
+    }
+
+    /**
+     * A long press on Previous: back to this chapter's start, or within its
+     * first seconds to the one before. A long press is meant, so unlike a
+     * tap it may go back in a long file; never to the previous file.
+     */
+    fun chapterBack() {
+        chapterBefore(chapterStarts(), player.currentPosition, player.maxSeekToPreviousPosition)?.let(player::seekTo)
+    }
+
+    private fun chapterStarts() =
+        current.value
+            ?.chapterList
+            ?.map { it.startMs }
+            .orEmpty()
 
     /** Back or on within the file, by the seconds set for long files. */
     fun seekBack() = seekBy(-settings.value.int("longFiles.seekBack", 10) * 1_000L)
@@ -1135,6 +1155,34 @@ class Playback(
             back: Long,
             after: Long,
         ) = if (back > 0 && stoppedFor >= after) (pos - back).coerceAtLeast(0) else pos
+
+        /**
+         * The chapter after [pos] among chapters starting at [starts], or
+         * null after the last. One starting within a second is the one just
+         * sought to, not the next.
+         */
+        fun chapterAfter(
+            starts: List<Long>,
+            pos: Long,
+        ) = starts.firstOrNull { it > pos + 1_000 }
+
+        /**
+         * The start of the chapter [pos] is in, or within [window] of it, the
+         * one before; null at the first chapter's start, or with none.
+         */
+        fun chapterBefore(
+            starts: List<Long>,
+            pos: Long,
+            window: Long,
+        ): Long? {
+            val i = starts.indexOfLast { it <= pos }
+            return when {
+                i < 0 -> null
+                pos - starts[i] > window -> starts[i]
+                i > 0 -> starts[i - 1]
+                else -> null
+            }
+        }
 
         fun repeatMode(r: String) =
             when (r) {

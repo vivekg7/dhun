@@ -132,6 +132,12 @@ What the owner missed with podcasts:
   forward either side of Play (Media3's `SLOT_BACK` and `SLOT_FORWARD`),
   with the seconds in the icon for 5, 10, 15 and 30, and Previous and
   Next moved to the overflow. A song keeps Previous and Next there.
+- **A long press on Previous or Next goes by chapter,** on Now playing
+  and in the mini players, in a file with chapters. A long press is
+  meant, as a tap may not be, so it may move the place: Next to the next
+  chapter, Previous to this chapter's start, or within its first 3 s to
+  the one before. It never leaves the file. In a file without chapters
+  it does nothing, and the button keeps its tooltip.
 - **Going on after a pause** of at least `longFiles.rewindAfter` minutes
   (5) starts `longFiles.rewind` seconds (10) before where the file
   stopped, so a sentence cut off is heard again from its start; `0` turns

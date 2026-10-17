@@ -201,10 +201,11 @@ Owner, 2026-10-10; how it is built is in
   still logged in the listening history.
 - **Chapters** show on Now playing, and a tap on one in the chapter list
   plays from it: chapters stored inside a file, or a book's files as its
-  chapters. Next and Previous go by file, never by chapter, on the screen
-  as from a headset: a chapter skip moves the place in the file, and the
-  place is lost to one mistaken press (owner, 2026-10-17; they went by
-  chapter on the screen from 2026-10-11).
+  chapters. A tap on Next or Previous goes by file, never by chapter, on
+  the screen as from a headset: a chapter skip moves the place in the
+  file, and the place is lost to one mistaken press. A long press on them
+  goes by chapter (owner, 2026-10-17; a tap went by chapter on the screen
+  from 2026-10-11).
 - **Transcripts** show the way lyrics do, from a `.transcript.md` or a
   `.vtt` subtitle file beside the episode.
 - **Speed** can be set for all podcasts and for all audiobooks, as well as

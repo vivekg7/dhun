@@ -290,7 +290,7 @@ fun NowPlayingScreen(nav: Nav) {
         ) {
             // A long file steps back and on within itself, by the seconds set for long files (plan 009).
             val long = pb.isLong(s)
-            Tip("Previous") { IconButton({ pb.previous(onScreen = true) }, Modifier.size(56.dp)) { Icon(Icons.Previous, "Previous", Modifier.size(36.dp)) } }
+            SkipButton(next = false, s, Modifier.size(56.dp), 36.dp)
             if (long) SeekButton(settings.int("longFiles.seekBack", 10), forward = false, pb::seekBack)
             Tip(if (going) "Pause" else "Play") {
                 // Gives a little under the finger, and the icon turns from one to the other.
@@ -316,7 +316,7 @@ fun NowPlayingScreen(nav: Nav) {
                 }
             }
             if (long) SeekButton(settings.int("longFiles.seekForward", 30), forward = true, pb::seekForward)
-            Tip("Next") { IconButton({ pb.player.seekToNext() }, Modifier.size(56.dp)) { Icon(Icons.Next, "Next", Modifier.size(36.dp)) } }
+            SkipButton(next = true, s, Modifier.size(56.dp), 36.dp)
         }
     }
 }
