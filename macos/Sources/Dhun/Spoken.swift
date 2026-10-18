@@ -216,6 +216,8 @@ struct ChaptersPanel: View {
     /// The bookmark whose note is being written, and the note so far.
     @State private var editing: String?
     @State private var note = ""
+    /// Typing goes to the note as soon as it opens, not to the player (Space would pause it).
+    @FocusState private var noteFocused: Bool
 
     var body: some View {
         let p = app.playback
@@ -330,10 +332,17 @@ struct ChaptersPanel: View {
         return VStack(alignment: .trailing, spacing: 6) {
             TextField(
                 "Note at \(clock(Double(b.positionMs) / 1000))",
-                text: Binding(get: { note }, set: { note = String($0.prefix(Bookmark.maxNote)) }),
+                // Counted as the server counts, in code points: a grapheme can hold several.
+                text: Binding(
+                    get: { note },
+                    set: {
+                        note = String(String.UnicodeScalarView($0.unicodeScalars.prefix(Bookmark.maxNote)))
+                    }),
                 prompt: Text("What happens here"), axis: .vertical
             )
             .lineLimit(1...5)
+            .focused($noteFocused)
+            .onAppear { noteFocused = true }
             .onSubmit(save)
             HStack {
                 Button("Cancel") { editing = nil }.keyboardShortcut(.cancelAction)

@@ -156,7 +156,7 @@ public struct Bookmark: Hashable, Sendable, Identifiable {
         self.deleted = deleted
     }
 
-    /// The server's limit on a note.
+    /// The server's limit on a note, in Unicode code points.
     public static let maxNote = 1000
 }
 
