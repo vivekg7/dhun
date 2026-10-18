@@ -1012,8 +1012,9 @@ class Playback(
 
                     sameSong -> {
                         // A seek within the song: the listen goes on. One
-                        // while stopped chose the place, so nothing rewinds it.
-                        if (!player.isPlaying) stoppedAt = 0
+                        // while stopped chose the place, so nothing rewinds it;
+                        // not the player's own adjustment of a seek in an MP3.
+                        if (!player.isPlaying && reason == Player.DISCONTINUITY_REASON_SEEK) stoppedAt = 0
                         return
                     }
 
