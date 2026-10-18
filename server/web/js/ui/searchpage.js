@@ -169,12 +169,21 @@ export function searchPage(initial, { field = false } = {}) {
     if (!heads.length) return;
     const el = list.el;
     const end = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-    const at = end ? heads.length - 1 : heads.findLastIndex((hd) => below(hd) <= 1);
-    [...chips.children].forEach((b, i) =>
-      i === Math.max(0, at)
-        ? b.setAttribute("aria-current", "location")
-        : b.removeAttribute("aria-current"),
+    const at = Math.max(
+      0,
+      end ? heads.length - 1 : heads.findLastIndex((hd) => below(hd) <= 1),
     );
+    const b = chips.children[at];
+    if (b.hasAttribute("aria-current")) return;
+    for (const c of chips.children) c.removeAttribute("aria-current");
+    b.setAttribute("aria-current", "location");
+    // On a phone the row runs past the edge: keep the selected chip in sight.
+    // Only on a change, as scroll events come many a second.
+    if (
+      b.offsetLeft < chips.scrollLeft ||
+      b.offsetLeft + b.offsetWidth > chips.scrollLeft + chips.clientWidth
+    )
+      chips.scrollTo({ left: b.offsetLeft - 20, behavior: "smooth" });
   };
   list.el.addEventListener("scroll", markChip, { passive: true });
   // With one section there is nowhere to jump.
