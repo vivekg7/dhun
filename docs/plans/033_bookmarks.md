@@ -1,6 +1,6 @@
 # 033 — Bookmarks in long files
 
-**Status:** `MERGED` — on `main` for the server, Android, macOS and the web; not yet released
+**Status:** `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); not yet installed or deployed
 **Started:** 2026-10-17
 
 ## Problem

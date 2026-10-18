@@ -1,6 +1,6 @@
 # 034 — Shorter settings text, marked defaults, reset, and which settings to add
 
-**Status:** `IN PROGRESS` — accepted by the owner (2026-10-18); being built on Android, macOS and the web
+**Status:** `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); not yet installed or deployed
 **Started:** 2026-10-18
 
 ## Problem
