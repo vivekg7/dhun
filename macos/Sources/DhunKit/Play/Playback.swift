@@ -637,6 +637,7 @@ public final class Playback {
         }
         let index = songs.firstIndex { $0.id == q.currentSong } ?? 0
         let song = songs[index]
+        heardAt = 0
         var start = position
         if start != nil { offerResume = nil }
         if start == nil { start = startPosition(song) }
@@ -648,6 +649,7 @@ public final class Playback {
         rebuildOrder(keepingShuffle: false, shuffle: q.shuffle)
         app.store.putQueue(q)
         self.start(song, at: Double(start!) / 1000, paused: !play)
+        if !play { stoppedAt = stoppedSince() }
     }
 
     /// Opens `s` in the engine at `seconds`; the listen opens with it.
@@ -692,9 +694,13 @@ public final class Playback {
         close(end, toMs: Int(at * 1000))
         if let finished { saveResume(finished, Int(at * 1000)) }
         sleep.onNextSong()
+        heardAt = 0
         var start = startPosition(s) ?? 0
         if s.id == finished?.id { start = 0 }
-        self.start(s, at: Double(start) / 1000, paused: !(play ?? isPlaying))
+        let paused = !(play ?? isPlaying)
+        self.start(s, at: Double(start) / 1000, paused: paused)
+        // Next while paused: the file has been stopped as long as its place.
+        if paused { stoppedAt = stoppedSince() }
         afterSongChange(s, startMs: start)
     }
 
@@ -929,7 +935,9 @@ public final class Playback {
         // Left there when the point was saved: on another device, or before the app quit.
         let pos = rewind(r.positionMs, since: r.at)
         switch app.setting("longFiles.resume", "auto") {
-        case "auto": return pos
+        case "auto":
+            heardAt = pos != r.positionMs ? nowMs() : r.at
+            return pos
         case "ask":
             offerResume = (s, pos)
             return nil
@@ -938,10 +946,17 @@ public final class Playback {
     }
 
     /// When the file playing last stopped, so going on after a while goes
-    /// back a little (`rewind`); 0 while it plays, after a seek made while
-    /// stopped, and once the song changes: a file started again rewinds
-    /// from its resume point's time instead.
+    /// back a little (`rewind`); 0 while it plays and after a seek made
+    /// while stopped. A file put in place without playing has been stopped
+    /// since `stoppedSince()`.
     @ObservationIgnored private var stoppedAt = 0
+
+    /// When the place `startPosition` last chose was heard: its resume
+    /// point's time, or now if it went back for that already; 0 for none.
+    @ObservationIgnored private var heardAt = 0
+
+    /// Since when a file just put in place without playing counts as stopped.
+    private func stoppedSince() -> Int { heardAt > 0 ? heardAt : nowMs() }
 
     /// `pos` in a long file stopped at `since`, gone back "longFiles.rewind"
     /// seconds if that was "longFiles.rewindAfter" minutes ago or more.

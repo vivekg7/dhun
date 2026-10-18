@@ -74,9 +74,12 @@ export class Playback extends EventTarget {
     this.pauseAfter = null;
     /**
      * When the playing long file last stopped, so going on after a while goes
-     * back a little; 0 while it plays and once another song starts (plan 009).
+     * back a little; 0 while it plays (plan 009). A file put in place without
+     * playing has been stopped since stoppedSince().
      */
     this.stoppedAt = 0;
+    /** When the place startPosition() last chose was heard: its point's time, or now if it went back for that already; 0 for none. */
+    this.heardAt = 0;
     this.stateAt = app.prefs.stateAt ?? 0;
     this.closeInterrupted();
     this.applyTempo();
@@ -709,6 +712,7 @@ export class Playback extends EventTarget {
       songs.findIndex((s) => s.id === q.currentSong),
     );
     const song = songs[index];
+    this.heardAt = 0;
     let start = position;
     if (start != null) this.offerResume = null;
     start ??= this.startPosition(song);
@@ -720,6 +724,7 @@ export class Playback extends EventTarget {
     this.app.putQueue(q);
     this.rebuildOrder(false, q.shuffle, song.id);
     this.start(song, start / 1000, !play);
+    if (!play) this.stoppedAt = this.stoppedSince();
   }
 
   /** Opens `s` at `seconds`; the listen opens with it. */
@@ -773,9 +778,13 @@ export class Playback extends EventTarget {
     this.close(end, at);
     if (finished) this.saveResume(finished, at);
     this.onNextSongSleep();
+    this.heardAt = 0;
     let start = this.startPosition(s) ?? 0;
     if (s.id === finished?.id) start = 0;
-    this.start(s, start / 1000, !(play ?? this.isPlaying));
+    const paused = !(play ?? this.isPlaying);
+    this.start(s, start / 1000, paused);
+    // Next while paused: the file has been stopped as long as its place.
+    if (paused) this.stoppedAt = this.stoppedSince();
     this.afterSongChange(s, start);
   }
 
@@ -1055,9 +1064,11 @@ export class Playback extends EventTarget {
     this.offerResume = null;
     const left = this.isLong(s) ? this.app.resume(s.id) : 0;
     if (!left) return null;
-    const ms = this.rewind(left, this.app.resumeMap.get(s.id).at);
+    const at = this.app.resumeMap.get(s.id).at;
+    const ms = this.rewind(left, at);
     switch (this.app.setting("longFiles.resume", "auto")) {
       case "auto":
+        this.heardAt = ms !== left ? nowMs() : at;
         return ms;
       case "ask":
         this.offerResume = { song: s, ms };
@@ -1075,6 +1086,11 @@ export class Playback extends EventTarget {
       this.app.setting("longFiles.rewind", 10) * 1000,
       this.app.setting("longFiles.rewindAfter", 5) * 60_000,
     );
+  }
+
+  /** Since when a file just put in place without playing counts as stopped. */
+  stoppedSince() {
+    return this.heardAt || nowMs();
   }
 
   /** Play after a stop: picks up where the file stopped, gone back a little after a long pause. */

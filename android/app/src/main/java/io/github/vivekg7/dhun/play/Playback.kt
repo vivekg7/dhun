@@ -733,12 +733,13 @@ class Playback(
         // A hand-off names its place; else, for a long file, the resume
         // point is kept up to date across devices and wins over the queue's
         // own position (plan 009).
+        heardAt = 0
         val start = position?.also { offerResume.value = null } ?: startPosition(song) ?: if (song.id == q.currentSong) q.positionMs else 0
         player.setMediaItems(songs.map(::item), index, start)
         player.shuffleModeEnabled = q.shuffle
         player.repeatMode = repeatMode(q.repeat)
         player.prepare()
-        stoppedAt = 0
+        stoppedAt = if (play) 0 else stoppedSince()
         if (play) player.play()
         current.value = song
         store.putQueue(q)
@@ -797,6 +798,7 @@ class Playback(
         val pos = rewind(r.positionMs, r.at)
         return when (settings.value.string("longFiles.resume", "auto")) {
             "auto" -> {
+                heardAt = if (pos != r.positionMs) System.currentTimeMillis() else r.at
                 pos
             }
 
@@ -813,10 +815,19 @@ class Playback(
 
     /**
      * When the long file playing last stopped, so continuing it after a
-     * while goes back a little ([rewind]); 0 while it plays, and once it is
-     * left: a file started again rewinds from its resume point's time.
+     * while goes back a little ([rewind]); 0 while it plays. A file put in
+     * place without playing has been stopped since [stoppedSince].
      */
     private var stoppedAt = 0L
+
+    /**
+     * When the place [startPosition] last chose was heard: its resume
+     * point's time, or now if it went back for that already; 0 for none.
+     */
+    private var heardAt = 0L
+
+    /** Since when a file just put in place without playing counts as stopped. */
+    private fun stoppedSince() = heardAt.takeIf { it > 0 } ?: System.currentTimeMillis()
 
     /** [pos] in a long file stopped at [since], gone back "longFiles.rewind" seconds if that was a while ago. */
     private fun rewind(
@@ -1039,10 +1050,13 @@ class Playback(
             sleep.onNextSong()
             val song = item?.mediaId?.toLongOrNull()?.let { app.catalog.value.byId[it] } ?: return
             current.value = song
-            stoppedAt = 0
+            heardAt = 0
+            stoppedAt = if (player.isPlaying) 0 else stoppedSince()
             scope.launch {
                 val start = startPosition(song)
                 if (start != null) player.seekTo(start)
+                // Reached while stopped (Next while paused): the seek to its place reset the clock.
+                if (!player.isPlaying) stoppedAt = stoppedSince()
                 openListen(song, start ?: 0)
                 val q = active.value ?: return@launch
                 store.setCurrent(q.copy(currentSong = song.id, positionMs = start ?: 0))
