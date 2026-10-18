@@ -609,17 +609,17 @@ export class Shell {
     if (e.key === " " && !typing && !mod) {
       e.preventDefault();
       ctx.playback.toggle();
-    } else if (
-      mod &&
-      !e.altKey &&
-      (e.key === "ArrowLeft" || e.key === "ArrowRight") &&
-      !typing
-    ) {
+    } else if (mod && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !typing) {
       e.preventDefault();
       const p = ctx.playback;
-      // With Shift, by chapter, as a long press on the buttons (plan 009).
-      if (e.shiftKey) e.key === "ArrowLeft" ? p.chapterBack() : p.chapterOn();
-      else e.key === "ArrowLeft" ? p.previous(true) : p.next(true);
+      const back = e.key === "ArrowLeft";
+      // The Mac's keys (plan 009): with Shift, seek; with Option, by
+      // chapter, as a long press on the buttons does. Chrome keeps ⌥⌘←/→
+      // to change tabs, so ⌥⇧⌘ is the one that reaches the page there.
+      if (e.altKey) back ? p.chapterBack() : p.chapterOn();
+      else if (e.shiftKey) {
+        if (p.current && p.isLong(p.current)) back ? p.seekBack() : p.seekForward();
+      } else back ? p.previous(true) : p.next(true);
     } else if (
       (e.key === "/" && !typing && !mod) ||
       (mod && e.key.toLowerCase() === "k")

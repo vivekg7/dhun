@@ -166,9 +166,13 @@ platform's way:
   (⇧⌘←, ⇧⌘→), and the seek buttons sit in the Now playing bar and the
   menu-bar player, not the compact mini player.
 - **The web holds for chapters** (500 ms, mouse, touch or pen; the
-  click that follows is swallowed), and ⇧⌘←/→ (Ctrl+Shift elsewhere)
-  goes by chapter. Its labels say "media keys and headsets", as its
-  Ignore choice already did, since media keys take the same path there.
+  click that follows is swallowed), and takes the Mac's keys: ⇧⌘←/→
+  seeks and ⌥⌘←/→ goes by chapter (Ctrl for ⌘ elsewhere). Chrome keeps
+  ⌥⌘←/→ for changing tabs and never passes it to the page, so with Shift
+  added, ⌥⇧⌘←/→, goes by chapter too. It first had ⇧⌘←/→ go by chapter,
+  so the same keys did different things on the Mac and the web. Its
+  labels say "media keys and headsets", as its Ignore choice already did,
+  since media keys take the same path there.
 - **System controls:** Control Center on the Mac and the Media Session on
   the web get skip back and forward for a long file, with the seconds set,
   and treat their Previous and Next as a headset's.
