@@ -262,8 +262,11 @@ public final class Playback {
     }
 
     /// Plays the song at `index` of the active queue's own order.
+    /// Plays `index` of the active queue. A long file already there goes on
+    /// from its place: starting it again would lose the place to a click.
     public func playAt(_ index: Int) {
         guard items.indices.contains(index) else { return }
+        if index == currentIndex, let s = current, isLong(s) { return play() }
         jump(to: index, end: "switched", play: true)
     }
 

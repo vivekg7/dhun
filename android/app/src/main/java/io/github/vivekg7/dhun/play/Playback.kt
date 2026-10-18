@@ -521,8 +521,13 @@ class Playback(
         player.play()
     }
 
-    /** Plays [song] of the active queue. */
+    /**
+     * Plays [index] of the active queue. A long file already there goes on
+     * from its place: starting it again would lose the place to a tap.
+     */
     fun playAt(index: Int) {
+        val s = current.value
+        if (index == player.currentMediaItemIndex && s != null && isLong(s)) return play()
         player.seekTo(index, 0)
         player.play()
     }

@@ -303,7 +303,13 @@ export class Playback extends EventTarget {
   }
 
   /** Plays the song at `index` of the active queue's own order. */
+  /**
+   * Plays `index` of the active queue. A long file already there goes on
+   * from its place: starting it again would lose the place to a click.
+   */
   playAt(index) {
+    const s = this.current;
+    if (index === this.currentIndex && s && this.isLong(s)) return this.play();
     if (index >= 0 && index < this.items.length) this.jump(index, "switched", true);
   }
 

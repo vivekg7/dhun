@@ -78,6 +78,9 @@ and every device sees the same one.
 - When the file plays to its end, `resume.unset`.
 - The resume point wins over the queue's own position for a long file: it
   is the one kept up to date across devices.
+- Choosing the file a queue is already on, in that queue's list, plays it
+  on from where it is, not from its start: a tap meant to start it playing
+  would otherwise cost the place.
 
 The listening history ([008](008_listening_history.md)) is unchanged: each
 sitting with a book is one listen.
