@@ -307,7 +307,10 @@ fun DetailsDialog(
                     }
                 }
                 items(marks, key = { it.id }) { b ->
-                    BookmarkRow(b, chapters.lastOrNull { it.startMs <= b.positionMs }?.name.orEmpty(), { editing = b }) {
+                    // Named as the list below names it, so an untitled one is "Chapter 3" in both.
+                    val i = chapters.indexOfLast { it.startMs <= b.positionMs }
+                    val chapter = if (i < 0) "" else chapters[i].name.ifEmpty { "Chapter ${i + 1}" }
+                    BookmarkRow(b, chapter, { editing = b }) {
                         player.seekTo(b.positionMs)
                         onDismiss()
                     }

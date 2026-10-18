@@ -280,7 +280,10 @@ struct ChaptersPanel: View {
     /// Its time, its note or else the chapter it falls in, and a menu to
     /// write the note or delete it.
     private func row(_ b: Bookmark) -> some View {
-        let chapter = song.chapters.last { $0.startMs <= b.positionMs }?.name ?? ""
+        // Named as the list below names it, so an untitled one is "Chapter 3" in both.
+        let i = song.chapters.lastIndex { $0.startMs <= b.positionMs }
+        let chapter =
+            i.map { song.chapters[$0].name.isEmpty ? "Chapter \($0 + 1)" : song.chapters[$0].name } ?? ""
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Button {
                 app.playback.seek(to: Double(b.positionMs) / 1000)
