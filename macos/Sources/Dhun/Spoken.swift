@@ -218,57 +218,63 @@ struct ChaptersPanel: View {
     @State private var note = ""
     /// Typing goes to the note as soon as it opens, not to the player (Space would pause it).
     @FocusState private var noteFocused: Bool
+    @State private var listHeight: CGFloat = 0
 
     var body: some View {
+        // Sized to the list, so the popover grows when a note opens: a
+        // ScrollView's own height stays what it was when the popover opened.
+        ScrollView {
+            list.onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
+        }
+        .frame(width: 380, height: min(listHeight, 480))
+    }
+
+    private var list: some View {
         let p = app.playback
         let now = song.chapters.lastIndex { $0.startMs <= Int(p.position * 1000) }
         let marks = app.bookmarks.filter { $0.song == song.id }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(song.title).font(.headline).lineLimit(2).padding(.bottom, 6)
-                if !marks.isEmpty {
-                    Text("Bookmarks").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    ForEach(marks) { b in
-                        if editing == b.id { noteEditor(b) } else { row(b) }
-                    }
-                }
-                if !song.chapters.isEmpty {
-                    Text("Chapters").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        .padding(.top, marks.isEmpty ? 0 : 8)
-                    ForEach(Array(song.chapters.enumerated()), id: \.offset) { i, ch in
-                        Button {
-                            p.seek(to: Double(ch.startMs) / 1000)
-                            done()
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(clock(Double(ch.startMs) / 1000)).monospacedDigit().foregroundStyle(
-                                    .secondary
-                                )
-                                .frame(width: 64, alignment: .leading)
-                                Text(ch.name.isEmpty ? "Chapter \(i + 1)" : ch.name)
-                                    .foregroundStyle(
-                                        i == now ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
-                                    )
-                                    .fontWeight(i == now ? .semibold : .regular)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.vertical, 3)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if !song.notes.isEmpty {
-                    Text("Notes").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(
-                        .top, 8)
-                    Text(song.notes).textSelection(.enabled)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(song.title).font(.headline).lineLimit(2).padding(.bottom, 6)
+            if !marks.isEmpty {
+                Text("Bookmarks").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                ForEach(marks) { b in
+                    if editing == b.id { noteEditor(b) } else { row(b) }
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if !song.chapters.isEmpty {
+                Text("Chapters").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    .padding(.top, marks.isEmpty ? 0 : 8)
+                ForEach(Array(song.chapters.enumerated()), id: \.offset) { i, ch in
+                    Button {
+                        p.seek(to: Double(ch.startMs) / 1000)
+                        done()
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(clock(Double(ch.startMs) / 1000)).monospacedDigit().foregroundStyle(
+                                .secondary
+                            )
+                            .frame(width: 64, alignment: .leading)
+                            Text(ch.name.isEmpty ? "Chapter \(i + 1)" : ch.name)
+                                .foregroundStyle(
+                                    i == now ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
+                                )
+                                .fontWeight(i == now ? .semibold : .regular)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 3)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if !song.notes.isEmpty {
+                Text("Notes").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(
+                    .top, 8)
+                Text(song.notes).textSelection(.enabled)
+            }
         }
-        .frame(width: 380)
-        .frame(maxHeight: 480)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Its time, its note or else the chapter it falls in, and a menu to
