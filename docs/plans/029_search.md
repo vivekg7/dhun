@@ -106,6 +106,19 @@ albums. A tapped artist, album, genre, folder or playlist opens in the
 Search tab's own stack, so Back returns to the results. Songs play the
 list of songs found, as before, up to the first 300.
 
+**Chips jump to a section** (owner, 2026-10-18). Below the search box, a
+row of chips names the sections found, in the order they appear: "Artists",
+"Albums" … "Songs", "Lyrics". A tap scrolls the results to the section's
+heading, so the songs under twenty albums, or the lyrics under 300 songs,
+are one tap away rather than a long scroll. The row is shown only when
+there are two sections or more; with one, there is nowhere to jump. It
+stays in view while the results scroll, under the search box, so a second
+jump needs no scrolling back, and the chip of the section at the top is
+selected, which says where you are. The chips hold names only, no counts:
+"Show all" already says how many. "Lyrics" joins the row once the lyrics
+results arrive, not while they are asked for. On the Mac and the web the
+same row sits above the results.
+
 ### Filters
 
 `title:` `artist:` `album:` `composer:` `genre:` `year:` `folder:` and

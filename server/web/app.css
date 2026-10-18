@@ -1440,6 +1440,28 @@ input.seek:focus-visible::-webkit-slider-thumb {
 .searchpage .pagebar label.searchfield {
   flex: 1;
 }
+/* Chips that jump to a section (plan 029), held at the top as the results scroll. */
+.jumps {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  padding: 8px 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--bg);
+}
+.jumps button {
+  flex: none;
+  height: 28px;
+  font-size: 13px;
+}
+.jumps button[aria-current] {
+  background: var(--selected);
+  border-color: transparent;
+  font-weight: 600;
+}
 
 /* The Now playing page */
 

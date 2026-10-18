@@ -122,6 +122,11 @@ struct SearchResults: View {
     @State private var inLyrics: [(song: Song, line: String)]? = []
     @State private var expanded = Set<Kind>()
     @State private var selection = Set<String>()
+    /// Each section heading's last top in the list, for the chip of the
+    /// section at the top. A heading that scrolled away keeps its last
+    /// place: above the top if it left there, below the bottom if not.
+    @State private var tops: [String: CGFloat] = [:]
+    @State private var tapped: String?
 
     private struct Key: Hashable {
         let query: String
@@ -136,9 +141,60 @@ struct SearchResults: View {
         let found = self.found ?? []
         let songs = found.first { $0.kind == .songs }?.rows.compactMap(\.song) ?? []
         let lyrics = inLyrics
+        // The chips' names, in the sections' order (plan 029): Lyrics only once it has some.
+        let chips = found.map(\.kind.rawValue) + (lyrics?.isEmpty == false ? ["Lyrics"] : [])
+        let atTop = chips.last { (tops[$0] ?? .infinity) <= 8 } ?? chips.first
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                if chips.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(chips, id: \.self) { c in
+                                let on = c == (tapped ?? atTop)
+                                Button(c) {
+                                    tapped = c
+                                    withAnimation { proxy.scrollTo(c, anchor: .top) }
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .foregroundStyle(on ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                                .background(
+                                    Capsule().fill(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary)))
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
+                }
+                results(app, nav, found, songs, lyrics)
+            }
+        }
+        .onChange(of: query) {
+            expanded = []
+            tops = [:]
+            tapped = nil
+        }
+    }
+
+    /// A section's heading, which a chip scrolls to and whose place says which chip is on.
+    private func heading(_ title: String, chip: String? = nil) -> some View {
+        let id = chip ?? title
+        return Text(title).id(id)
+            .onGeometryChange(for: CGFloat.self) {
+                $0.frame(in: .scrollView).minY
+            } action: {
+                tops[id] = $0
+            }
+    }
+
+    private func results(
+        _ app: AppModel, _ nav: Nav, _ found: [Found], _ songs: [Song],
+        _ lyrics: [(song: Song, line: String)]?
+    )
+        -> some View
+    {
         List(selection: $selection) {
             ForEach(found, id: \.kind) { f in
-                SwiftUI.Section(f.kind.rawValue) {
+                SwiftUI.Section {
                     if f.kind == .songs {
                         ForEach(f.rows) { r in SongHit(app: app, song: r.song!, detail: r.detail).tag(r.id) }
                     } else {
@@ -163,10 +219,12 @@ struct SearchResults: View {
                             .buttonStyle(.link)
                         }
                     }
+                } header: {
+                    heading(f.kind.rawValue)
                 }
             }
             if lyrics?.isEmpty != true {
-                SwiftUI.Section("In lyrics") {
+                SwiftUI.Section {
                     if let lyrics {
                         ForEach(lyrics, id: \.song.id) { s, line in
                             SongHit(app: app, song: s, detail: "“\(line)”").tag("l/\(s.id)")
@@ -177,9 +235,13 @@ struct SearchResults: View {
                             Text("Searching lyrics…").foregroundStyle(.secondary)
                         }
                     }
+                } header: {
+                    heading("In lyrics", chip: "Lyrics")
                 }
             }
         }
+        // A scroll of its own makes the chip follow the top again.
+        .onScrollPhaseChange { _, phase in if phase == .interacting { tapped = nil } }
         .contextMenu(forSelectionType: String.self) { tags in
             let (name, list, chosen) = picked(tags, songs, lyrics?.map(\.song) ?? [])
             SongMenu(songs: chosen, queueName: name, source: "search", all: list)
@@ -203,7 +265,6 @@ struct SearchResults: View {
             }
         }
         .navigationTitle("Search")
-        .onChange(of: query) { expanded = [] }
         // Off the main thread: the first search builds the catalog's indexes.
         .task(id: Key(query: query, catalog: ObjectIdentifier(app.catalog), playlists: app.playlists)) {
             let c = app.catalog

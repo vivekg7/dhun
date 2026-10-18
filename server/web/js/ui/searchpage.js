@@ -146,6 +146,54 @@ export function searchPage(initial, { field = false } = {}) {
   const empty = h("div");
   list.el.append(empty);
 
+  // Chips that jump to a section (plan 029): in the scroller itself, not its
+  // head, so they stay in view under the field for the whole list.
+  const chips = h("nav.jumps", { "aria-label": "Jump to a section", hidden: true });
+  list.el.prepend(chips);
+  let heads = [];
+  // In the order they are on screen: the songs' rows come between.
+  const headings = () => [
+    ...before.querySelectorAll("h3.section"),
+    ...(songsHead.hidden ? [] : [songsHead]),
+    ...after.querySelectorAll("h3.section"),
+    ...lyricsBox.querySelectorAll("h3.section"),
+  ];
+  const below = (hd) =>
+    hd.getBoundingClientRect().top -
+    list.el.getBoundingClientRect().top -
+    chips.offsetHeight;
+  const jump = (hd) =>
+    list.el.scrollTo({ top: list.el.scrollTop + below(hd), behavior: "smooth" });
+  /** The chip of the section at the top; at the bottom, the last, which may never reach the top. */
+  const markChip = () => {
+    if (!heads.length) return;
+    const el = list.el;
+    const end = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    const at = end ? heads.length - 1 : heads.findLastIndex((hd) => below(hd) <= 1);
+    [...chips.children].forEach((b, i) =>
+      i === Math.max(0, at)
+        ? b.setAttribute("aria-current", "location")
+        : b.removeAttribute("aria-current"),
+    );
+  };
+  list.el.addEventListener("scroll", markChip, { passive: true });
+  // With one section there is nowhere to jump.
+  const drawChips = () => {
+    const hs = headings();
+    heads = hs.length > 1 ? hs : [];
+    chips.hidden = !heads.length;
+    chips.replaceChildren(
+      ...heads.map((hd) =>
+        h(
+          "button",
+          { type: "button", onclick: () => jump(hd) },
+          hd.textContent === "In lyrics" ? "Lyrics" : hd.textContent,
+        ),
+      ),
+    );
+    markChip();
+  };
+
   const sectionEl = (f) => {
     const whole = expanded.has(f.kind);
     const rows = whole ? f.rows : f.rows.slice(0, shown);
@@ -200,13 +248,17 @@ export function searchPage(initial, { field = false } = {}) {
         .filter((x) => x.song);
       showLyrics(songs, q);
     } catch {
-      if (seq === lyricsSeq) lyricsBox.replaceChildren();
+      if (seq === lyricsSeq) {
+        lyricsBox.replaceChildren();
+        drawChips();
+      }
     }
   }, 400);
 
   const showLyrics = (hits) => {
     if (!hits.length) {
       lyricsBox.replaceChildren();
+      drawChips();
       noResults();
       return;
     }
@@ -238,6 +290,7 @@ export function searchPage(initial, { field = false } = {}) {
       ),
     );
     empty.replaceChildren();
+    drawChips();
   };
 
   let found = [];
@@ -280,6 +333,7 @@ export function searchPage(initial, { field = false } = {}) {
       );
       fetchLyrics(q, lyricsSeq);
     }
+    drawChips();
     noResults();
   };
 

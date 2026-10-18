@@ -1,8 +1,11 @@
 package io.github.vivekg7.dhun.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,24 +15,31 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
@@ -47,6 +57,7 @@ import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** The Search tab's sections (docs/plans/029_search.md). */
@@ -148,24 +159,48 @@ fun SearchScreen(nav: Nav) {
     var expanded by rememberSaveable(query) { mutableStateOf("") }
     val heard = rememberHeard()
     val keep = { app.prefs.keepSearch(query) }
+    val list = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
-    LazyColumn(Modifier.fillMaxSize()) {
+    fun whole(f: Found) = f.kind == Kind.Songs || f.kind.name in expanded.split(',')
+
+    fun shown(f: Found) =
+        when {
+            f.kind == Kind.Songs -> f.hits.take(SONGS_SHOWN)
+            whole(f) -> f.hits
+            else -> f.hits.take(SHOWN)
+        }
+
+    fun more(f: Found) = !whole(f) && f.hits.size > SHOWN
+
+    val lyrics = inLyrics
+    // Each section's chip and where its heading is in the list: after the
+    // field, and the chips themselves when there are two sections to jump between.
+    val names = found.map { it.kind.label } + if (lyrics.isNullOrEmpty()) emptyList() else listOf("Lyrics")
+    val chips = query.isNotBlank() && names.size > 1
+    val starts =
+        found
+            .runningFold(
+                if (chips) 2 else 1,
+            ) { at, f -> at + 1 + shown(f).size + if (more(f)) 1 else 0 }
+            .let { if (lyrics.isNullOrEmpty()) it.dropLast(1) else it }
+    var chipsHeight by remember { mutableIntStateOf(0) }
+    val atTop = starts.indexOfLast { it <= list.firstVisibleItemIndex + 1 }.coerceAtLeast(0)
+
+    LazyColumn(Modifier.fillMaxSize(), list) {
         item { SearchField(query, { query = it }, "Search songs, albums, artists, lyrics") }
         if (query.isBlank()) {
             recent(app.prefs.recentSearches, { query = it }, catalog.songs.size)
             return@LazyColumn
         }
+        if (chips) {
+            stickyHeader(key = "chips") {
+                SectionChips(names, atTop, { chipsHeight = it }) { i -> scope.launch { list.animateScrollToItem(starts[i], -chipsHeight) } }
+            }
+        }
         for (f in found) {
             item(key = "label/${f.kind}") { SectionLabel(f.kind.label) }
-            val whole = f.kind == Kind.Songs || f.kind.name in expanded.split(',')
-            val shown =
-                if (f.kind == Kind.Songs) {
-                    f.hits.take(SONGS_SHOWN)
-                } else if (whole) {
-                    f.hits
-                } else {
-                    f.hits.take(SHOWN)
-                }
+            val shown = shown(f)
             if (f.kind == Kind.Songs) {
                 @Suppress("UNCHECKED_CAST")
                 val songs = shown as List<Song>
@@ -178,13 +213,12 @@ fun SearchScreen(nav: Nav) {
             } else {
                 items(shown, key = { "${f.kind}/${keyOf(it)}" }) { h -> FoundRow(h, f.kind, catalog, heard, nav, keep) }
             }
-            if (!whole && f.hits.size > SHOWN) {
+            if (more(f)) {
                 item(key = "more/${f.kind}") {
                     NameRow(Icons.ExpandMore, "Show all ${f.hits.size} ${f.kind.label.lowercase()}", "") { expanded += ",${f.kind.name}" }
                 }
             }
         }
-        val lyrics = inLyrics
         if (lyrics == null || lyrics.isNotEmpty()) item(key = "label/lyrics") { SectionLabel("In lyrics") }
         if (lyrics == null) {
             item(key = "lyrics/wait") { Empty("Searching lyrics…") }
@@ -198,6 +232,36 @@ fun SearchScreen(nav: Nav) {
             }
         }
         if (found.isEmpty() && lyrics?.isEmpty() == true) item { Empty("Nothing matches “${query.trim()}”") }
+    }
+}
+
+/**
+ * The sections found, one tap away (docs/plans/029_search.md). Pinned under
+ * the field while the results scroll; the section at the top is the one
+ * selected, and the row scrolls to keep it in sight.
+ */
+@Composable
+private fun SectionChips(
+    names: List<String>,
+    selected: Int,
+    onHeight: (Int) -> Unit,
+    onPick: (Int) -> Unit,
+) {
+    val row = rememberLazyListState()
+    LaunchedEffect(selected) {
+        val seen = row.layoutInfo.visibleItemsInfo.find { it.index == selected }
+        if (seen == null || seen.offset < 0 || seen.offset + seen.size > row.layoutInfo.viewportEndOffset) row.animateScrollToItem(selected)
+    }
+    LazyRow(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .onSizeChanged { onHeight(it.height) },
+        row,
+        PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        itemsIndexed(names) { i, name -> FilterChip(i == selected, { onPick(i) }, { Text(name) }) }
     }
 }
 
