@@ -6,6 +6,8 @@ import { confirm, dialog } from "./kit.js";
 import { frame } from "./pages.js";
 import { formatSpeed } from "../queue.js";
 import { ctx } from "./ctx.js";
+import { synced } from "../synced.js";
+import { guideHtml, slug } from "../guide.js";
 
 /** The phone's eight accent palettes (plan 011), Dull Orange first, with a lighter shade for dark mode. */
 export const palettes = [
@@ -89,24 +91,90 @@ export function signInPage(onDone) {
   return h("div.signin-page", form);
 }
 
-/** A row of a settings group: a label, maybe a line under it, and its control. */
-const row = (label, control, note) =>
+/**
+ * A row of a settings group: a short label and its control (plan 034). A
+ * `tip` is the one line a setting may need, on hover; `guide` names the
+ * section of How it works that says more, linked by an ⓘ.
+ */
+const row = (label, control, { tip, guide } = {}) =>
   h(
     "div.setting",
-    h("div.settinglabel", h("span", label), note ? h("small", note) : null),
+    h(
+      "div.settinglabel",
+      h(
+        "span",
+        { title: tip },
+        label,
+        guide
+          ? h(
+              "a.info",
+              {
+                href: ctx.nav.href("guide", guide),
+                title: "How it works",
+                "aria-label": `How ${label} works`,
+              },
+              "ⓘ",
+            )
+          : null,
+      ),
+    ),
     control,
   );
 
-function select(options, value, onChange) {
+/** A <select> of [value, label] pairs. Its options cannot be styled, so the default's label says so. */
+function select(options, value, onChange, def) {
   const s = h(
     "select",
     { onchange: () => onChange(s.value) },
     options.map(([v, label]) =>
-      h("option", { value: String(v), selected: String(v) === String(value) }, label),
+      h(
+        "option",
+        { value: String(v), selected: String(v) === String(value) },
+        v === def ? `${label} (default)` : label,
+      ),
     ),
   );
   return s;
 }
+
+/** A synced setting's choices, from js/synced.js; `after` runs once one is picked. */
+function choice(setting, label, after) {
+  const app = ctx.app;
+  const value = app.setting(setting);
+  const s = h(
+    "select",
+    {
+      onchange: () => {
+        app.setSetting(setting.name, setting.options[s.selectedIndex]);
+        after?.();
+      },
+    },
+    setting.options.map((o) =>
+      h(
+        "option",
+        { selected: o === value },
+        o === setting.def ? `${label(o)} (default)` : label(o),
+      ),
+    ),
+  );
+  return s;
+}
+
+/** The last row of a page's settings: puts them back as installed, after asking. */
+const resetRow = (title, text, reset) =>
+  row(
+    "Reset to defaults",
+    h(
+      "button",
+      {
+        type: "button",
+        onclick: async () => {
+          if (await confirm(title, text, "Reset")) reset();
+        },
+      },
+      "Reset…",
+    ),
+  );
 
 function toggle(on, onChange) {
   const t = h("input.switch", { type: "checkbox", checked: on, role: "switch" });
@@ -119,22 +187,10 @@ export function settingsPage() {
   const draw = () => {
     const app = ctx.app;
     const p = ctx.playback;
-    const synced = (name, def, parse = (v) => v) => [
-      app.setting(name, def),
-      (v) => app.setSetting(name, parse(v)),
-    ];
-    const [minutes, setMinutes] = synced("longFiles.minMinutes", 15, Number);
-    const [resume, setResume] = synced("longFiles.resume", "auto");
-    const [restart, setRestart] = synced("previous.restart", true, (v) => v === "true");
-    const [longPrevious, setLongPrevious] = synced("longFiles.previous", "keep");
-    const [longNext, setLongNext] = synced("longFiles.next", "next");
-    const [seekBack, setSeekBack] = synced("longFiles.seekBack", 10, Number);
-    const [seekForward, setSeekForward] = synced("longFiles.seekForward", 30, Number);
-    const [rewind, setRewind] = synced("longFiles.rewind", 10, Number);
-    const [rewindAfter, setRewindAfter] = synced("longFiles.rewindAfter", 5, Number);
-    const seconds = (list) => list.map((n) => [n, `${n} seconds`]);
-    const [autoRemove, setAutoRemove] = synced("listenLater.autoRemove", true);
-    const [percent, setPercent] = synced("listenLater.finishedPercent", 90, Number);
+    const rewind = app.setting(synced.rewind);
+    const autoRemove = app.setting(synced.autoRemove);
+    const seconds = (n) => `${n} s`;
+    const minutes = (n) => `${n} min`;
     const palette = app.prefs.palette ?? 0;
     body.replaceChildren(
       h(
@@ -153,6 +209,7 @@ export function settingsPage() {
               app.setPref("theme", v === "system" ? undefined : v);
               applyTheme(app.prefs);
             },
+            "system",
           ),
         ),
         row(
@@ -162,7 +219,7 @@ export function settingsPage() {
             palettes.map(([name, light, dark], i) =>
               h("button.swatch", {
                 type: "button",
-                title: name,
+                title: i ? name : `${name} (default)`,
                 "aria-label": name,
                 "aria-pressed": String(i === palette),
                 style: { "--light": light, "--dark": dark },
@@ -175,125 +232,104 @@ export function settingsPage() {
             ),
           ),
         ),
+        resetRow(
+          "Reset Appearance?",
+          "The theme and accent colour of this browser.",
+          () => {
+            app.setPref("theme");
+            app.setPref("palette");
+            applyTheme(app.prefs);
+            draw();
+          },
+        ),
       ),
       h(
         "section.group",
-        h("h2", "Buttons"),
-        h(
-          "p.groupnote",
-          "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one.",
-        ),
+        h("h2", "Playback"),
+        h("p.groupnote", "These follow you to all your devices."),
         row(
           "Previous",
-          select(
-            [
-              [true, "Restart the song first"],
-              [false, "Always the previous song"],
-            ],
-            restart !== false,
-            setRestart,
+          choice(synced.previousRestart, (v) =>
+            v ? "Restart song first" : "Previous song",
           ),
         ),
       ),
       h(
         "section.group",
         h("h2", "Long files"),
-        h(
-          "p.groupnote",
-          "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back.",
+        row(
+          "Remember position",
+          choice(synced.minMinutes, (n) => `${n} min and longer`),
+          { tip: "For audiobooks, podcasts and mixes.", guide: "Remember position" },
         ),
         row(
-          "Continue long files",
-          select(
-            [5, 10, 15, 20, 30, 60].map((m) => [m, `${m} minutes and longer`]),
-            minutes,
-            setMinutes,
+          "When played again",
+          choice(
+            synced.resume,
+            (v) => ({ auto: "Resume", ask: "Ask", off: "Start over" })[v],
           ),
         ),
         row(
-          "Playing one again",
-          select(
-            [
-              ["auto", "Continue where you left it"],
-              ["ask", "Ask"],
-              ["off", "Start over"],
-            ],
-            resume,
-            setResume,
+          "Previous button",
+          choice(
+            synced.longPrevious,
+            (v) =>
+              ({
+                keep: "Previous file",
+                seek: "Seek back (headset)",
+                ignore: "Ignore headset",
+                songs: "Same as songs",
+              })[v],
           ),
+          {
+            tip: "On the screen, Previous always goes to the previous file.",
+            guide: "Previous button",
+          },
         ),
         row(
-          "Previous in one",
-          select(
-            [
-              ["keep", "Previous file, keep my place"],
-              ["seek", "Seek back from media keys and headsets"],
-              ["ignore", "Ignore media keys and headsets"],
-              ["songs", "Same as songs"],
-            ],
-            longPrevious,
-            setLongPrevious,
+          "Next button",
+          choice(synced.longNext, (v) =>
+            v === "seek" ? "Seek forward (headset)" : "Next file",
           ),
-          "Seeking back or ignoring, it goes to the previous file only on the screen.",
+          { guide: "Next button" },
+        ),
+        row("Seek back", choice(synced.seekBack, seconds)),
+        row("Seek forward", choice(synced.seekForward, seconds)),
+        row(
+          "Rewind on resume",
+          choice(synced.rewind, (n) => (n ? seconds(n) : "Off"), draw),
         ),
         row(
-          "Next in one",
-          select(
-            [
-              ["next", "Next file"],
-              ["seek", "Seek forward from media keys and headsets"],
-            ],
-            longNext,
-            setLongNext,
-          ),
-          "Seeking forward, Next goes to the next file only on the screen.",
-        ),
-        row("Seek back", select(seconds([5, 10, 15, 30, 60]), seekBack, setSeekBack)),
-        row(
-          "Seek forward",
-          select(seconds([10, 15, 30, 60, 120]), seekForward, setSeekForward),
-        ),
-        row(
-          "Going on after a pause",
-          select(
-            [0, 5, 10, 15, 30].map((n) => [
-              n,
-              n ? `Go back ${n} seconds` : "Exactly where it stopped",
-            ]),
-            rewind,
-            (v) => (setRewind(v), draw()),
-          ),
-          "So a sentence cut off by the pause is heard again from its start.",
-        ),
-        row(
-          "A pause counts after",
-          Object.assign(
-            select(
-              [1, 5, 10, 30, 60].map((n) => [n, n === 1 ? "1 minute" : `${n} minutes`]),
-              rewindAfter,
-              setRewindAfter,
-            ),
-            { disabled: !rewind },
-          ),
+          "After pauses of",
+          Object.assign(choice(synced.rewindAfter, minutes), { disabled: !rewind }),
         ),
       ),
       h(
         "section.group",
         h("h2", "Listen Later"),
         row(
-          "Remove what you finish",
-          toggle(autoRemove, (v) => (setAutoRemove(v), draw())),
+          "Remove when finished",
+          toggle(
+            autoRemove,
+            (v) => (app.setSetting(synced.autoRemove.name, v), draw()),
+          ),
         ),
         row(
           "Finished at",
           Object.assign(
-            select(
-              [80, 90, 95, 100].map((n) => [n, `${n}% heard`]),
-              percent,
-              setPercent,
-            ),
+            choice(synced.finishedPercent, (n) => `${n}%`),
             { disabled: !autoRemove },
           ),
+        ),
+        resetRow(
+          "Reset Playback?",
+          "They follow you, so all your devices change.",
+          () => {
+            // The show page's own toggle is not on this page, so it stays.
+            for (const { name } of Object.values(synced))
+              if (name in app.settings && name !== synced.hidePlayed.name)
+                app.setSetting(name, null);
+          },
         ),
       ),
       h(
@@ -319,7 +355,7 @@ export function settingsPage() {
               "Reset",
             ),
           ),
-          "Set from the speed button by Now playing. The pitch can be changed in the phone and Mac apps.",
+          { tip: "Set by Now playing. Pitch is set in the phone and Mac apps." },
         ),
       ),
       h(
@@ -327,11 +363,9 @@ export function settingsPage() {
         h("h2", "Account"),
         row("Signed in as", h("span", `${app.user}${app.admin ? " (admin)" : ""}`)),
         app.prefs.serverVersion
-          ? row(
-              "Dhun version",
-              h("span", app.prefs.serverVersion),
-              "The server’s; the web client comes with it.",
-            )
+          ? row("Dhun version", h("span", app.prefs.serverVersion), {
+              tip: "The server’s; the web client comes with it.",
+            })
           : null,
         row(
           "Last sync",
@@ -349,7 +383,7 @@ export function settingsPage() {
         row(
           "Your devices",
           h("button", { type: "button", onclick: devicesDialog }, "Show…"),
-          "Sign out a lost phone or an old browser.",
+          { tip: "Sign out a lost phone or an old browser." },
         ),
         app.admin
           ? row(
@@ -409,6 +443,11 @@ export function settingsPage() {
             "Source code (GPL-3.0)",
           ),
         ),
+      ),
+      h(
+        "section.group",
+        h("h2", "Help"),
+        row("How it works", h("a.button", { href: ctx.nav.href("guide") }, "Open")),
       ),
     );
   };
@@ -582,4 +621,31 @@ function memberForm(title, askName, save) {
       onOpen: () => (askName ? name : password).focus(),
     },
   );
+}
+
+/**
+ * How it works (plan 034): docs/GUIDE.md, which scripts/guide.sh copies
+ * beside index.html, opened at `section` when an ⓘ names one.
+ */
+export function guidePage(section) {
+  const body = h("div.scroll.settings.guide", h("div.spinner"));
+  fetch("guide.md")
+    .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
+    .then((md) => {
+      const doc = h("article.group");
+      doc.innerHTML = guideHtml(md);
+      // The page bar already says it.
+      doc.querySelector("h1")?.remove();
+      body.replaceChildren(doc);
+      if (section) doc.querySelector(`#${slug(section)}`)?.scrollIntoView();
+    })
+    .catch((e) =>
+      body.replaceChildren(h("p.groupnote", `Could not load it: ${e.message}`)),
+    );
+  return {
+    el: frame({ title: "How it works", back: true, body }),
+    title: "How it works",
+    topics: new Set(),
+    scroller: body,
+  };
 }

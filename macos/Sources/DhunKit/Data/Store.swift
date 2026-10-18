@@ -34,6 +34,13 @@ public struct Store {
         app.reloadSettings()
     }
 
+    /// Unsets every Playback setting on all the user's devices, so each reads
+    /// as its default (plan 034): null, not today's default, so a later
+    /// default reaches it.
+    public func resetPlayback() {
+        for name in Synced.playback { setting(name, .null) }
+    }
+
     /// Where a long file was left, or nil once it was heard to the end (plan 009).
     public func resume(_ song: Int, _ positionMs: Int?) {
         db.putResume(Resume(song: song, positionMs: positionMs ?? 0, at: nowMs(), deleted: positionMs == nil))
@@ -304,10 +311,8 @@ public struct Store {
 extension AppModel {
     public var store: Store { Store(app: self) }
 
-    /// A synced setting with the app's default for missing or null (plan 009).
-    public func setting(_ name: String, _ def: Int) -> Int { settings[name]?.int ?? def }
-    public func setting(_ name: String, _ def: Bool) -> Bool { settings[name]?.bool ?? def }
-    public func setting(_ name: String, _ def: String) -> String { settings[name]?.string ?? def }
+    /// A synced setting, or its default while missing or null (plans 009, 034).
+    public func setting<V>(_ key: Synced.Key<V>) -> V { key.value(in: settings) }
 }
 
 public struct Listen: Codable, Sendable {

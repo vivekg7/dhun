@@ -12,7 +12,7 @@ import { addedTo, editable, cover } from "./songs.js";
 import * as pages from "./pages.js";
 import { searchPage } from "./searchpage.js";
 import { shelvesPage, shelfPage } from "./spoken.js";
-import { settingsPage, signInPage } from "./settings.js";
+import { settingsPage, signInPage, guidePage } from "./settings.js";
 import {
   nowBar,
   miniPlayer,
@@ -33,6 +33,7 @@ const sectionOf = {
   genre: "genres",
   folder: "folders",
   playlist: "playlists",
+  guide: "settings",
 };
 
 export class Nav {
@@ -329,6 +330,8 @@ export class Shell {
         return searchPage(arg ?? "", { field: !this.wide });
       case "settings":
         return settingsPage();
+      case "guide":
+        return guidePage(arg);
       default:
         return pages.albumsPage();
     }

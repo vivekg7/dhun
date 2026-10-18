@@ -68,6 +68,22 @@ public final class AppModel {
             cache.poke()
         }
     }
+    /// Appearance or storage back to this Mac's defaults (plan 034). The keys
+    /// are forgotten again after `didSet` wrote the defaults back, so a later
+    /// change of default reaches them.
+    public func resetAppearance() {
+        prefs.reset(Prefs.appearanceKeys)
+        appearance = Appearance(theme: prefs.theme, palette: prefs.palette)
+        prefs.reset(Prefs.appearanceKeys)
+    }
+    public func resetStorage() {
+        prefs.reset(Prefs.storageKeys)
+        storage = Storage(
+            downloadLimitGb: prefs.downloadLimitGb, cacheLimitGb: prefs.cacheLimitGb,
+            downloadOnExpensive: prefs.downloadOnExpensive)
+        prefs.reset(Prefs.storageKeys)
+    }
+
     /// The last ten searches, newest first: this Mac's own, as each phone keeps its own (plan 029).
     public private(set) var recentSearches: [String] = []
 

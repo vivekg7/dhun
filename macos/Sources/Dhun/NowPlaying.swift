@@ -273,7 +273,7 @@ struct SeekButton: View {
     let forward: Bool
 
     var body: some View {
-        let seconds = app.setting(forward ? "longFiles.seekForward" : "longFiles.seekBack", forward ? 30 : 10)
+        let seconds = app.setting(forward ? Synced.seekForward : Synced.seekBack)
         let base = forward ? "goforward" : "gobackward"
         let numbered = "\(base).\(seconds)"
         let label = forward ? "Forward \(seconds) seconds" : "Back \(seconds) seconds"
@@ -547,6 +547,7 @@ struct SleepPanel: View {
     let done: () -> Void
     @State private var minutes = 20
     @State private var songs = 3
+    @State private var finishSong = false
 
     var body: some View {
         let t = app.playback.sleep
@@ -555,16 +556,21 @@ struct SleepPanel: View {
             HStack {
                 ForEach([15, 30, 45, 60], id: \.self) { m in
                     Button("\(m)m") {
-                        t.minutes(m); done()
+                        t.minutes(m, finishSong: finishSong); done()
                     }.buttonStyle(.bordered).controlSize(.small)
                 }
             }
             HStack {
                 Stepper("\(minutes) minutes", value: $minutes, in: 1...600)
                 Button("Start") {
-                    t.minutes(minutes); done()
+                    t.minutes(minutes, finishSong: finishSong); done()
                 }
             }
+            // Remembered on this Mac, as on the phone (plan 034).
+            Toggle("Let the song finish", isOn: $finishSong)
+                .toggleStyle(.checkbox)
+                .onAppear { finishSong = app.prefs.sleepFinishSong }
+                .onChange(of: finishSong) { app.prefs.sleepFinishSong = finishSong }
             Divider()
             Button("At the end of this song") {
                 t.endOfSong(); done()

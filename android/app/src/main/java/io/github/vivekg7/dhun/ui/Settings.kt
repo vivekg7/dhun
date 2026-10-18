@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,30 +56,37 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.BuildConfig
+import io.github.vivekg7.dhun.Prefs
 import io.github.vivekg7.dhun.data.ApiException
 import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.Member
-import io.github.vivekg7.dhun.data.bool
+import io.github.vivekg7.dhun.data.Synced
 import io.github.vivekg7.dhun.data.bytes
-import io.github.vivekg7.dhun.data.int
 import io.github.vivekg7.dhun.data.parseTime
-import io.github.vivekg7.dhun.data.string
 import io.github.vivekg7.dhun.ui.theme.Palette
 import io.github.vivekg7.dhun.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Musicolet's shape (docs/plans/018_settings_layout.md): a short list of
  * categories, each its own screen of one-line rows. A choice shows its value
- * and opens a dialog; a setting that follows the user says so.
+ * and opens a dialog. The words are kept short; what a setting is for is on
+ * How it works (docs/plans/034_settings_text_defaults_reset.md).
  */
 enum class SettingsPage(
     val title: String,
@@ -90,6 +99,44 @@ enum class SettingsPage(
     Account("Account"),
     Family("Family members"),
     About("About"),
+    Guide("How it works"),
+}
+
+/** The pages Reset to defaults puts back: what it asks, and what it does. */
+private fun SettingsPage.reset(): Pair<String, () -> Unit>? {
+    val app = App.app
+    return when (this) {
+        SettingsPage.Appearance -> {
+            "Theme, accent colour and mini player go back to their defaults." to app.prefs::resetAppearance
+        }
+
+        // Unset rather than set to today's default, so a later default reaches them.
+        SettingsPage.Playback -> {
+            "They follow you, so all your devices change." to {
+                app.scope.launch { for (s in Synced.all) app.store.setting(s.name, JsonNull) }
+                Unit
+            }
+        }
+
+        SettingsPage.Library -> {
+            "Excluded folders stay as they are." to {
+                app.prefs.resetPhoneSongs()
+                app.local.refresh()
+            }
+        }
+
+        SettingsPage.Downloads -> {
+            "Nothing downloaded is deleted." to {
+                app.prefs.resetDownloads()
+                app.downloads.poke()
+                app.cache.poke()
+            }
+        }
+
+        else -> {
+            null
+        }
+    }
 }
 
 @Composable
@@ -97,51 +144,91 @@ fun SettingsScreen(
     page: SettingsPage,
     open: (SettingsPage) -> Unit,
     onBack: () -> Unit,
+    /** Opens How it works at a heading, or at the top. */
+    openGuide: (String?) -> Unit,
+    guideAt: String?,
 ) {
     key(page) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        val scroll = rememberScrollState()
+        Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
             Row(Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Tip("Back") { IconButton(onBack) { Icon(Icons.Back, "Back") } }
-                Text(page.title, style = MaterialTheme.typography.headlineSmall)
+                Text(page.title, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                page.reset()?.let { (note, reset) -> ResetMenu(page.title, note, reset) }
             }
             when (page) {
-                SettingsPage.Main -> MainSettings(open)
-                SettingsPage.Appearance -> AppearanceSettings()
-                SettingsPage.Playback -> PlaybackSettings()
+                SettingsPage.Main -> MainSettings(open, openGuide)
+                SettingsPage.Appearance -> AppearanceSettings(openGuide)
+                SettingsPage.Playback -> PlaybackSettings(openGuide)
                 SettingsPage.Library -> LibrarySettings()
-                SettingsPage.Downloads -> DownloadSettings()
+                SettingsPage.Downloads -> DownloadSettings(openGuide)
                 SettingsPage.Account -> AccountSettings(open)
                 SettingsPage.Family -> FamilySettings()
                 SettingsPage.About -> AboutSettings()
+                SettingsPage.Guide -> GuideSettings(scroll, guideAt)
             }
         }
     }
 }
 
+/** ⋮ with Reset to defaults, which asks first. */
 @Composable
-private fun MainSettings(open: (SettingsPage) -> Unit) {
+private fun ResetMenu(
+    title: String,
+    note: String,
+    reset: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf(false) }
+    Box {
+        Tip("More options") { IconButton({ menu = true }) { Icon(Icons.More, "More options") } }
+        DropdownMenu(menu, { menu = false }) { MenuItem("Reset to defaults", { menu = false }) { confirm = true } }
+    }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Reset $title?") },
+            text = { Text(note) },
+            confirmButton = {
+                TextButton({
+                    confirm = false
+                    reset()
+                }) { Text("Reset") }
+            },
+            dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun MainSettings(
+    open: (SettingsPage) -> Unit,
+    openGuide: (String?) -> Unit,
+) {
     val prefs = App.app.prefs
     SettingRow("Appearance", "${prefs.themeMode.label} · ${prefs.palette.label}", Icons.Palette) { open(SettingsPage.Appearance) }
     SettingRow("Playback", "Long files, Listen Later", Icons.Play) { open(SettingsPage.Playback) }
-    SettingRow("Songs on this phone", if (prefs.phoneSongs) "Shown beside the server's" else "Off", Icons.Phone) { open(SettingsPage.Library) }
+    SettingRow("Songs on this phone", if (prefs.phoneSongs) "On" else "Off", Icons.Phone) { open(SettingsPage.Library) }
     SettingRow("Downloads", "${limitLabel(prefs.downloadLimitGb)} · ${if (prefs.wifiOnly) "Wi-Fi only" else "Any network"}", Icons.Download) {
         open(SettingsPage.Downloads)
     }
     val account = if (prefs.token.isEmpty()) "Not signed in" else "${prefs.userName} on ${prefs.server.substringAfter("://")}"
     SettingRow("Account", account, Icons.Artist) { open(SettingsPage.Account) }
     SettingRow("About", "Dhun ${BuildConfig.VERSION_NAME}", Icons.Info) { open(SettingsPage.About) }
+    SettingRow("How it works", "Queues, syncing and every setting", Icons.Help) { openGuide(null) }
 }
 
 @Composable
-private fun AppearanceSettings() {
+private fun AppearanceSettings(openGuide: (String?) -> Unit) {
     val prefs = App.app.prefs
-    ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }) { prefs.chooseTheme(it) }
+    ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }, default = Prefs.THEME) { prefs.chooseTheme(it) }
     ChoiceRow(
         "Mini player",
         MiniPlayerStyle.entries,
         prefs.miniPlayer,
         { it.label },
-        note = "Shown on every tab but Now playing. Floating is dragged anywhere; its cover plays and pauses, and a long press opens Now playing.",
+        default = Prefs.MINI_PLAYER,
+        guide = { openGuide("Mini player") },
     ) { prefs.chooseMiniPlayer(it) }
     var palette by remember { mutableStateOf(false) }
     SettingRow("Accent colour", prefs.palette.label) { palette = true }
@@ -152,7 +239,7 @@ private fun AppearanceSettings() {
             text = {
                 FlowRow(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     for (p in Palette.entries) {
-                        PaletteSwatch(p, p == prefs.palette) {
+                        PaletteSwatch(p, p == prefs.palette, p == Prefs.PALETTE) {
                             prefs.choosePalette(p)
                             palette = false
                         }
@@ -166,117 +253,66 @@ private fun AppearanceSettings() {
 
 // Synced: these follow the user to every device (docs/plans/009_resume_long_files.md).
 @Composable
-private fun PlaybackSettings() {
+private fun PlaybackSettings(openGuide: (String?) -> Unit) {
     val app = App.app
     val settings by app.store.settings.collectAsState()
     val scope = rememberCoroutineScope()
 
-    fun set(
-        name: String,
-        value: JsonPrimitive,
-    ) = scope.launch { app.store.setting(name, value) }
+    @Composable
+    fun <T> Choice(
+        title: String,
+        s: Synced<T>,
+        label: (T) -> String,
+        note: String? = null,
+        guide: String? = null,
+        enabled: Boolean = true,
+    ) = ChoiceRow(title, s.options, s.of(settings), label, note, s.default, enabled, guide = guide?.let { { openGuide(it) } }) {
+        scope.launch { app.store.setting(s.name, s.json(it)) }
+    }
 
+    Text(
+        "These follow you to all your devices.",
+        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     SectionLabel("Buttons")
-    ChoiceRow(
-        "Previous",
-        listOf(true, false),
-        settings.bool("previous.restart", true),
-        { if (it) "Restart the song first" else "Always the previous song" },
-        note = "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one.",
-        synced = true,
-    ) { set("previous.restart", JsonPrimitive(it)) }
+    Choice("Previous", Synced.previousRestart, { if (it) "Restart song first" else "Previous song" })
 
     SectionLabel("Long files")
-    ChoiceRow(
-        "Continue long files",
-        listOf(5, 10, 15, 20, 30, 60),
-        settings.int("longFiles.minMinutes", 15),
-        { "$it minutes and longer" },
-        note = "Audiobooks, podcasts and mixes this long continue where you left them.",
-        synced = true,
-    ) { set("longFiles.minMinutes", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Playing one again",
-        listOf("auto", "ask", "off"),
-        settings.string("longFiles.resume", "auto"),
+    Choice("Remember position", Synced.longMinMinutes, { "$it min and longer" }, "For audiobooks, podcasts and mixes.", guide = "Remember position")
+    Choice("When played again", Synced.longResume, {
+        when (it) {
+            "auto" -> "Resume"
+            "ask" -> "Ask"
+            else -> "Start over"
+        }
+    })
+    Choice(
+        "Previous button",
+        Synced.longPrevious,
         {
             when (it) {
-                "auto" -> "Continue where you left it"
-                "ask" -> "Ask"
-                else -> "Start over"
-            }
-        },
-        synced = true,
-    ) { set("longFiles.resume", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Previous in one",
-        listOf("keep", "seek", "ignore", "songs"),
-        settings.string("longFiles.previous", "keep"),
-        {
-            when (it) {
-                "keep" -> "Previous file, keep my place"
-                "seek" -> "Seek back from a headset"
-                "ignore" -> "Ignore headsets and the lock screen"
+                "keep" -> "Previous file"
+                "seek" -> "Seek back (headset)"
+                "ignore" -> "Ignore headset"
                 else -> "Same as songs"
             }
         },
-        note =
-            "Restarting a long file loses where you were, and buds miscount taps. Keeping your place, Previous goes to the " +
-                "previous file and you continue here when you come back. Seeking back or ignoring, it does that only on the screen.",
-        synced = true,
-    ) { set("longFiles.previous", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Next in one",
-        listOf("next", "seek"),
-        settings.string("longFiles.next", "next"),
-        { if (it == "seek") "Seek forward from a headset" else "Next file" },
-        note = "Seeking forward, Next goes to the next file only on the screen.",
-        synced = true,
-    ) { set("longFiles.next", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Seek back",
-        listOf(5, 10, 15, 30, 60),
-        settings.int("longFiles.seekBack", 10),
-        { "$it seconds" },
-        synced = true,
-    ) { set("longFiles.seekBack", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Seek forward",
-        listOf(10, 15, 30, 60, 120),
-        settings.int("longFiles.seekForward", 30),
-        { "$it seconds" },
-        synced = true,
-    ) { set("longFiles.seekForward", JsonPrimitive(it)) }
-    val rewind = settings.int("longFiles.rewind", 10)
-    ChoiceRow(
-        "Going on after a pause",
-        listOf(0, 5, 10, 15, 30),
-        rewind,
-        { if (it == 0) "Exactly where it stopped" else "Go back $it seconds" },
-        note = "So a sentence cut off by the pause is heard again from its start.",
-        synced = true,
-    ) { set("longFiles.rewind", JsonPrimitive(it)) }
-    ChoiceRow(
-        "A pause counts after",
-        listOf(1, 5, 10, 30, 60),
-        settings.int("longFiles.rewindAfter", 5),
-        { if (it == 1) "1 minute" else "$it minutes" },
-        synced = true,
-        enabled = rewind > 0,
-    ) { set("longFiles.rewindAfter", JsonPrimitive(it)) }
+        "On the screen, Previous always goes to the previous file.",
+        guide = "Previous button",
+    )
+    Choice("Next button", Synced.longNext, { if (it == "seek") "Seek forward (headset)" else "Next file" }, guide = "Next button")
+    Choice("Seek back", Synced.seekBack, { "$it s" })
+    Choice("Seek forward", Synced.seekForward, { "$it s" })
+    val rewind = Synced.rewind.of(settings)
+    Choice("Rewind on resume", Synced.rewind, { if (it == 0) "Off" else "$it s" })
+    Choice("After pauses of", Synced.rewindAfter, { "$it min" }, enabled = rewind > 0)
 
     SectionLabel("Listen Later")
-    val autoRemove = settings.bool("listenLater.autoRemove", true)
-    SwitchRow("Remove what you finish", "On all your devices", autoRemove) { set("listenLater.autoRemove", JsonPrimitive(it)) }
-    ChoiceRow(
-        "Finished at",
-        listOf(80, 90, 95, 100),
-        settings.int("listenLater.finishedPercent", 90),
-        { "$it% heard" },
-        note = "A file counts as finished once heard this far.",
-        synced = true,
-        enabled = autoRemove,
-    ) { set("listenLater.finishedPercent", JsonPrimitive(it)) }
+    val autoRemove = Synced.laterAutoRemove.of(settings)
+    SwitchRow("Remove when finished", null, autoRemove) { scope.launch { app.store.setting(Synced.laterAutoRemove.name, JsonPrimitive(it)) } }
+    Choice("Finished at", Synced.laterFinishedPercent, { "$it%" }, enabled = autoRemove)
 }
 
 // Songs already on the phone (docs/plans/025_phone_local_songs.md): this phone's, so not synced.
@@ -300,9 +336,9 @@ private fun LibrarySettings() {
     val allowed = app.local.allowed()
     val summary =
         when {
-            !prefs.phoneSongs -> "Only the server's songs are shown"
+            !prefs.phoneSongs -> null
             !allowed -> "Tap to allow access to music"
-            else -> "${phone?.size ?: 0} songs, marked with a phone. They are never sent to the server."
+            else -> "${phone?.size ?: 0} songs"
         }
     SwitchRow("Songs on this phone", summary, prefs.phoneSongs && allowed) { on ->
         if (on && !allowed) {
@@ -313,11 +349,11 @@ private fun LibrarySettings() {
         }
     }
     ChoiceRow(
-        "Shortest song",
+        "Skip files shorter than",
         listOf(0, 10, 30, 60, 120),
         prefs.phoneMinSeconds,
-        { if (it == 0) "Every file" else "$it seconds" },
-        note = "Shorter files are left out: ringtones, notification sounds, voice notes.",
+        { if (it == 0) "Off" else "$it s" },
+        default = Prefs.PHONE_MIN_SECONDS,
         enabled = prefs.phoneSongs,
     ) {
         prefs.choosePhoneMinSeconds(it)
@@ -375,7 +411,7 @@ private fun ExcludedFoldersDialog(onDismiss: () -> Unit) {
 
 // This phone's storage and network, so not synced (docs/plans/012_downloads.md).
 @Composable
-private fun DownloadSettings() {
+private fun DownloadSettings(openGuide: (String?) -> Unit) {
     val app = App.app
     val prefs = app.prefs
     val status by app.downloads.status.collectAsState()
@@ -385,12 +421,13 @@ private fun DownloadSettings() {
         listOf(2, 5, 10, 20, 50, 0),
         prefs.downloadLimitGb,
         ::limitLabel,
-        note = "At the limit, downloads stop. Nothing is deleted to make room.",
+        note = "At the limit, downloads stop. Nothing is deleted.",
+        default = Prefs.DOWNLOAD_LIMIT_GB,
     ) {
         prefs.chooseDownloadLimit(it)
         app.downloads.poke()
     }
-    SwitchRow("Wi-Fi only", if (prefs.wifiOnly) "Downloads wait for Wi-Fi" else "Downloads use mobile data too", prefs.wifiOnly) {
+    SwitchRow("Wi-Fi only", null, prefs.wifiOnly) {
         prefs.chooseWifiOnly(it)
         app.downloads.poke()
     }
@@ -400,9 +437,8 @@ private fun DownloadSettings() {
         listOf(1, 3, 5, 10, 0),
         prefs.cacheLimitGb,
         { if (it == 0) "Off" else "$it GB" },
-        note =
-            "Songs you play, and the next ones in the queue (2 on mobile data, 10 on Wi-Fi), are kept " +
-                "so they play without waiting. At the limit, the songs played longest ago make room.",
+        default = Prefs.CACHE_LIMIT_GB,
+        guide = { openGuide("Song cache") },
         summary = if (prefs.cacheLimitGb == 0) "Off" else "${prefs.cacheLimitGb} GB · ${bytes(cached)} used",
     ) {
         prefs.chooseCacheLimit(it)
@@ -612,6 +648,89 @@ private fun AboutSettings() {
     SettingRow("Licence", "GPL-3.0")
 }
 
+/**
+ * How it works: docs/GUIDE.md, copied into the assets by scripts/guide.sh.
+ * Headings, paragraphs, "- " items and **bold** are all it uses. Opened at
+ * [at], a heading's text, when an ⓘ asked for one.
+ */
+@Composable
+private fun GuideSettings(
+    scroll: ScrollState,
+    at: String?,
+) {
+    val context = LocalContext.current
+    val blocks =
+        remember {
+            guideBlocks(
+                context.assets
+                    .open("guide.md")
+                    .bufferedReader()
+                    .use { it.readText() },
+            )
+        }
+    var target by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(target) { target?.let { scroll.scrollTo(it) } }
+    val c = MaterialTheme.colorScheme
+    Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
+        for ((level, text) in blocks) {
+            when (level) {
+                2 -> {
+                    Text(text, Modifier.padding(top = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = c.primary)
+                }
+
+                3 -> {
+                    Text(
+                        text,
+                        Modifier.padding(top = 12.dp, bottom = 2.dp).then(
+                            if (text == at) Modifier.onGloballyPositioned { target = it.positionInParent().y.toInt() } else Modifier,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+
+                0 -> {
+                    Text(bold(text), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+
+                else -> {
+                    Row(Modifier.padding(vertical = 2.dp)) {
+                        Text("•", Modifier.width(16.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(bold(text), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The guide as (level, text): 2 and 3 for headings, 0 for a paragraph, -1 for a list item. The title is the page's. */
+internal fun guideBlocks(md: String): List<Pair<Int, String>> {
+    val out = mutableListOf<Pair<Int, String>>()
+    for (line in md.lines()) {
+        val t = line.trim()
+        when {
+            t.isEmpty() || t.startsWith("# ") -> out += 0 to ""
+
+            t.startsWith("### ") -> out += 3 to t.drop(4)
+
+            t.startsWith("## ") -> out += 2 to t.drop(3)
+
+            t.startsWith("- ") -> out += -1 to t.drop(2)
+
+            // A line of a paragraph or item goes on with the one before it.
+            out.lastOrNull()?.let { it.first <= 0 && it.second.isNotEmpty() } == true -> out[out.lastIndex] = out.last().let { it.first to "${it.second} $t" }
+
+            else -> out += 0 to t
+        }
+    }
+    return out.filter { it.second.isNotEmpty() }
+}
+
+private fun bold(text: String) =
+    buildAnnotatedString {
+        text.split("**").forEachIndexed { i, part -> if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(part) } else append(part) }
+    }
+
 private fun limitLabel(gb: Int) = if (gb == 0) "No limit" else "$gb GB"
 
 /** One setting: a title, what it is set to, and an icon on the list of categories only. */
@@ -657,7 +776,11 @@ private fun SwitchRow(
     onChange: (Boolean) -> Unit,
 ) = SettingRow(title, summary, trailing = { Switch(on, null) }) { onChange(!on) }
 
-/** A setting with a few values: the row shows the one chosen, a dialog picks another. */
+/**
+ * A setting with a few values: the row shows the one chosen, a dialog picks
+ * another, with the [default] marked. [guide] puts an ⓘ in the dialog's
+ * title that opens How it works where it explains the setting.
+ */
 @Composable
 private fun <T> ChoiceRow(
     title: String,
@@ -665,23 +788,36 @@ private fun <T> ChoiceRow(
     selected: T,
     label: (T) -> String,
     note: String? = null,
-    synced: Boolean = false,
+    default: T? = null,
     enabled: Boolean = true,
     /** The row's line, when it says more than the value chosen. */
     summary: String? = null,
+    guide: (() -> Unit)? = null,
     onPick: (T) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    SettingRow(title, summary ?: (label(selected) + if (synced) " · on all your devices" else ""), enabled = enabled) { open = true }
+    SettingRow(title, summary ?: label(selected), enabled = enabled) { open = true }
     if (!open) return
     AlertDialog(
         onDismissRequest = { open = false },
-        title = { Text(title) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f))
+                if (guide != null) {
+                    Tip("How it works") {
+                        IconButton({
+                            open = false
+                            guide()
+                        }) { Icon(Icons.InfoOutline, "How it works", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
+        },
         text = {
             Column {
                 note?.let { DialogNote(it) }
                 for (o in options) {
-                    DialogRow(label(o), selected = o == selected) {
+                    DialogRow(label(o), selected = o == selected, detail = if (o == default) "Default" else null) {
                         open = false
                         onPick(o)
                     }
@@ -696,6 +832,7 @@ private fun <T> ChoiceRow(
 private fun PaletteSwatch(
     p: Palette,
     selected: Boolean,
+    default: Boolean,
     onClick: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
@@ -710,6 +847,7 @@ private fun PaletteSwatch(
             }
         }
         Text(p.label, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = if (selected) c.onSurface else c.onSurfaceVariant)
+        if (default) Text("Default", style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
     }
 }
 

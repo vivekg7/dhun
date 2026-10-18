@@ -196,12 +196,24 @@ class Nav(
     /** The settings screen shown over the tabs, or null. */
     var settings by mutableStateOf<SettingsPage?>(null)
 
+    /** The heading How it works opens at, and the page whose ⓘ opened it, which Back returns to. */
+    var guideAt by mutableStateOf<String?>(null)
+        private set
+    private var guideFrom: SettingsPage? = null
+
+    fun openGuide(at: String?) {
+        guideFrom = settings
+        guideAt = at
+        settings = SettingsPage.Guide
+    }
+
     /** Back from a category goes to the list of them, and from there to the tabs; Family members is inside Account. */
     fun settingsBack() {
         settings =
             when (settings) {
                 SettingsPage.Main -> null
                 SettingsPage.Family -> SettingsPage.Account
+                SettingsPage.Guide -> guideFrom?.takeIf { it != SettingsPage.Guide } ?: SettingsPage.Main
                 else -> SettingsPage.Main
             }
     }
@@ -318,7 +330,7 @@ fun Shell() {
                     ).windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
-                SettingsScreen(settings, { nav.settings = it }, nav::settingsBack)
+                SettingsScreen(settings, { nav.settings = it }, nav::settingsBack, nav::openGuide, nav.guideAt)
             }
         } else {
             Tabs(nav, saved, pager) { t ->
@@ -555,7 +567,7 @@ enum class MiniPlayerStyle(
     val label: String,
 ) {
     None("None"),
-    Bar("Bar at the bottom"),
+    Bar("Bar"),
     Floating("Floating"),
 }
 

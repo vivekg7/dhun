@@ -283,9 +283,8 @@ func (a *applier) markPlayed(o op, ended string) error {
 // enough into it: by position, so a podcast heard over several sittings
 // counts (plan 010). Both rules are the user's synced settings.
 func (a *applier) finishListenLater(o op, ended string) error {
-	on, pct := true, 90.0
-	a.readSetting("listenLater.autoRemove", &on)
-	a.readSetting("listenLater.finishedPercent", &pct)
+	on := readSetting(a, "listenLater.autoRemove", true)
+	pct := readSetting(a, "listenLater.finishedPercent", 90.0)
 	if pct <= 0 || pct > 100 {
 		pct = 90
 	}
@@ -303,13 +302,17 @@ func (a *applier) finishListenLater(o op, ended string) error {
 	return a.mark("listen_later", o.Song, true, ended)
 }
 
-// readSetting decodes one of the user's synced settings into v, leaving v
-// (the default) as it is when the setting is missing, null or malformed.
-func (a *applier) readSetting(name string, v any) {
+// readSetting is one of the user's synced settings, or def when it is
+// missing, null or malformed. def is the apps' default too: make check
+// compares the two (docs/plans/034_settings_text_defaults_reset.md).
+func readSetting[T any](a *applier, name string, def T) T {
 	var raw string
-	if a.tx.QueryRowContext(a.ctx, `SELECT value FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, name).Scan(&raw) == nil {
-		json.Unmarshal([]byte(raw), v)
+	v := def
+	if a.tx.QueryRowContext(a.ctx, `SELECT value FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, name).Scan(&raw) != nil ||
+		json.Unmarshal([]byte(raw), &v) != nil {
+		return def
 	}
+	return v
 }
 
 // label keeps a client-supplied tag to one short line.

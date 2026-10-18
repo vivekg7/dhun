@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -97,6 +98,7 @@ fun SleepDialog(onDismiss: () -> Unit) {
     var hours by remember { mutableStateOf("00") }
     var mins by remember { mutableStateOf("30") }
     var songs by remember { mutableStateOf("5") }
+    var finish by remember { mutableStateOf(App.app.prefs.sleepFinishSong) }
     val total = (hours.toIntOrNull() ?: 0) * 60 + (mins.toIntOrNull() ?: 0)
     val count = songs.toIntOrNull() ?: 0
 
@@ -127,6 +129,19 @@ fun SleepDialog(onDismiss: () -> Unit) {
                     Text(":", Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleLarge)
                     Stepper(mins, { mins = it }, { setTotal(total / 5 * 5 + 5) }, { setTotal((total + 4) / 5 * 5 - 5) }) { pick = Pick.Time }
                 }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            finish = !finish
+                            pick = Pick.Time
+                        }.padding(start = 36.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(finish, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Let the song finish", style = MaterialTheme.typography.bodyMedium)
+                }
                 Choice("After songs", "1 is the end of this song", pick == Pick.Songs, { pick = Pick.Songs }) {
                     Stepper(songs, { songs = it }, { songs = "${(count + 1).coerceAtMost(MAX_SONGS)}" }, { songs = "${(count - 1).coerceAtLeast(1)}" }) {
                         pick = Pick.Songs
@@ -138,9 +153,18 @@ fun SleepDialog(onDismiss: () -> Unit) {
         confirmButton = {
             TextButton({
                 when (pick) {
-                    Pick.Time -> sleep.minutes(total)
-                    Pick.Songs -> sleep.songs(count)
-                    Pick.Queue -> sleep.endOfQueue()
+                    Pick.Time -> {
+                        App.app.prefs.sleepFinishSong = finish
+                        sleep.minutes(total, finish)
+                    }
+
+                    Pick.Songs -> {
+                        sleep.songs(count)
+                    }
+
+                    Pick.Queue -> {
+                        sleep.endOfQueue()
+                    }
                 }
                 onDismiss()
             }, enabled = ok) { Text("Start") }

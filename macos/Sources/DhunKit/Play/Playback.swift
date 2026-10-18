@@ -168,7 +168,7 @@ public final class Playback {
     /// seek back. It never goes by chapter: that moves the place in a book
     /// as surely as a restart does, so it takes a deliberate `chapterOn`.
     public func next(onScreen: Bool) {
-        if !onScreen, let s = current, isLong(s), app.setting("longFiles.next", "next") == "seek" {
+        if !onScreen, let s = current, isLong(s), app.setting(Synced.next) == "seek" {
             return seekForward()
         }
         guard let i = currentIndex, let n = nextIndex(after: i, repeat: repeatMode == "queue") else { return }
@@ -184,11 +184,11 @@ public final class Playback {
     /// chapter, as Next: `chapterBack` does that.
     public func previous(onScreen: Bool) {
         guard let i = currentIndex, let s = current else { return }
-        let long = app.setting("longFiles.previous", "keep")
+        let long = app.setting(Synced.previous)
         let keep = isLong(s) && long != "songs"
         if keep && !onScreen && long == "ignore" { return }
         if keep && !onScreen && long == "seek" { return seekBack() }
-        let restart = !keep && app.setting("previous.restart", true)
+        let restart = !keep && app.setting(Synced.previousRestart)
         if restart && position > Playback.restartWindow { return seek(to: 0) }
         if let p = previousIndex(before: i) {
             jump(to: p, end: "previous")
@@ -234,8 +234,8 @@ public final class Playback {
     }
 
     /// Back or on within the file, by the seconds set for long files (plan 009).
-    public func seekBack() { seekBy(-app.setting("longFiles.seekBack", 10)) }
-    public func seekForward() { seekBy(app.setting("longFiles.seekForward", 30)) }
+    public func seekBack() { seekBy(-app.setting(Synced.seekBack)) }
+    public func seekForward() { seekBy(app.setting(Synced.seekForward)) }
 
     private func seekBy(_ seconds: Int) {
         let end = duration > 0 ? duration : .infinity
@@ -931,7 +931,7 @@ public final class Playback {
 
     /// Every episode and book file keeps its place, however short (plan 031).
     public func isLong(_ s: Song) -> Bool {
-        s.spoken || s.durationMs >= app.setting("longFiles.minMinutes", 15) * 60_000
+        s.spoken || s.durationMs >= app.setting(Synced.minMinutes) * 60_000
     }
 
     /// Where to start `s`: its resume point under "auto"; under "ask", offered instead.
@@ -940,7 +940,7 @@ public final class Playback {
         guard isLong(s), let r = app.db.resume(s.id), !r.deleted, r.positionMs > 0 else { return nil }
         // Left there when the point was saved: on another device, or before the app quit.
         let pos = rewind(r.positionMs, since: r.at)
-        switch app.setting("longFiles.resume", "auto") {
+        switch app.setting(Synced.resume) {
         case "auto":
             heardAt = pos != r.positionMs ? nowMs() : r.at
             return pos
@@ -968,8 +968,8 @@ public final class Playback {
     /// seconds if that was "longFiles.rewindAfter" minutes ago or more.
     private func rewind(_ pos: Int, since: Int) -> Int {
         Playback.rewound(
-            pos, stoppedFor: nowMs() - since, back: app.setting("longFiles.rewind", 10) * 1000,
-            after: app.setting("longFiles.rewindAfter", 5) * 60_000)
+            pos, stoppedFor: nowMs() - since, back: app.setting(Synced.rewind) * 1000,
+            after: app.setting(Synced.rewindAfter) * 60_000)
     }
 
     /// Where Play picks up a long file after a long pause, in seconds: a

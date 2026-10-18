@@ -1960,6 +1960,32 @@ h2 + .setting:last-child,
 .settinglabel small {
   color: var(--fg2);
 }
+.settinglabel .info {
+  margin-left: 6px;
+  color: var(--fg2);
+  text-decoration: none;
+}
+.settinglabel .info:hover {
+  color: var(--accent);
+}
+.guide article {
+  line-height: 1.5;
+}
+.guide h2 {
+  margin-top: 28px;
+}
+.guide h3 {
+  font-size: 15px;
+  margin: 18px 0 4px;
+  scroll-margin-top: 12px;
+}
+.guide p,
+.guide ul {
+  margin: 0 0 10px;
+}
+.guide ul {
+  padding-left: 20px;
+}
 .setting .inline {
   display: flex;
   align-items: center;

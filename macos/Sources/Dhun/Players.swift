@@ -308,9 +308,9 @@ struct Commands: SwiftUI.Commands {
             // Next or Previous, which go by file, so it has keys of its own.
             let p = app.playback
             let long = p.current.map(p.isLong) == true
-            Button("Skip Forward \(app.setting("longFiles.seekForward", 30)) Seconds") { p.seekForward() }
+            Button("Skip Forward \(app.setting(Synced.seekForward)) Seconds") { p.seekForward() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .shift]).disabled(!long)
-            Button("Skip Back \(app.setting("longFiles.seekBack", 10)) Seconds") { p.seekBack() }
+            Button("Skip Back \(app.setting(Synced.seekBack)) Seconds") { p.seekBack() }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .shift]).disabled(!long)
             Button("Next Chapter") { p.chapterOn() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option]).disabled(!p.hasChapters)

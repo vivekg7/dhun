@@ -13,10 +13,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.util.UUID
@@ -350,9 +347,9 @@ class Store(
             dao.putPlayStats(listOf(PlayStat(l.song, (old?.count ?: 0) + 1, maxOf(old?.lastPlayedAt ?: 0, l.startedAt))))
         }
         val s = stored.first()
-        val pct = s.int("listenLater.finishedPercent", 90).takeIf { it in 1..100 } ?: 90
+        val pct = Synced.laterFinishedPercent.of(s).takeIf { it in 1..100 } ?: 90
         val listed = dao.mark(LATER, l.song)?.deleted == false
-        if (s.bool("listenLater.autoRemove", true) && listed && l.toMs * 100 >= pct * length) {
+        if (Synced.laterAutoRemove.of(s) && listed && l.toMs * 100 >= pct * length) {
             dao.putMark(Mark(LATER, l.song, l.endedAt, deleted = true))
         }
     }
@@ -458,22 +455,6 @@ class Store(
 fun songIds(text: String): List<Long> = if (text.isEmpty()) emptyList() else text.split(',').map { it.toLong() }
 
 fun List<Long>.joinIds() = joinToString(",")
-
-/** A synced setting read with the app's default for missing or null (plan 009). */
-fun Map<String, JsonElement>.int(
-    name: String,
-    def: Int,
-) = (this[name] as? JsonPrimitive)?.intOrNull ?: def
-
-fun Map<String, JsonElement>.bool(
-    name: String,
-    def: Boolean,
-) = (this[name] as? JsonPrimitive)?.booleanOrNull ?: def
-
-fun Map<String, JsonElement>.string(
-    name: String,
-    def: String,
-) = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.jsonPrimitive?.content ?: def
 
 data class Listen(
     val song: Long,

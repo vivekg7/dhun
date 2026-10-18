@@ -4,8 +4,8 @@ import Observation
 /// Stops playback later (plan 014), as on the phone: after some minutes, at
 /// the end of this song, after a number of songs, at the end of the queue,
 /// or after a song picked in the queue (plan 020). A timer by the clock
-/// fades out over its last seconds and pauses on time; the others pause
-/// where a song ends, which needs no fade.
+/// fades out over its last seconds and pauses on time, unless it lets the
+/// song finish; the others pause where a song ends, which needs no fade.
 @MainActor @Observable
 public final class SleepTimer {
     public enum Mode: Equatable, Sendable {
@@ -27,9 +27,20 @@ public final class SleepTimer {
 
     init(playback: Playback) { self.playback = playback }
 
-    public func minutes(_ m: Int) {
+    /// With `finishSong`, the time up turns the timer into "after this song",
+    /// so the song ends on its own and nothing fades (plan 034).
+    public func minutes(_ m: Int, finishSong: Bool = false) {
         let end = Date().addingTimeInterval(Double(m) * 60)
         set(.at(end))
+        if finishSong {
+            fading = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(max(0, end.timeIntervalSinceNow)))
+                guard let self, !Task.isCancelled else { return }
+                // Paused already, there is no song to finish.
+                if self.playback.isPlaying { self.set(.endOfSong) } else { self.cancel() }
+            }
+            return
+        }
         fading = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(0, end.timeIntervalSinceNow - SleepTimer.fade)))
             while let self, !Task.isCancelled {

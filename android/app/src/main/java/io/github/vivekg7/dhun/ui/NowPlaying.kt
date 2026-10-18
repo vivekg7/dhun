@@ -89,7 +89,7 @@ import io.github.vivekg7.dhun.data.Bookmark
 import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
-import io.github.vivekg7.dhun.data.int
+import io.github.vivekg7.dhun.data.Synced
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -307,7 +307,7 @@ fun NowPlayingScreen(nav: Nav) {
             // A long file steps back and on within itself, by the seconds set for long files (plan 009).
             val long = pb.isLong(s)
             SkipButton(next = false, s, Modifier.size(56.dp), 36.dp)
-            if (long) SeekButton(settings.int("longFiles.seekBack", 10), forward = false, pb::seekBack)
+            if (long) SeekButton(Synced.seekBack.of(settings), forward = false, pb::seekBack)
             Tip(if (going) "Pause" else "Play") {
                 // Gives a little under the finger, and the icon turns from one to the other.
                 val press = remember { MutableInteractionSource() }
@@ -331,7 +331,7 @@ fun NowPlayingScreen(nav: Nav) {
                     ) { g -> Icon(if (g) Icons.Pause else Icons.Play, if (g) "Pause" else "Play", Modifier.size(36.dp), tint = c.onPrimary) }
                 }
             }
-            if (long) SeekButton(settings.int("longFiles.seekForward", 30), forward = true, pb::seekForward)
+            if (long) SeekButton(Synced.seekForward.of(settings), forward = true, pb::seekForward)
             SkipButton(next = true, s, Modifier.size(56.dp), 36.dp)
         }
     }

@@ -22,6 +22,7 @@ import {
   rewound,
 } from "./queue.js";
 import { nowMs, parseTime, uuid, distinct } from "./util.js";
+import { synced } from "./synced.js";
 
 /** A hand-off never starts closer than this to the song's end, nor is a resume point kept there. */
 const endMarginMs = 5000;
@@ -217,7 +218,7 @@ export class Playback extends EventTarget {
       !onScreen &&
       s &&
       this.isLong(s) &&
-      this.app.setting("longFiles.next", "next") === "seek"
+      this.app.setting(synced.longNext) === "seek"
     )
       return this.seekForward();
     const n = this.nextIndex(this.currentIndex, this.repeat === "queue");
@@ -238,11 +239,11 @@ export class Playback extends EventTarget {
     const i = this.currentIndex;
     const s = this.current;
     if (i < 0 || !s) return;
-    const long = this.app.setting("longFiles.previous", "keep");
+    const long = this.app.setting(synced.longPrevious);
     const keep = this.isLong(s) && long !== "songs";
     if (keep && !onScreen && long === "ignore") return;
     if (keep && !onScreen && long === "seek") return this.seekBack();
-    const restart = !keep && this.app.setting("previous.restart", true) !== false;
+    const restart = !keep && this.app.setting(synced.previousRestart) !== false;
     if (restart && this.position > 3) return this.seek(0);
     const p = this.previousIndex(i);
     if (p >= 0) this.jump(p, "previous");
@@ -277,11 +278,11 @@ export class Playback extends EventTarget {
 
   /** Back or on within the file, by the seconds set for long files (plan 009). */
   seekBack() {
-    this.seek(this.position - this.app.setting("longFiles.seekBack", 10));
+    this.seek(this.position - this.app.setting(synced.seekBack));
   }
 
   seekForward() {
-    this.seek(this.position + this.app.setting("longFiles.seekForward", 30));
+    this.seek(this.position + this.app.setting(synced.seekForward));
   }
 
   seek(seconds) {
@@ -1065,9 +1066,7 @@ export class Playback extends EventTarget {
 
   /** Every episode and book file keeps its place, however short (plan 031). */
   isLong(s) {
-    return (
-      s.spoken || s.durationMs >= this.app.setting("longFiles.minMinutes", 15) * 60_000
-    );
+    return s.spoken || s.durationMs >= this.app.setting(synced.minMinutes) * 60_000;
   }
 
   /**
@@ -1081,7 +1080,7 @@ export class Playback extends EventTarget {
     if (!left) return null;
     const at = this.app.resumeMap.get(s.id).at;
     const ms = this.rewind(left, at);
-    switch (this.app.setting("longFiles.resume", "auto")) {
+    switch (this.app.setting(synced.resume)) {
       case "auto":
         this.heardAt = ms !== left ? nowMs() : at;
         return ms;
@@ -1098,8 +1097,8 @@ export class Playback extends EventTarget {
     return rewound(
       pos,
       nowMs() - since,
-      this.app.setting("longFiles.rewind", 10) * 1000,
-      this.app.setting("longFiles.rewindAfter", 5) * 60_000,
+      this.app.setting(synced.rewind) * 1000,
+      this.app.setting(synced.rewindAfter) * 60_000,
     );
   }
 
@@ -1234,23 +1233,32 @@ export class Playback extends EventTarget {
   /**
    * After some minutes, at the end of this song, after a number of songs, at
    * the end of the queue, or after a song picked in the queue (plan 020). A
-   * timer by the clock fades out over its last seconds and pauses on time;
-   * the others pause where a song ends, which needs no fade.
+   * timer by the clock fades out over its last seconds and pauses on time,
+   * or, with this browser's "Let the song finish" (plan 034), turns into
+   * "after this song" then. The others pause where a song ends, which needs
+   * no fade.
    * Modes: {kind: "at", end}, {kind: "song"}, {kind: "songs", left}, {kind: "queue"}, {kind: "after", song, title}.
    */
   sleepMinutes(m) {
     const end = nowMs() + m * 60_000;
+    const finish = !!this.app.prefs.sleepFinish;
     this.setSleep({ kind: "at", end });
     const step = () => {
       if (this.sleep.mode?.kind !== "at" || this.sleep.mode.end !== end) return;
       const left = end - nowMs();
       if (left <= 0) {
+        // Paused already, there is no song to finish.
+        if (finish && this.isPlaying) return this.sleepEndOfSong();
         this.pause();
         this.cancelSleep();
         return;
       }
-      for (const el of this.els) el.volume = Math.min(1, Math.max(0, left / fadeMs));
-      this.sleep.timer = setTimeout(step, left > fadeMs ? left - fadeMs : 100);
+      if (!finish)
+        for (const el of this.els) el.volume = Math.min(1, Math.max(0, left / fadeMs));
+      this.sleep.timer = setTimeout(
+        step,
+        finish ? left : left > fadeMs ? left - fadeMs : 100,
+      );
     };
     step();
   }
@@ -1358,8 +1366,8 @@ export class Playback extends EventTarget {
    */
   sessionSeeks(ms) {
     const s = this.current;
-    const back = this.app.setting("longFiles.seekBack", 10);
-    const on = this.app.setting("longFiles.seekForward", 30);
+    const back = this.app.setting(synced.seekBack);
+    const on = this.app.setting(synced.seekForward);
     const key = s && this.isLong(s) ? `${back}/${on}` : "";
     if (key === this.seekKey) return;
     this.seekKey = key;

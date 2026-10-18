@@ -9,9 +9,7 @@ import { VList, menuAt, showMenu, emptyNote, iconButton, dialog } from "./kit.js
 import { SongList, items, thumb, cover } from "./songs.js";
 import { frame, filterBox, missing } from "./pages.js";
 import { ctx } from "./ctx.js";
-
-/** Whether a show's page leaves out the episodes already played; synced, on by default. */
-const hidePlayedSetting = "podcasts.hidePlayed";
+import { synced } from "../synced.js";
 
 /** Pages get a filter only past this many rows, as the others do. */
 const filterOver = 12;
@@ -118,10 +116,9 @@ export function shelfPage(id) {
   const play = h("button.primary", { type: "button", onclick: () => playShelf(get()) });
   const hide = h("button", {
     type: "button",
-    onclick: () => app.setSetting(hidePlayedSetting, !hidePlayed()),
+    onclick: () => app.setSetting(synced.hidePlayed.name, !hidePlayed()),
   });
-  const hidePlayed = () =>
-    !get().isBook && app.setting(hidePlayedSetting, true) !== false;
+  const hidePlayed = () => !get().isBook && app.setting(synced.hidePlayed) !== false;
   const s0 = get();
   const header = h(
     "div.listhead",

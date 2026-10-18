@@ -46,10 +46,10 @@ final class MediaKeys {
         if long {
             let app = playback.app
             c.skipBackwardCommand.preferredIntervals = [
-                NSNumber(value: app.setting("longFiles.seekBack", 10))
+                NSNumber(value: app.setting(Synced.seekBack))
             ]
             c.skipForwardCommand.preferredIntervals = [
-                NSNumber(value: app.setting("longFiles.seekForward", 30))
+                NSNumber(value: app.setting(Synced.seekForward))
             ]
         }
         guard let s = playback.current else {

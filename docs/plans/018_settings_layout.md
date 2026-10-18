@@ -46,10 +46,14 @@ The owner chose (2026-10-07):
 - **A row and a dialog** for every choice. Picking a value applies it and
   closes the dialog; Cancel leaves it. A note that explains a setting ("At
   the limit, downloads stop. Nothing is deleted to make room.") moves into
-  its dialog, off the page. On/off settings are a row with a switch.
+  its dialog, off the page. ([034](034_settings_text_defaults_reset.md) cut
+  those notes to one line, where one is needed at all, and moved the rest to
+  How it works.) On/off settings are a row with a switch.
 - **Synced settings say so:** "· on all your devices" after the value. A
   change that shows up on the laptop is then no surprise. Settings of this
-  phone say nothing, as the default.
+  phone say nothing, as the default. (Since
+  [034](034_settings_text_defaults_reset.md), one line at the top of
+  Playback says it instead: every synced setting is on that page.)
 
 Details decided while building:
 
@@ -79,7 +83,10 @@ row holds its control on the right: the sleep timer's steppers
 
 Put it in the category it belongs to; add a category only when no existing
 one fits and it will hold several settings. A choice is a `ChoiceRow`, an
-on/off a `SwitchRow`; pass `synced = true` when it is a synced setting.
+on/off a `SwitchRow`, with its default passed so the dialog marks it. A
+synced setting goes in the `Synced` table on every client, with the same
+default, and in its page's Reset to defaults; its explanation goes in
+`docs/GUIDE.md` ([034](034_settings_text_defaults_reset.md)).
 Musicolet's grouping (Interface, Audio, Library, Headset, Notifications,
 Advanced, Backup) is the guide for where future settings go.
 

@@ -168,9 +168,9 @@ class Prefs(
     /** The `at` of the hand-off last dismissed, so ✕ is not undone by the next sync. */
     var handoffDismissed by stored("handoffDismissed", "")
     var activeQueue by stored("activeQueue", "")
-    var themeMode by mutableStateOf(enumOr(sp.getString("theme", null), ThemeMode.System))
+    var themeMode by mutableStateOf(enumOr(sp.getString("theme", null), THEME))
         private set
-    var palette by mutableStateOf(enumOr(sp.getString("palette", null), Palette.DullOrange))
+    var palette by mutableStateOf(enumOr(sp.getString("palette", null), PALETTE))
         private set
 
     /**
@@ -195,7 +195,7 @@ class Prefs(
     }
 
     /** Which mini player shows over the tabs (docs/plans/022_mini_player_styles.md). */
-    var miniPlayer by mutableStateOf(enumOr(sp.getString("miniPlayer", null), MiniPlayerStyle.Bar))
+    var miniPlayer by mutableStateOf(enumOr(sp.getString("miniPlayer", null), MINI_PLAYER))
         private set
 
     fun chooseMiniPlayer(m: MiniPlayerStyle) {
@@ -213,13 +213,13 @@ class Prefs(
         set(o) = sp.edit { putFloat("floatingX", o.x).putFloat("floatingY", o.y) }
 
     /** Downloads (docs/plans/012_downloads.md): this phone's storage and network, so not synced. 0 is no limit. */
-    var downloadLimitGb by mutableIntStateOf(sp.getInt("downloadLimitGb", 10))
+    var downloadLimitGb by mutableIntStateOf(sp.getInt("downloadLimitGb", DOWNLOAD_LIMIT_GB))
         private set
-    var wifiOnly by mutableStateOf(sp.getBoolean("wifiOnly", true))
+    var wifiOnly by mutableStateOf(sp.getBoolean("wifiOnly", WIFI_ONLY))
         private set
 
     /** The song cache's limit (docs/plans/019_networking_and_caching.md); 0 turns it off. */
-    var cacheLimitGb by mutableIntStateOf(sp.getInt("cacheLimitGb", 3))
+    var cacheLimitGb by mutableIntStateOf(sp.getInt("cacheLimitGb", CACHE_LIMIT_GB))
         private set
 
     fun chooseCacheLimit(gb: Int) {
@@ -251,9 +251,9 @@ class Prefs(
      * until turned on, which asks for the permission. Files shorter than
      * [phoneMinSeconds], and those under an excluded folder, are left out.
      */
-    var phoneSongs by mutableStateOf(sp.getBoolean("phoneSongs", false))
+    var phoneSongs by mutableStateOf(sp.getBoolean("phoneSongs", PHONE_SONGS))
         private set
-    var phoneMinSeconds by mutableIntStateOf(sp.getInt("phoneMinSeconds", 30))
+    var phoneMinSeconds by mutableIntStateOf(sp.getInt("phoneMinSeconds", PHONE_MIN_SECONDS))
         private set
     var phoneExcluded by mutableStateOf(sp.getStringSet("phoneExcluded", null)?.toSet() ?: emptySet())
         private set
@@ -272,6 +272,11 @@ class Prefs(
         phoneExcluded = folders
         sp.edit { putStringSet("phoneExcluded", folders) }
     }
+
+    /** The sleep timer by the clock lets the song finish rather than fade out on time; this phone's, off at first. */
+    var sleepFinishSong: Boolean
+        get() = sp.getBoolean("sleepFinishSong", false)
+        set(v) = sp.edit { putBoolean("sleepFinishSong", v) }
 
     /** Asked once, with the first download: Android 13 hides the progress notification without it. */
     var askedNotifications: Boolean
@@ -303,6 +308,31 @@ class Prefs(
     var openListen: String
         get() = sp.getString("openListen", "") ?: ""
         set(v) = sp.edit { putString("openListen", v) }
+
+    /**
+     * Reset to defaults, one settings page at a time
+     * (docs/plans/034_settings_text_defaults_reset.md). The keys are removed
+     * rather than set, as a synced setting is unset.
+     */
+    fun resetAppearance() {
+        themeMode = THEME
+        palette = PALETTE
+        miniPlayer = MINI_PLAYER
+        sp.edit { remove("theme").remove("palette").remove("miniPlayer") }
+    }
+
+    fun resetPhoneSongs() {
+        phoneSongs = PHONE_SONGS
+        phoneMinSeconds = PHONE_MIN_SECONDS
+        sp.edit { remove("phoneSongs").remove("phoneMinSeconds") }
+    }
+
+    fun resetDownloads() {
+        downloadLimitGb = DOWNLOAD_LIMIT_GB
+        wifiOnly = WIFI_ONLY
+        cacheLimitGb = CACHE_LIMIT_GB
+        sp.edit { remove("downloadLimitGb").remove("wifiOnly").remove("cacheLimitGb") }
+    }
 
     /** Forgets the account and the sync cursors; the look stays. */
     fun signOut() {
@@ -365,4 +395,16 @@ class Prefs(
         name: String?,
         def: E,
     ) = enumValues<E>().firstOrNull { it.name == name } ?: def
+
+    /** This device's defaults, which Settings marks and Reset to defaults goes back to. */
+    companion object {
+        val THEME = ThemeMode.System
+        val PALETTE = Palette.DullOrange
+        val MINI_PLAYER = MiniPlayerStyle.Bar
+        const val DOWNLOAD_LIMIT_GB = 10
+        const val WIFI_ONLY = true
+        const val CACHE_LIMIT_GB = 3
+        const val PHONE_SONGS = false
+        const val PHONE_MIN_SECONDS = 30
+    }
 }

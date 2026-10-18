@@ -58,16 +58,74 @@ struct SignInView: View {
     }
 }
 
-/// Settings (⌘,), the phone's pages in Mac form.
+/// Settings (⌘,), the phone's pages in Mac form. A setting is a short title
+/// and its value; what it does is on the How it works tab, which an ⓘ opens
+/// at the right place (plan 034).
 struct SettingsView: View {
+    enum Tab: Hashable { case appearance, playback, downloads, account, guide }
+    @State private var tab = Tab.appearance
+    @State private var guideAt: String?
+
     var body: some View {
-        TabView {
-            AppearanceSettings().tabItem { Label("Appearance", systemImage: "paintpalette") }
-            PlaybackSettings().tabItem { Label("Playback", systemImage: "play.circle") }
-            StorageSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
-            AccountSettings().tabItem { Label("Account", systemImage: "person.crop.circle") }
+        TabView(selection: $tab) {
+            AppearanceSettings().tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(
+                Tab.appearance)
+            PlaybackSettings().tabItem { Label("Playback", systemImage: "play.circle") }.tag(Tab.playback)
+            StorageSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }.tag(
+                Tab.downloads)
+            AccountSettings().tabItem { Label("Account", systemImage: "person.crop.circle") }.tag(Tab.account)
+            GuideView(at: $guideAt).tabItem { Label("How it works", systemImage: "questionmark.circle") }
+                .tag(Tab.guide)
         }
+        .environment(
+            \.openGuide,
+            { section in
+                guideAt = section
+                tab = .guide
+            }
+        )
         .frame(width: 520, height: 440)
+    }
+}
+
+extension EnvironmentValues {
+    /// Opens How it works at the `###` heading of that name.
+    @Entry var openGuide: (String) -> Void = { _ in }
+}
+
+/// The ⓘ beside a setting whose guide section says more than its title.
+struct InfoButton: View {
+    let section: String
+    @Environment(\.openGuide) private var openGuide
+
+    var body: some View {
+        Button {
+            openGuide(section)
+        } label: {
+            Image(systemName: "info.circle")
+        }
+        .buttonStyle(.borderless)
+        .help("How it works")
+    }
+}
+
+/// A value's label, with " (default)" on the default: a menu's items take no style of their own.
+func marked(_ label: String, _ isDefault: Bool) -> String { isDefault ? label + " (default)" : label }
+
+/// A form's last row: Reset to Defaults, after asking.
+struct ResetButton: View {
+    let title: String
+    let message: String
+    let reset: () -> Void
+
+    var body: some View {
+        HStack {
+            Button("Reset to Defaults…") {
+                if Prompt.confirm(title, message, action: "Reset") { reset() }
+            }
+            Spacer()
+        }
+        .padding([.horizontal, .bottom], 20)
     }
 }
 
@@ -76,30 +134,37 @@ struct AppearanceSettings: View {
 
     var body: some View {
         @Bindable var app = app
-        Form {
-            SwiftUI.Section("Appearance") {
-                Picker("Theme", selection: $app.appearance.theme) {
-                    Text("Follow the system").tag("system")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                LabeledContent("Accent colour") {
-                    HStack(spacing: 8) {
-                        ForEach(Array(Palette.all.enumerated()), id: \.offset) { i, p in
-                            Circle().fill(p.color).frame(width: 22, height: 22)
-                                .overlay {
-                                    if i == app.appearance.palette {
-                                        Circle().stroke(.primary, lineWidth: 2).padding(-3)
+        VStack(spacing: 0) {
+            Form {
+                SwiftUI.Section("Appearance") {
+                    Picker("Theme", selection: $app.appearance.theme) {
+                        ForEach(
+                            [("system", "Follow the system"), ("light", "Light"), ("dark", "Dark")], id: \.0
+                        ) {
+                            Text(marked($0.1, $0.0 == Prefs.Default.theme)).tag($0.0)
+                        }
+                    }
+                    LabeledContent("Accent colour") {
+                        HStack(spacing: 8) {
+                            ForEach(Array(Palette.all.enumerated()), id: \.offset) { i, p in
+                                Circle().fill(p.color).frame(width: 22, height: 22)
+                                    .overlay {
+                                        if i == app.appearance.palette {
+                                            Circle().stroke(.primary, lineWidth: 2).padding(-3)
+                                        }
                                     }
-                                }
-                                .onTapGesture { app.appearance.palette = i }
-                                .help(p.name)
+                                    .onTapGesture { app.appearance.palette = i }
+                                    .help(marked(p.name, i == Prefs.Default.palette))
+                            }
                         }
                     }
                 }
             }
+            .formStyle(.grouped)
+            ResetButton(
+                title: "Reset Appearance settings?", message: "The theme and accent colour of this Mac.",
+                reset: app.resetAppearance)
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -108,90 +173,79 @@ struct PlaybackSettings: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        Form {
-            SwiftUI.Section {
-                Picker("Previous", selection: synced("previous.restart", true)) {
-                    Text("Restart the song first").tag(true)
-                    Text("Always the previous song").tag(false)
+        VStack(spacing: 0) {
+            Text("These follow you to all your devices.").font(.callout).foregroundStyle(.secondary)
+                .padding(.top, 16)
+            Form {
+                SwiftUI.Section("Buttons") {
+                    choice("Previous", Synced.previousRestart) { $0 ? "Restart song first" : "Previous song" }
                 }
-            } header: {
-                Text("Buttons")
-            } footer: {
-                Text(
-                    "Restarting goes back to the start of a song played past its first seconds; a second press goes to the previous one."
-                )
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            SwiftUI.Section {
-                Picker("Continue long files", selection: synced("longFiles.minMinutes", 15)) {
-                    ForEach([5, 10, 15, 20, 30, 60], id: \.self) { Text("\($0) minutes and longer").tag($0) }
+                SwiftUI.Section("Long files") {
+                    choice("Remember position", Synced.minMinutes, info: "Remember position") {
+                        "\($0) min and longer"
+                    }
+                    .help("For audiobooks, podcasts and mixes.")
+                    choice("When played again", Synced.resume) {
+                        switch $0 {
+                        case "auto": "Resume"
+                        case "ask": "Ask"
+                        default: "Start over"
+                        }
+                    }
+                    choice("Previous button", Synced.previous, info: "Previous button") {
+                        switch $0 {
+                        case "keep": "Previous file"
+                        case "seek": "Seek back (headset)"
+                        case "ignore": "Ignore headset"
+                        default: "Same as songs"
+                        }
+                    }
+                    .help("On the screen, Previous always goes to the previous file.")
+                    choice("Next button", Synced.next, info: "Next button") {
+                        $0 == "seek" ? "Seek forward (headset)" : "Next file"
+                    }
+                    choice("Seek back", Synced.seekBack) { "\($0) s" }
+                    choice("Seek forward", Synced.seekForward) { "\($0) s" }
+                    choice("Rewind on resume", Synced.rewind) { $0 == 0 ? "Off" : "\($0) s" }
+                    choice("After pauses of", Synced.rewindAfter) { "\($0) min" }
+                        .disabled(app.setting(Synced.rewind) == 0)
                 }
-                Picker("Playing one again", selection: synced("longFiles.resume", "auto")) {
-                    Text("Continue where you left it").tag("auto")
-                    Text("Ask").tag("ask")
-                    Text("Start over").tag("off")
+                SwiftUI.Section("Listen Later") {
+                    Toggle("Remove when finished", isOn: synced(Synced.autoRemove))
+                    choice("Finished at", Synced.finishedPercent) { "\($0)%" }
+                        .disabled(!app.setting(Synced.autoRemove))
                 }
-                Picker("Previous in one", selection: synced("longFiles.previous", "keep")) {
-                    Text("Previous file, keep my place").tag("keep")
-                    Text("Seek back from a headset").tag("seek")
-                    Text("Ignore media keys and headsets").tag("ignore")
-                    Text("Same as songs").tag("songs")
-                }
-                Picker("Next in one", selection: synced("longFiles.next", "next")) {
-                    Text("Next file").tag("next")
-                    Text("Seek forward from a headset").tag("seek")
-                }
-                Picker("Seek back", selection: synced("longFiles.seekBack", 10)) {
-                    ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) seconds").tag($0) }
-                }
-                Picker("Seek forward", selection: synced("longFiles.seekForward", 30)) {
-                    ForEach([10, 15, 30, 60, 120], id: \.self) { Text("\($0) seconds").tag($0) }
-                }
-                Picker("Going on after a pause", selection: synced("longFiles.rewind", 10)) {
-                    ForEach([0, 5, 10, 15, 30], id: \.self) {
-                        Text($0 == 0 ? "Exactly where it stopped" : "Go back \($0) seconds").tag($0)
+                SwiftUI.Section("Speed and pitch") {
+                    LabeledContent("Everyday on this Mac") {
+                        Text(app.playback.everyday.label ?? "Normal")
+                        Button("Reset") { app.playback.setTempo(.normal, onlyThisSong: false) }
+                            .disabled(app.playback.everyday.isNormal)
                     }
                 }
-                Picker("A pause counts after", selection: synced("longFiles.rewindAfter", 5)) {
-                    ForEach([1, 5, 10, 30, 60], id: \.self) {
-                        Text($0 == 1 ? "1 minute" : "\($0) minutes").tag($0)
-                    }
-                }
-                .disabled(app.setting("longFiles.rewind", 10) == 0)
-            } header: {
-                Text("Long files")
-            } footer: {
-                Text(
-                    "Audiobooks, podcasts and mixes this long continue where you left them, on all your devices. Unless set to work as with songs, Previous never restarts one, which would lose your place: it goes to the previous file, and you continue here when you come back. Seeking or ignoring, it does that only on the screen: media keys, headsets and Control Center seek or do nothing. After a pause, a long file goes back a little, so a sentence cut off is heard again from its start."
-                )
-                .font(.caption).foregroundStyle(.secondary)
             }
-            SwiftUI.Section("Listen Later") {
-                Toggle("Remove what you finish", isOn: synced("listenLater.autoRemove", true))
-                Picker("Finished at", selection: synced("listenLater.finishedPercent", 90)) {
-                    ForEach([80, 90, 95, 100], id: \.self) { Text("\($0)% heard").tag($0) }
-                }
-                .disabled(!app.setting("listenLater.autoRemove", true))
-            }
-            SwiftUI.Section("Speed and pitch") {
-                LabeledContent("Everyday on this Mac") {
-                    Text(app.playback.everyday.label ?? "Normal")
-                    Button("Reset") { app.playback.setTempo(.normal, onlyThisSong: false) }
-                        .disabled(app.playback.everyday.isNormal)
-                }
-            }
+            .formStyle(.grouped)
+            ResetButton(
+                title: "Reset Playback settings?", message: "They follow you, so all your devices change.",
+                reset: app.store.resetPlayback)
         }
-        .formStyle(.grouped)
     }
 
-    private func synced(_ name: String, _ def: Int) -> Binding<Int> {
-        Binding(get: { app.setting(name, def) }, set: { app.store.setting(name, JSON($0)) })
+    /// A synced setting's menu of values, the default marked, maybe with an ⓘ.
+    private func choice<V>(
+        _ title: String, _ key: Synced.Key<V>, info: String? = nil, label: @escaping (V) -> String
+    ) -> some View {
+        Picker(selection: synced(key)) {
+            ForEach(key.options, id: \.self) { Text(marked(label($0), $0 == key.def)).tag($0) }
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                if let info { InfoButton(section: info) }
+            }
+        }
     }
-    private func synced(_ name: String, _ def: String) -> Binding<String> {
-        Binding(get: { app.setting(name, def) }, set: { app.store.setting(name, JSON($0)) })
-    }
-    private func synced(_ name: String, _ def: Bool) -> Binding<Bool> {
-        Binding(get: { app.setting(name, def) }, set: { app.store.setting(name, JSON($0)) })
+
+    private func synced<V>(_ key: Synced.Key<V>) -> Binding<V> {
+        Binding(get: { app.setting(key) }, set: { app.store.setting(key.name, $0.json) })
     }
 }
 
@@ -201,38 +255,126 @@ struct StorageSettings: View {
 
     var body: some View {
         @Bindable var app = app
-        Form {
-            SwiftUI.Section {
-                LabeledContent("Used", value: formatBytes(app.downloads.status.usedBytes))
-                Picker("Storage limit", selection: $app.storage.downloadLimitGb) {
-                    ForEach([2, 5, 10, 20, 50, 0], id: \.self) {
-                        Text($0 == 0 ? "No limit" : "\($0) GB").tag($0)
+        VStack(spacing: 0) {
+            Form {
+                SwiftUI.Section {
+                    LabeledContent("Used", value: formatBytes(app.downloads.status.usedBytes))
+                    Picker("Storage limit", selection: $app.storage.downloadLimitGb) {
+                        ForEach([2, 5, 10, 20, 50, 0], id: \.self) {
+                            Text(
+                                marked($0 == 0 ? "No limit" : "\($0) GB", $0 == Prefs.Default.downloadLimitGb)
+                            ).tag($0)
+                        }
                     }
+                    Toggle("Download on a phone's hotspot", isOn: $app.storage.downloadOnExpensive)
+                } header: {
+                    Text("Downloads")
+                } footer: {
+                    Text("At the limit, downloads stop. Nothing is deleted.").font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Toggle("Download on a phone's hotspot", isOn: $app.storage.downloadOnExpensive)
-            } header: {
-                Text("Downloads")
-            } footer: {
-                Text("At the limit, downloads stop. Nothing is deleted to make room.").font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            SwiftUI.Section {
-                LabeledContent("Used", value: formatBytes(app.cache.used))
-                Picker("Storage limit", selection: $app.storage.cacheLimitGb) {
-                    ForEach([1, 3, 5, 10, 0], id: \.self) { Text($0 == 0 ? "Off" : "\($0) GB").tag($0) }
+                SwiftUI.Section {
+                    LabeledContent("Used", value: formatBytes(app.cache.used))
+                    Picker(selection: $app.storage.cacheLimitGb) {
+                        ForEach([1, 3, 5, 10, 0], id: \.self) {
+                            Text(marked($0 == 0 ? "Off" : "\($0) GB", $0 == Prefs.Default.cacheLimitGb)).tag(
+                                $0)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Storage limit")
+                            InfoButton(section: "Song cache")
+                        }
+                    }
+                } header: {
+                    Text("Song cache")
                 }
-            } header: {
-                Text("Song cache")
-            } footer: {
-                Text(
-                    "Songs you play, and the next ones in the queue (10, or 2 on a phone's hotspot), are kept so they play without waiting. At the limit, the songs played longest ago make room."
-                )
-                .font(.caption).foregroundStyle(.secondary)
             }
+            .formStyle(.grouped)
+            ResetButton(
+                title: "Reset Downloads settings?", message: "Nothing downloaded is deleted.",
+                reset: app.resetStorage)
         }
-        .formStyle(.grouped)
     }
 }
+
+/// How it works (docs/GUIDE.md, copied into `guideText` by scripts/guide.sh):
+/// headings, paragraphs, list items and bold, which is all the guide uses.
+struct GuideView: View {
+    @Binding var at: String?
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(guideBlocks.enumerated()), id: \.offset) { _, b in
+                        block(b).id(b.text)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+            }
+            .task(id: at) {
+                guard let at else { return }
+                // After the tab's first layout, or there is nothing to scroll to yet.
+                try? await Task.sleep(for: .milliseconds(50))
+                withAnimation { proxy.scrollTo(at, anchor: .top) }
+            }
+        }
+    }
+
+    @ViewBuilder private func block(_ b: GuideBlock) -> some View {
+        let text = Text((try? AttributedString(markdown: b.text)) ?? AttributedString(b.text))
+        switch b.kind {
+        case .heading(1): text.font(.title2.weight(.semibold))
+        case .heading(2): text.font(.title3.weight(.semibold)).padding(.top, 10)
+        case .heading: text.font(.headline).padding(.top, 4)
+        case .item:
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("•"); text
+            }
+        case .paragraph: text
+        }
+    }
+}
+
+struct GuideBlock {
+    enum Kind: Equatable {
+        case heading(Int), paragraph, item
+    }
+    let kind: Kind
+    let text: String
+}
+
+/// The guide's blocks: a heading per `#` line, a list item per `- ` line,
+/// and the lines between blank lines joined into a paragraph.
+let guideBlocks: [GuideBlock] = {
+    var blocks: [GuideBlock] = []
+    var open = false  // the last block takes the next line
+    for line in guideText.split(separator: "\n", omittingEmptySubsequences: false) {
+        let l = line.trimmingCharacters(in: .whitespaces)
+        if l.isEmpty {
+            open = false
+        } else if l.hasPrefix("#") {
+            let level = l.prefix { $0 == "#" }.count
+            blocks.append(
+                GuideBlock(
+                    kind: .heading(level),
+                    text: String(l.dropFirst(level)).trimmingCharacters(in: .whitespaces)))
+            open = false
+        } else if l.hasPrefix("- ") {
+            blocks.append(GuideBlock(kind: .item, text: String(l.dropFirst(2))))
+            open = true
+        } else if open, let last = blocks.popLast() {
+            blocks.append(GuideBlock(kind: last.kind, text: last.text + " " + l))
+        } else {
+            blocks.append(GuideBlock(kind: .paragraph, text: l))
+            open = true
+        }
+    }
+    return blocks
+}()
 
 struct AccountSettings: View {
     @Environment(AppModel.self) private var app

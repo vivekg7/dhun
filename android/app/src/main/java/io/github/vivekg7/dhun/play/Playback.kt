@@ -28,12 +28,10 @@ import io.github.vivekg7.dhun.data.Listen
 import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.QueueRow
 import io.github.vivekg7.dhun.data.Song
-import io.github.vivekg7.dhun.data.bool
-import io.github.vivekg7.dhun.data.int
+import io.github.vivekg7.dhun.data.Synced
 import io.github.vivekg7.dhun.data.joinIds
 import io.github.vivekg7.dhun.data.parseTime
 import io.github.vivekg7.dhun.data.songIds
-import io.github.vivekg7.dhun.data.string
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -460,11 +458,11 @@ class Playback(
      */
     fun previous(onScreen: Boolean) {
         val s = current.value ?: return
-        val long = settings.value.string("longFiles.previous", "keep")
+        val long = Synced.longPrevious.of(settings.value)
         val keep = isLong(s) && long != "songs"
         if (keep && !onScreen && long == "ignore") return
         if (keep && !onScreen && long == "seek") return seekBack()
-        val restart = !keep && settings.value.bool("previous.restart", true)
+        val restart = !keep && Synced.previousRestart.of(settings.value)
         when {
             restart && player.currentPosition > player.maxSeekToPreviousPosition -> player.seekTo(0)
             player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
@@ -478,7 +476,7 @@ class Playback(
      */
     fun next(onScreen: Boolean) {
         val s = current.value ?: return
-        if (!onScreen && isLong(s) && settings.value.string("longFiles.next", "next") == "seek") seekForward() else player.seekToNext()
+        if (!onScreen && isLong(s) && Synced.longNext.of(settings.value) == "seek") seekForward() else player.seekToNext()
     }
 
     /** A long press on Next: the next chapter, never the next file. */
@@ -502,9 +500,9 @@ class Playback(
             .orEmpty()
 
     /** Back or on within the file, by the seconds set for long files. */
-    fun seekBack() = seekBy(-settings.value.int("longFiles.seekBack", 10) * 1_000L)
+    fun seekBack() = seekBy(-Synced.seekBack.of(settings.value) * 1_000L)
 
-    fun seekForward() = seekBy(settings.value.int("longFiles.seekForward", 30) * 1_000L)
+    fun seekForward() = seekBy(Synced.seekForward.of(settings.value) * 1_000L)
 
     private fun seekBy(ms: Long) {
         val end = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
@@ -803,7 +801,7 @@ class Playback(
     // --- Long files (plan 009) ---------------------------------------------
 
     /** Every episode and book file keeps its place, however short (docs/plans/031_podcasts_and_audiobooks.md). */
-    fun isLong(s: Song) = s.spoken || s.durationMs >= settings.value.int("longFiles.minMinutes", 15) * 60_000L
+    fun isLong(s: Song) = s.spoken || s.durationMs >= Synced.longMinMinutes.of(settings.value) * 60_000L
 
     /** Where to start [s]: its resume point under "auto"; under "ask", offered instead. */
     private suspend fun startPosition(s: Song): Long? {
@@ -815,7 +813,7 @@ class Playback(
                 .resume(s.id)
                 ?.takeIf { !it.deleted && it.positionMs > 0 } ?: return null
         val pos = rewind(r.positionMs, r.at)
-        return when (settings.value.string("longFiles.resume", "auto")) {
+        return when (Synced.longResume.of(settings.value)) {
             "auto" -> {
                 heardAt = if (pos != r.positionMs) System.currentTimeMillis() else r.at
                 pos
@@ -855,8 +853,8 @@ class Playback(
     ) = rewound(
         pos,
         System.currentTimeMillis() - since,
-        settings.value.int("longFiles.rewind", 10) * 1_000L,
-        settings.value.int("longFiles.rewindAfter", 5) * 60_000L,
+        Synced.rewind.of(settings.value) * 1_000L,
+        Synced.rewindAfter.of(settings.value) * 60_000L,
     )
 
     /** Picks up where the file stopped, gone back a little after a long pause: the sentence it stopped in. */

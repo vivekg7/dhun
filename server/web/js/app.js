@@ -20,7 +20,7 @@ const prefsKey = "dhun.prefs";
 const outboxKey = "dhun.outbox";
 
 /** Kept when another account signs in on this browser: they are the browser's, not the account's. */
-const browserPrefs = ["theme", "palette", "speed", "miniPlayer"];
+const browserPrefs = ["theme", "palette", "speed", "miniPlayer", "sleepFinish"];
 
 /**
  * Raised when songs gain a field the cache lacks; 1 is the art key (plan
@@ -116,8 +116,8 @@ export class App extends EventTarget {
     return !!this.prefs.admin;
   }
 
-  /** A synced setting with the app's default for missing or null (plan 009). */
-  setting(name, def) {
+  /** A synced setting from js/synced.js, its default when missing or null (plans 009, 034). */
+  setting({ name, def }) {
     const v = this.settings[name];
     return v === undefined || v === null ? def : v;
   }

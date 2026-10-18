@@ -46,6 +46,7 @@ init:
 
 fmt:
 	$(PRETTIER) --write .
+	scripts/guide.sh
 	gofmt -w server
 	$(GRADLE) ktlintFormat
 	$(SWIFT_FORMAT) format -i -r $(SWIFT_SRC)
@@ -53,9 +54,12 @@ fmt:
 lint: lint-server lint-android lint-macos
 
 # The docs and the web client are linted here too: the server's CI job is the
-# one that runs on every push, and the web client is part of the server.
+# one that runs on every push, and the web client is part of the server. So
+# are the apps' copies of the guide and their synced defaults (plan 034).
 lint-server:
 	$(PRETTIER) --check .
+	scripts/guide.sh --check
+	scripts/check-settings.sh
 	@out=$$(gofmt -l server); [ -z "$$out" ] || { echo "gofmt needed:"; echo "$$out"; exit 1; }
 	cd server && go vet ./...
 

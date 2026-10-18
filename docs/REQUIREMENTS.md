@@ -346,7 +346,8 @@ since 0.13.0. Anything else waits for a later release.
   (owner, 2026-10-15).
 - **Sleep timer:** after a set time (presets or any number of minutes),
   at the end of this song, after N songs, or at the end of the queue. By
-  the clock it fades out and pauses on time; by songs it pauses where a
+  the clock it fades out and pauses on time, or, set to let the song
+  finish, pauses where the song playing then ends; by songs it pauses where a
   song ends. Shown on Now playing and in the notification (owner,
   2026-10-07; [plan 014](plans/014_sleep_timer.md)).
 - **Lyrics:** synced and plain, as provided by the server, in place of the
@@ -383,6 +384,12 @@ since 0.13.0. Anything else waits for a later release.
   heard again. All four numbers are settings that follow the user
   (owner, 2026-10-17; [plans/009](plans/009_resume_long_files.md)).
 - **Downloads** with a storage limit.
+- **Settings are terse:** a short title and its value, a one-line note
+  only where a setting could be misread, and the explanations on a **How
+  it works** page at the end of Settings. Each list of options marks its
+  default, and each settings page can be **reset to its defaults**. The
+  20-queue cap stays fixed, not a setting (owner, 2026-10-18;
+  [plan 034](plans/034_settings_text_defaults_reset.md)).
 - **Family members (admin only):** under Settings → Account, list the
   users, add a member and reset a member's forgotten password. Moved here
   from the web client (owner, 2026-10-08;

@@ -42,7 +42,7 @@ import io.github.vivekg7.dhun.data.Bookmark
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.Shelf
 import io.github.vivekg7.dhun.data.Song
-import io.github.vivekg7.dhun.data.bool
+import io.github.vivekg7.dhun.data.Synced
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
@@ -173,7 +173,7 @@ fun ShelfRow(
 /**
  * A book, its files in reading order; or a show, its episodes newest
  * first, those played hidden unless asked for (the synced setting
- * [HIDE_PLAYED]).
+ * [Synced.hidePlayed]).
  */
 @Composable
 fun ShelfScreen(
@@ -186,7 +186,7 @@ fun ShelfScreen(
     val settings by app.store.settings.collectAsState()
     val heard = rememberHeard()
     val shelf = catalog.shelves[key] ?: return Empty("This is gone from the library", page = true)
-    val hidePlayed = !shelf.isBook && settings.bool(HIDE_PLAYED, true)
+    val hidePlayed = !shelf.isBook && Synced.hidePlayed.of(settings)
     val rows = if (shelf.isBook) shelf.items else shelf.items.reversed().filter { !hidePlayed || it.id !in heard.played }
     // Finished, it starts again from the first.
     val begun = shelf.items.any { heard.heardMs(it) > 0 } && !shelf.items.all { it.id in heard.played }
@@ -211,7 +211,7 @@ fun ShelfScreen(
                     } else {
                         listOf(
                             (if (hidePlayed) "Show played episodes" else "Hide played episodes") to {
-                                app.scope.launch { app.store.setting(HIDE_PLAYED, JsonPrimitive(!hidePlayed)) }
+                                app.scope.launch { app.store.setting(Synced.hidePlayed.name, JsonPrimitive(!hidePlayed)) }
                                 Unit
                             },
                         )
@@ -418,6 +418,3 @@ private fun count(
     n: Int,
     what: String,
 ) = "$n $what" + if (n == 1) "" else "s"
-
-/** Whether a show's page leaves out the episodes already played; synced, on by default. */
-const val HIDE_PLAYED = "podcasts.hidePlayed"

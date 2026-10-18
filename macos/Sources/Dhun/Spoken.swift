@@ -20,9 +20,6 @@ import SwiftUI
     }
 }
 
-/// Whether a show's page leaves out the episodes already played; synced, on by default.
-let hidePlayedSetting = "podcasts.hidePlayed"
-
 /// "29 books", "1 show"
 func count(_ n: Int, _ what: String) -> String { "\(n) \(what)" + (n == 1 ? "" : "s") }
 
@@ -91,7 +88,7 @@ struct ShelfPage: View {
         let nav = self.nav
         let shelf = self.shelf
         let heard = app.heard
-        let hidePlayed = !shelf.isBook && app.setting(hidePlayedSetting, true)
+        let hidePlayed = !shelf.isBook && app.setting(Synced.hidePlayed)
         let all =
             shelf.isBook
             ? shelf.items : shelf.items.reversed().filter { !hidePlayed || !heard.played.contains($0.id) }
@@ -188,7 +185,7 @@ struct ShelfPage: View {
                             hidePlayed ? "Show Played" : "Hide Played",
                             systemImage: hidePlayed ? "eye" : "eye.slash"
                         ) {
-                            app.store.setting(hidePlayedSetting, .bool(!hidePlayed))
+                            app.store.setting(Synced.hidePlayed.name, .bool(!hidePlayed))
                         }
                     }
                 }

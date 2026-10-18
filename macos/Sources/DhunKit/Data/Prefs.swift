@@ -61,29 +61,49 @@ public final class Prefs: @unchecked Sendable {
         set { d.set(newValue, forKey: "activeQueue") }
     }
 
+    /// The values used while a setting of this Mac's is unset, which the
+    /// Settings pages mark and Reset to defaults goes back to (plan 034).
+    public enum Default {
+        public static let theme = "system"
+        public static let palette = 0
+        public static let downloadLimitGb = 10
+        public static let cacheLimitGb = 3
+        public static let downloadOnExpensive = false
+    }
+    public static let appearanceKeys = ["theme", "palette"]
+    public static let storageKeys = ["downloadLimitGb", "cacheLimitGb", "downloadOnExpensive"]
+
+    /// Forgets `keys`, so each reads as its default.
+    public func reset(_ keys: [String]) {
+        for k in keys { d.removeObject(forKey: k) }
+    }
+
     // Appearance.
     public var palette: Int {
-        get { d.integer(forKey: "palette") }
+        get { int("palette", Default.palette) }
         set { d.set(newValue, forKey: "palette") }
     }
     /// system, light or dark.
     public var theme: String {
-        get { str("theme", "system") }
+        get { str("theme", Default.theme) }
         set { d.set(newValue, forKey: "theme") }
     }
 
     // Storage and network (plans 012, 019): the phone's defaults.
     public var downloadLimitGb: Int {
-        get { int("downloadLimitGb", 10) }
+        get { int("downloadLimitGb", Default.downloadLimitGb) }
         set { d.set(newValue, forKey: "downloadLimitGb") }
     }
     public var cacheLimitGb: Int {
-        get { int("cacheLimitGb", 3) }
+        get { int("cacheLimitGb", Default.cacheLimitGb) }
         set { d.set(newValue, forKey: "cacheLimitGb") }
     }
     /// Downloads wait for a network that is not "expensive" (a phone's hotspot).
     public var downloadOnExpensive: Bool {
-        get { d.bool(forKey: "downloadOnExpensive") }
+        get {
+            d.object(forKey: "downloadOnExpensive") == nil
+                ? Default.downloadOnExpensive : d.bool(forKey: "downloadOnExpensive")
+        }
         set { d.set(newValue, forKey: "downloadOnExpensive") }
     }
 
@@ -95,6 +115,11 @@ public final class Prefs: @unchecked Sendable {
     public var semitones: Int {
         get { d.integer(forKey: "semitones") }
         set { d.set(newValue, forKey: "semitones") }
+    }
+    /// A sleep timer by the clock lets the playing song finish rather than fade out on time (plan 034).
+    public var sleepFinishSong: Bool {
+        get { d.bool(forKey: "sleepFinishSong") }
+        set { d.set(newValue, forKey: "sleepFinishSong") }
     }
     public var openListen: String {
         get { str("openListen") }

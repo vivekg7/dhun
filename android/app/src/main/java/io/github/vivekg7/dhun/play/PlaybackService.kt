@@ -29,7 +29,7 @@ import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.Covers
-import io.github.vivekg7.dhun.data.int
+import io.github.vivekg7.dhun.data.Synced
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -88,8 +88,8 @@ class PlaybackService : MediaSessionService() {
         val s = app.playback.current.value
         if (s == null || !app.playback.isLong(s)) return emptyList()
         val settings = app.store.settings.value
-        val back = settings.int("longFiles.seekBack", 10)
-        val on = settings.int("longFiles.seekForward", 30)
+        val back = Synced.seekBack.of(settings)
+        val on = Synced.seekForward.of(settings)
 
         fun button(
             icon: Int,

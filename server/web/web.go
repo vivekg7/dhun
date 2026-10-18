@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-//go:embed index.html app.css icon.svg js
+//go:embed index.html app.css icon.svg guide.md js
 var files embed.FS
 
 type file struct {
@@ -58,9 +58,13 @@ func load(files fs.FS) http.Handler {
 		w.Write(body)
 		w.Close()
 		ctype := mime.TypeByExtension(path.Ext(p))
-		if path.Ext(p) == ".js" {
+		switch path.Ext(p) {
+		case ".js":
 			// Module scripts need a JavaScript type, whatever the system's MIME table says.
 			ctype = "text/javascript; charset=utf-8"
+		case ".md":
+			// The How it works page (plan 034), which few MIME tables know.
+			ctype = "text/markdown; charset=utf-8"
 		}
 		byPath["/"+p] = &file{body, gz.Bytes(), `"` + hex.EncodeToString(sum[:8]) + `"`, ctype}
 		return nil

@@ -17,6 +17,7 @@ import { parseLyrics, lineAt } from "../lyrics.js";
 import { formatSpeed, minSpeed, maxSpeed } from "../queue.js";
 import { chapterLine, chaptersPanel, spokenFacts } from "./spoken.js";
 import { ctx } from "./ctx.js";
+import { synced } from "../synced.js";
 
 // MARK: Controls shared by the bar and the page
 
@@ -57,8 +58,8 @@ function seekButton(forward) {
     el: b,
     update() {
       const n = forward
-        ? ctx.app.setting("longFiles.seekForward", 30)
-        : ctx.app.setting("longFiles.seekBack", 10);
+        ? ctx.app.setting(synced.seekForward)
+        : ctx.app.setting(synced.seekBack);
       seconds.textContent = n;
       b.title = `${forward ? "Forward" : "Back"} ${n} seconds`;
       b.setAttribute("aria-label", b.title);
@@ -388,6 +389,15 @@ function sleepPanel(close) {
         },
         "Start",
       ),
+    ),
+    h(
+      "label.line",
+      h("input", {
+        type: "checkbox",
+        checked: !!ctx.app.prefs.sleepFinish,
+        onchange: (e) => ctx.app.setPref("sleepFinish", e.target.checked || undefined),
+      }),
+      h("span", "Let the song finish"),
     ),
     h("hr"),
     h(
