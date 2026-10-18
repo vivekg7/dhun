@@ -126,7 +126,12 @@ struct SearchResults: View {
     /// section at the top. A heading that scrolled away keeps its last
     /// place: above the top if it left there, below the bottom if not.
     @State private var tops: [String: CGFloat] = [:]
+    /// The list's own top and height, in the same space as `tops`.
+    @State private var listFrame = CGRect(x: 0, y: 0, width: 0, height: 600)
+    /// The chip last tapped, selected until the jump settles and the list
+    /// moves again: a Mac List reports no scroll phases to tell a hand's scroll by.
     @State private var tapped: String?
+    @State private var tappedAt = Date.distantPast
 
     private struct Key: Hashable {
         let query: String
@@ -143,7 +148,7 @@ struct SearchResults: View {
         let lyrics = inLyrics
         // The chips' names, in the sections' order (plan 029): Lyrics only once it has some.
         let chips = found.map(\.kind.rawValue) + (lyrics?.isEmpty == false ? ["Lyrics"] : [])
-        let atTop = chips.last { (tops[$0] ?? .infinity) <= 8 } ?? chips.first
+        let atTop = chips.last { (tops[$0] ?? .infinity) - listFrame.minY <= 8 } ?? chips.first
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if chips.count > 1 {
@@ -153,7 +158,26 @@ struct SearchResults: View {
                                 let on = c == (tapped ?? atTop)
                                 Button(c) {
                                     tapped = c
-                                    withAnimation { proxy.scrollTo(c, anchor: .top) }
+                                    tappedAt = .now
+                                    // To the section's first row: a Mac List scrolls to rows, not to
+                                    // headers. A header's height lower, so the pinned header does not cover it.
+                                    let below = UnitPoint(x: 0, y: 30 / max(listFrame.height, 30))
+                                    let to: AnyHashable? =
+                                        c == "Lyrics"
+                                        ? lyrics?.first.map { AnyHashable($0.song.id) }
+                                        : found.first { $0.kind.rawValue == c }?.rows.first.map {
+                                            AnyHashable($0.id)
+                                        }
+                                    guard let to else { return }
+                                    // Rows far off are placed by estimate until laid out, so a long
+                                    // jump lands short: again, once the rows around it exist.
+                                    withAnimation { scroll(proxy, to, below) }
+                                    Task {
+                                        for _ in 0..<3 {
+                                            try? await Task.sleep(for: .milliseconds(150))
+                                            scroll(proxy, to, below)
+                                        }
+                                    }
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal, 10).padding(.vertical, 4)
@@ -166,6 +190,11 @@ struct SearchResults: View {
                     }
                 }
                 results(app, nav, found, songs, lyrics)
+                    .onGeometryChange(for: CGRect.self) {
+                        $0.frame(in: .global)
+                    } action: {
+                        listFrame = $0
+                    }
             }
         }
         .onChange(of: query) {
@@ -175,14 +204,25 @@ struct SearchResults: View {
         }
     }
 
-    /// A section's heading, which a chip scrolls to and whose place says which chip is on.
+    /// `scrollTo` matches an id by its own type, so an `AnyHashable` is unwrapped first.
+    private func scroll(_ proxy: ScrollViewProxy, _ id: AnyHashable, _ anchor: UnitPoint) {
+        if let s = id.base as? String {
+            proxy.scrollTo(s, anchor: anchor)
+        } else if let n = id.base as? Int {
+            proxy.scrollTo(n, anchor: anchor)
+        }
+    }
+
+    /// A section's heading, whose place says which chip is on.
     private func heading(_ title: String, chip: String? = nil) -> some View {
         let id = chip ?? title
-        return Text(title).id(id)
+        return Text(title)
             .onGeometryChange(for: CGFloat.self) {
-                $0.frame(in: .scrollView).minY
+                $0.frame(in: .global).minY
             } action: {
                 tops[id] = $0
+                // Moved after the jump settled (it scrolls for under half a second): the hand's.
+                if tapped != nil, Date.now.timeIntervalSince(tappedAt) > 0.8 { tapped = nil }
             }
     }
 
@@ -240,8 +280,6 @@ struct SearchResults: View {
                 }
             }
         }
-        // A scroll of its own makes the chip follow the top again.
-        .onScrollPhaseChange { _, phase in if phase == .interacting { tapped = nil } }
         .contextMenu(forSelectionType: String.self) { tags in
             let (name, list, chosen) = picked(tags, songs, lyrics?.map(\.song) ?? [])
             SongMenu(songs: chosen, queueName: name, source: "search", all: list)
