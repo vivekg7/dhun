@@ -177,7 +177,12 @@ platform's way:
   since media keys take the same path there.
 - **System controls:** Control Center on the Mac and the Media Session on
   the web get skip back and forward for a long file, with the seconds set,
-  and treat their Previous and Next as a headset's.
+  and treat their Previous and Next as a headset's. The web registers them
+  again when a setting changes. The Mac cannot: Control Center draws the
+  seconds the first time its skip buttons appear and keeps them until the
+  app is relaunched, and it notices a file becoming long only at the next
+  play or pause (tried, 2026-10-18, macOS 27). A skip there still goes by
+  the seconds set now; only the number drawn is old.
 
 ### Progress in lists (owner, 2026-10-15)
 

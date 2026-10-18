@@ -88,7 +88,11 @@ export class Playback extends EventTarget {
     app.addEventListener("change", (e) => {
       if (e.detail === "catalog") this.catalogChanged();
       if (e.detail === "queues") this.queuesChanged();
-      if (e.detail === "settings") this.applyTempo();
+      if (e.detail === "settings") {
+        this.applyTempo();
+        // The seek seconds, and whether the file counts as long, are settings.
+        this.updateSession();
+      }
     });
     this.mediaSession();
   }
