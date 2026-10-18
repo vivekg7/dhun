@@ -1,6 +1,6 @@
 # 034 — Shorter settings text, marked defaults, reset, and which settings to add
 
-**Status:** `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); not yet installed or deployed
+**Status:** `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); 0.15.0 on the owner's phone and Mac; server and web in `server-v0.15.0` on the NAS (2026-10-18)
 **Started:** 2026-10-18
 
 ## Problem
