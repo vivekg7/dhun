@@ -147,7 +147,7 @@ private val FORWARD_ICONS =
  * The player as the session sees it: with a sleep timer set, the artist line
  * says so ("Coldplay · Sleep in 23 min"), so the notification and the lock
  * screen show it (docs/plans/014_sleep_timer.md). Refreshed every half
- * minute while a timer runs. Previous, Next and seeking go to [Playback],
+ * minute while a timer runs. Play, Previous, Next and seeking go to [Playback],
  * which keeps a long file's place from a headset
  * (docs/plans/009_resume_long_files.md).
  */
@@ -176,6 +176,11 @@ private class SleepAware(
         val artist = m.artist?.let { "$it · " } ?: ""
         return m.buildUpon().setArtist("${artist}Sleep $label").build()
     }
+
+    // Goes back first after a long pause, before any sound (plan 009).
+    override fun play() = App.app.playback.play()
+
+    override fun setPlayWhenReady(playWhenReady: Boolean) = if (playWhenReady) play() else super.setPlayWhenReady(false)
 
     override fun seekToPrevious() = App.app.playback.previous(onScreen = false)
 

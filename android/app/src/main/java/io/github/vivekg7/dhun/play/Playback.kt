@@ -511,6 +511,16 @@ class Playback(
         player.seekTo((player.currentPosition + ms).coerceIn(0, end))
     }
 
+    /**
+     * Play, gone back first after a long pause ([continued]): before the
+     * sound starts, so the old place is never heard. A call or a lost
+     * connection ending goes back as it plays on (onIsPlayingChanged).
+     */
+    fun play() {
+        continued()
+        player.play()
+    }
+
     /** Plays [song] of the active queue. */
     fun playAt(index: Int) {
         player.seekTo(index, 0)

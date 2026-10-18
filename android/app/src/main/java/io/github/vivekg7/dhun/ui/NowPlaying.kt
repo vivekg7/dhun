@@ -321,7 +321,7 @@ fun NowPlayingScreen(nav: Nav) {
                             scaleY = scale
                         }.clip(CircleShape)
                         .background(c.primary)
-                        .clickable(interactionSource = press, indication = ripple()) { if (going) pb.player.pause() else pb.player.play() },
+                        .clickable(interactionSource = press, indication = ripple()) { if (going) pb.player.pause() else pb.play() },
                     contentAlignment = Alignment.Center,
                 ) {
                     AnimatedContent(

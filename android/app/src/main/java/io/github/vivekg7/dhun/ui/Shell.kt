@@ -538,7 +538,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                 )
             }
             Tip(if (going) "Pause" else "Play") {
-                IconButton({ if (going) app.playback.player.pause() else app.playback.player.play() }) {
+                IconButton({ if (going) app.playback.player.pause() else app.playback.play() }) {
                     Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
                 }
             }
@@ -624,7 +624,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
                         onClickLabel = if (going) "Pause" else "Play",
                         onLongClickLabel = "Open Now playing",
                         onLongClick = onOpen,
-                    ) { if (going) player.pause() else player.play() }
+                    ) { if (going) player.pause() else app.playback.play() }
                     .drawWithContent {
                         drawContent()
                         if (going) {

@@ -194,7 +194,7 @@ fun QueuesScreen(nav: Nav) {
                 if (isActive) {
                     val going = playing || waiting
                     Tip(if (going) "Pause" else "Play") {
-                        IconButton({ if (going) app.playback.player.pause() else app.playback.player.play() }) {
+                        IconButton({ if (going) app.playback.player.pause() else app.playback.play() }) {
                             Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play")
                         }
                     }
