@@ -47,20 +47,20 @@ and every device sees the same one.
   them to every device, so it is built generally rather than as two special
   columns:
 
-  | Setting                 | Values                                | Default  |
-  | ----------------------- | ------------------------------------- | -------- |
-  | `longFiles.minMinutes`  | a number of minutes                   | `15`     |
-  | `longFiles.resume`      | `"auto"`, `"ask"` (offer it), `"off"` | `"auto"` |
-  | `longFiles.previous`    | `"keep"`, `"ignore"`, `"songs"`       | `"keep"` |
-  | `longFiles.next`        | `"next"`, `"seek"`                    | `"next"` |
-  | `previous.restart`      | `true`, `false`                       | `true`   |
-  | `longFiles.seekBack`    | seconds                               | `10`     |
-  | `longFiles.seekForward` | seconds                               | `30`     |
-  | `longFiles.rewind`      | seconds, `0` for none                 | `10`     |
-  | `longFiles.rewindAfter` | minutes                               | `5`      |
+  | Setting                 | Values                                    | Default  |
+  | ----------------------- | ----------------------------------------- | -------- |
+  | `longFiles.minMinutes`  | a number of minutes                       | `15`     |
+  | `longFiles.resume`      | `"auto"`, `"ask"` (offer it), `"off"`     | `"auto"` |
+  | `longFiles.previous`    | `"keep"`, `"seek"`, `"ignore"`, `"songs"` | `"keep"` |
+  | `longFiles.next`        | `"next"`, `"seek"`                        | `"next"` |
+  | `previous.restart`      | `true`, `false`                           | `true`   |
+  | `longFiles.seekBack`    | seconds                                   | `10`     |
+  | `longFiles.seekForward` | seconds                                   | `30`     |
+  | `longFiles.rewind`      | seconds, `0` for none                     | `10`     |
+  | `longFiles.rewindAfter` | minutes                                   | `5`      |
 
-  `longFiles.next` and the last four came later (see below).
-  `longFiles.previous` also took `"seek"` then.
+  `longFiles.next`, the last four and `longFiles.previous: "seek"` came
+  later (see below).
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,

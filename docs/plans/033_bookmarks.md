@@ -20,7 +20,7 @@ What a bookmark is (owner, 2026-10-17):
 - **Long files only:** podcasts, audiobooks and anything long enough to
   resume, the rule the seek buttons use.
 - **Listed in the file's chapter list,** the Chapters and notes sheet,
-  and a tap plays from it. No page of every bookmark across files.
+  and a tap goes to it. No page of every bookmark across files.
 - **Added from a button on Now playing,** beside Favorites and Listen
   Later. Not from the notification or a headset.
 
@@ -62,16 +62,20 @@ pull.
   Later, for a long file only. A tap adds a bookmark where it is playing
   and says so briefly.
 - **The chapter list** gains a Bookmarks section, by place in the file:
-  the time, the chapter it falls in, and the note. A tap plays from it;
-  a menu edits the note or deletes it.
+  the time, the chapter it falls in, and the note. A tap goes to it,
+  playing on if the file was playing, as a tap on a chapter does; a menu
+  edits the note or deletes it.
 - **The line under the title** that names the chapter opens the sheet.
   A file without chapters that has bookmarks shows "2 bookmarks" there
   instead, so a long music file (a DJ mix), which keeps Shuffle where a
   book has its Chapters and notes button, still reaches them.
 
-**The server goes out first.** An older server rejects `bookmark.set`
-as an unknown operation, and an app drops a rejected operation for good,
-so a bookmark made against it would stay on that one device.
+**The server goes out first.** An older server refuses the whole push
+that carries a bookmark, not just that operation: it reads the request
+strictly, and `bookmark` is a field it does not know. Nothing is lost,
+since the operations stay in the outbox, but nothing else from that
+device syncs either, its queues and resume points included, until the
+server is updated. Then it all goes up at once.
 
 ## Rejected
 

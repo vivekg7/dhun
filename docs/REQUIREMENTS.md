@@ -200,12 +200,12 @@ Owner, 2026-10-10; how it is built is in
   episode and book file keeps its place, however short. Every listen is
   still logged in the listening history.
 - **Chapters** show on Now playing, and a tap on one in the chapter list
-  plays from it: chapters stored inside a file, or a book's files as its
-  chapters. A tap on Next or Previous goes by file, never by chapter, on
-  the screen as from a headset: a chapter skip moves the place in the
-  file, and the place is lost to one mistaken press. A long press on them
-  goes by chapter (owner, 2026-10-17; a tap went by chapter on the screen
-  from 2026-10-11).
+  goes to it, playing on if the file was playing: chapters stored inside
+  a file, or a book's files as its chapters. A tap on Next or Previous
+  goes by file, never by chapter, on the screen as from a headset: a
+  chapter skip moves the place in the file, and the place is lost to one
+  mistaken press. A long press on them goes by chapter (owner,
+  2026-10-17; a tap went by chapter on the screen from 2026-10-11).
 - **Bookmarks** in a long file: a button on Now playing marks the place,
   and a note can be added to it later. They are listed with the file's
   chapters, a tap away, and follow the user to every device (owner,
