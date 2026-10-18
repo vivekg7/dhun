@@ -147,9 +147,11 @@ What the owner missed with podcasts:
   devices and restarts of the app. A file put in place without playing
   (a queue opened paused, Next while paused) counts as stopped since that
   place was heard: its resume point's time, or the moment it was put
-  there if it went back for the point already or has none. A seek while
-  stopped chose the place, so nothing goes back from it. Never before the
-  file's start.
+  there if it went back for the point already or has none. Leaving a
+  file still stopped where it was heard keeps its point as it was saved
+  at the stop, since saving it again would date it to when the file was
+  left. A seek while stopped chose the place, so nothing goes back from
+  it. Never before the file's start.
 
 Rejected: rewinding by how long the pause was (10 s after five minutes,
 more after a day). The owner asked for a fixed amount, and one number is

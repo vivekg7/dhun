@@ -692,7 +692,8 @@ public final class Playback {
         let finished = current
         let at = position
         close(end, toMs: Int(at * 1000))
-        if let finished { saveResume(finished, Int(at * 1000)) }
+        // Still stopped where it was heard: its point was saved then (saveActive).
+        if let finished, stoppedAt == 0 { saveResume(finished, Int(at * 1000)) }
         sleep.onNextSong()
         heardAt = 0
         var start = startPosition(s) ?? 0
@@ -732,14 +733,16 @@ public final class Playback {
         app.prefs.activeQueue = id
     }
 
-    /// Records where the outgoing queue was, before another is loaded.
+    /// Records where the outgoing queue was, before another is loaded. A
+    /// long file still stopped where it was heard keeps its point: saving it
+    /// again would stamp it now, and coming back would not go back a little.
     private func saveActive() {
         guard var q = active, let s = current else { return }
         let pos = Int(position * 1000)
         q.currentSong = s.id
         q.positionMs = pos
         app.store.setCurrent(q)
-        saveResume(s, pos)
+        if stoppedAt == 0 { saveResume(s, pos) }
     }
 
     /// The song's bytes, wherever they are now: resolved when the song is

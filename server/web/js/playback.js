@@ -776,7 +776,8 @@ export class Playback extends EventTarget {
     const finished = this.current;
     const at = Math.round(this.position * 1000);
     this.close(end, at);
-    if (finished) this.saveResume(finished, at);
+    // Still stopped where it was heard: its point was saved then (saveActive).
+    if (finished && !this.stoppedAt) this.saveResume(finished, at);
     this.onNextSongSleep();
     this.heardAt = 0;
     let start = this.startPosition(s) ?? 0;
@@ -818,14 +819,18 @@ export class Playback extends EventTarget {
     this.app.setPref("activeQueue", id);
   }
 
-  /** Records where the outgoing queue was, before another is loaded. */
+  /**
+   * Records where the outgoing queue was, before another is loaded. A long
+   * file still stopped where it was heard keeps its point: saving it again
+   * would stamp it now, and coming back would not go back a little.
+   */
   saveActive() {
     const q = this.active;
     const s = this.current;
     if (!q || !s) return;
     const pos = Math.round(this.position * 1000);
     this.app.setCurrent({ ...q, currentSong: s.id, positionMs: pos });
-    this.saveResume(s, pos);
+    if (!this.stoppedAt) this.saveResume(s, pos);
   }
 
   // MARK: Play order

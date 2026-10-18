@@ -751,13 +751,17 @@ class Playback(
         app.prefs.activeQueue = id
     }
 
-    /** Records where the outgoing queue was, before another is loaded. */
+    /**
+     * Records where the outgoing queue was, before another is loaded. A long
+     * file still stopped where it was heard keeps its point: saving it again
+     * would stamp it now, and coming back would not go back a little.
+     */
     private suspend fun saveActive() {
         val q = active.value ?: return
         val song = current.value ?: return
         val pos = player.currentPosition
         store.setCurrent(q.copy(currentSong = song.id, positionMs = pos))
-        saveResume(song, pos)
+        if (stoppedAt == 0L) saveResume(song, pos)
     }
 
     /** A phone song plays from its own file; [SongSource] passes its URI through. */
@@ -1027,6 +1031,8 @@ class Playback(
                     }
                 }
             val finishedSong = current.value
+            // Not while still stopped where it was heard: its point was saved then (saveActive).
+            val save = stoppedAt == 0L
             scope.launch {
                 // Where the player got to, even at the end: a file it cannot read
                 // past (a damaged MP3) "finishes" early, and the song list's
@@ -1035,7 +1041,7 @@ class Playback(
                 // Heard to the end: a long file's resume point is done with.
                 if (end == "finished" && finishedSong != null && isLong(finishedSong)) {
                     store.resume(finishedSong.id, null)
-                } else if (finishedSong != null) {
+                } else if (finishedSong != null && save) {
                     saveResume(finishedSong, old.positionMs)
                 }
             }
