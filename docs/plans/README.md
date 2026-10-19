@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                                       | Status                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [035 — A fast scroller on Android's long lists](035_fast_scroller.md)                      | `MERGED` — Android only; not yet in a release                                                                                                           |
+| [035 — A fast scroller on Android's long lists](035_fast_scroller.md)                      | `RELEASED` — 0.15.1 on the owner's phone (2026-10-19); Android only, no GitHub release                                                                  |
 | [034 — Shorter settings text, marked defaults, reset](034_settings_text_defaults_reset.md) | `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); 0.15.0 on the owner's phone and Mac; server and web in `server-v0.15.0` on the NAS (2026-10-18) |
 | [033 — Bookmarks in long files](033_bookmarks.md)                                          | `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); 0.15.0 on the owner's phone and Mac; server and web in `server-v0.15.0` on the NAS (2026-10-18) |
 | [032 — Mac and web catch up with the phone](032_mac_and_web_catch_up.md)                   | `RELEASED` — in the 0.14.0 GitHub release (2026-10-15); 0.14.0 on the owner's phone and Mac; server and web in `server-v0.14.0` on the NAS (2026-10-15) |

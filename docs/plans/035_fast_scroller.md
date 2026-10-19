@@ -1,6 +1,6 @@
 # 035 — A fast scroller on Android's long lists
 
-**Status:** `MERGED` — Android only; not yet in a release
+**Status:** `RELEASED` — 0.15.1 on the owner's phone (2026-10-19); Android only, no GitHub release
 **Started:** 2026-10-19
 
 ## Problem
