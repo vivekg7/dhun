@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -126,21 +127,24 @@ fun ShelvesScreen(
     val catalog by App.app.catalog.collectAsState()
     val heard = rememberHeard()
     val shelves = if (books) catalog.books else catalog.shows
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            PageHeader(if (books) "Audiobooks" else "Podcasts", count(shelves.size, if (books) "book" else "show"), onBack, null, onShuffle = null)
+    val list = rememberLazyListState()
+    FastScroll(list, Modifier.fillMaxSize(), letter = { i -> shelves.getOrNull(i - 1)?.title?.let(::initial) }) {
+        LazyColumn(Modifier.fillMaxSize(), list) {
+            item {
+                PageHeader(if (books) "Audiobooks" else "Podcasts", count(shelves.size, if (books) "book" else "show"), onBack, null, onShuffle = null)
+            }
+            items(shelves, key = { it.key }) { s ->
+                val detail =
+                    if (books) {
+                        listOf(s.author, heard.progress(s)).filter { it.isNotEmpty() }.joinToString(" · ")
+                    } else {
+                        val new = s.items.count { it.id !in heard.played }
+                        count(s.items.size, "episode") + if (new > 0) " · $new not played" else ""
+                    }
+                ShelfRow(s, detail, pinned(Downloads.SHELF, s.key)) { nav.open(nav.tab, Page.ShelfPage(s.key)) }
+            }
+            if (shelves.isEmpty()) item { Empty("Nothing here yet") }
         }
-        items(shelves, key = { it.key }) { s ->
-            val detail =
-                if (books) {
-                    listOf(s.author, heard.progress(s)).filter { it.isNotEmpty() }.joinToString(" · ")
-                } else {
-                    val new = s.items.count { it.id !in heard.played }
-                    count(s.items.size, "episode") + if (new > 0) " · $new not played" else ""
-                }
-            ShelfRow(s, detail, pinned(Downloads.SHELF, s.key)) { nav.open(nav.tab, Page.ShelfPage(s.key)) }
-        }
-        if (shelves.isEmpty()) item { Empty("Nothing here yet") }
     }
 }
 
@@ -190,50 +194,53 @@ fun ShelfScreen(
     val rows = if (shelf.isBook) shelf.items else shelf.items.reversed().filter { !hidePlayed || it.id !in heard.played }
     // Finished, it starts again from the first.
     val begun = shelf.items.any { heard.heardMs(it) > 0 } && !shelf.items.all { it.id in heard.played }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            val facts =
-                if (shelf.isBook) {
-                    listOf(shelf.author, heard.progress(shelf))
-                } else {
-                    listOf(count(shelf.items.size, "episode"), "${shelf.items.count { it.id !in heard.played }} not played")
-                }
-            PageHeader(
-                shelf.title,
-                facts.filter { it.isNotEmpty() }.joinToString(" · "),
-                onBack,
-                { playShelf(nav, shelf, heard) },
-                if (shelf.isBook) DownloadTarget(Downloads.SHELF, shelf.key, shelf.title, shelf.items) else null,
-                songs = shelf.items,
-                actions =
+    val list = rememberLazyListState()
+    FastScroll(list, Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), list) {
+            item {
+                val facts =
                     if (shelf.isBook) {
-                        emptyList()
+                        listOf(shelf.author, heard.progress(shelf))
                     } else {
-                        listOf(
-                            (if (hidePlayed) "Show played episodes" else "Hide played episodes") to {
-                                app.scope.launch { app.store.setting(Synced.hidePlayed.name, JsonPrimitive(!hidePlayed)) }
-                                Unit
-                            },
-                        )
-                    },
-                playLabel = if (begun) "Continue" else "Play",
-                onShuffle = null,
-            )
+                        listOf(count(shelf.items.size, "episode"), "${shelf.items.count { it.id !in heard.played }} not played")
+                    }
+                PageHeader(
+                    shelf.title,
+                    facts.filter { it.isNotEmpty() }.joinToString(" · "),
+                    onBack,
+                    { playShelf(nav, shelf, heard) },
+                    if (shelf.isBook) DownloadTarget(Downloads.SHELF, shelf.key, shelf.title, shelf.items) else null,
+                    songs = shelf.items,
+                    actions =
+                        if (shelf.isBook) {
+                            emptyList()
+                        } else {
+                            listOf(
+                                (if (hidePlayed) "Show played episodes" else "Hide played episodes") to {
+                                    app.scope.launch { app.store.setting(Synced.hidePlayed.name, JsonPrimitive(!hidePlayed)) }
+                                    Unit
+                                },
+                            )
+                        },
+                    playLabel = if (begun) "Continue" else "Play",
+                    onShuffle = null,
+                )
+            }
+            itemsIndexed(rows, key = { _, s -> s.id }) { i, s ->
+                // A book's files are often titled alike but for a part number at the end, cut off on a phone.
+                val where =
+                    if (!shelf.isBook) {
+                        s.day
+                    } else if (rows.size > 1) {
+                        "${i + 1} of ${rows.size}"
+                    } else {
+                        ""
+                    }
+                val detail = listOf(where, heard.state(s) ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
+                SongRow(s, onClick = { playShelf(nav, shelf, heard, s) }, menu = SongMenu(nav = nav), detail = detail.ifEmpty { s.displayArtist })
+            }
+            if (rows.isEmpty()) item { Empty("Every episode is played") }
         }
-        itemsIndexed(rows, key = { _, s -> s.id }) { i, s ->
-            // A book's files are often titled alike but for a part number at the end, cut off on a phone.
-            val where =
-                if (!shelf.isBook) {
-                    s.day
-                } else if (rows.size > 1) {
-                    "${i + 1} of ${rows.size}"
-                } else {
-                    ""
-                }
-            val detail = listOf(where, heard.state(s) ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
-            SongRow(s, onClick = { playShelf(nav, shelf, heard, s) }, menu = SongMenu(nav = nav), detail = detail.ifEmpty { s.displayArtist })
-        }
-        if (rows.isEmpty()) item { Empty("Every episode is played") }
     }
 }
 

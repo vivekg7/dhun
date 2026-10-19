@@ -273,66 +273,68 @@ fun QueuesScreen(nav: Nav) {
         val canDrag = sel == null
         Box(Modifier.weight(1f)) {
             // Room under the last song, so the Search pill never hides it.
-            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 72.dp)) {
-                items(reorder.shown, key = { it.value.id }) { (i, s) ->
-                    val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
-                    val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
-                    val extra =
-                        buildList<Pair<String, () -> Unit>> {
-                            add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)).let { } })
-                            if (isActive) {
-                                if (stopping) {
-                                    add("Don't stop after this song" to { app.playback.sleep.cancel() })
-                                } else {
-                                    add("Stop after this song" to { app.playback.sleep.afterSong(s.id, s.title) })
+            FastScroll(list, Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 72.dp)) {
+                    items(reorder.shown, key = { it.value.id }) { (i, s) ->
+                        val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
+                        val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
+                        val extra =
+                            buildList<Pair<String, () -> Unit>> {
+                                add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)).let { } })
+                                if (isActive) {
+                                    if (stopping) {
+                                        add("Don't stop after this song" to { app.playback.sleep.cancel() })
+                                    } else {
+                                        add("Stop after this song" to { app.playback.sleep.afterSong(s.id, s.title) })
+                                    }
                                 }
                             }
-                        }
-                    val wash = c.primary
-                    Box(
-                        with(reorder) { row(s.id) }.then(
-                            if (i == flashed) {
-                                Modifier.drawWithContent {
-                                    drawContent()
-                                    drawRect(wash.copy(alpha = flash.value))
-                                }
-                            } else {
-                                Modifier
-                            },
-                        ),
-                    ) {
-                        SongRow(
-                            s,
-                            onClick = {
-                                when {
-                                    sel != null -> toggle()
-
-                                    isActive -> app.playback.playAt(i)
-
-                                    // Musicolet's way: a song of another queue starts that queue from it.
-                                    else -> app.playback.switchTo(shown.id).invokeOnCompletion { app.playback.playAt(i) }
-                                }
-                            },
-                            current = i == index && songs.isNotEmpty(),
-                            live = isActive,
-                            selected = sel?.contains(s.id) == true,
-                            onLongClick = { selected = (sel ?: emptySet()) + s.id },
-                            leading =
-                                when {
-                                    sel != null -> {
-                                        { Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) { Checkbox(s.id in sel, { toggle() }) } }
+                        val wash = c.primary
+                        Box(
+                            with(reorder) { row(s.id) }.then(
+                                if (i == flashed) {
+                                    Modifier.drawWithContent {
+                                        drawContent()
+                                        drawRect(wash.copy(alpha = flash.value))
                                     }
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                        ) {
+                            SongRow(
+                                s,
+                                onClick = {
+                                    when {
+                                        sel != null -> toggle()
 
-                                    canDrag -> {
-                                        { reorder.Handle(s.id) }
-                                    }
+                                        isActive -> app.playback.playAt(i)
 
-                                    else -> {
-                                        null
+                                        // Musicolet's way: a song of another queue starts that queue from it.
+                                        else -> app.playback.switchTo(shown.id).invokeOnCompletion { app.playback.playAt(i) }
                                     }
                                 },
-                            menu = SongMenu(extra = extra, nav = nav),
-                        )
+                                current = i == index && songs.isNotEmpty(),
+                                live = isActive,
+                                selected = sel?.contains(s.id) == true,
+                                onLongClick = { selected = (sel ?: emptySet()) + s.id },
+                                leading =
+                                    when {
+                                        sel != null -> {
+                                            { Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) { Checkbox(s.id in sel, { toggle() }) } }
+                                        }
+
+                                        canDrag -> {
+                                            { reorder.Handle(s.id) }
+                                        }
+
+                                        else -> {
+                                            null
+                                        }
+                                    },
+                                menu = SongMenu(extra = extra, nav = nav),
+                            )
+                        }
                     }
                 }
             }

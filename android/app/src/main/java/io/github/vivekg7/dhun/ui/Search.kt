@@ -187,51 +187,53 @@ fun SearchScreen(nav: Nav) {
     var chipsHeight by remember { mutableIntStateOf(0) }
     val atTop = starts.indexOfLast { it <= list.firstVisibleItemIndex + 1 }.coerceAtLeast(0)
 
-    LazyColumn(Modifier.fillMaxSize(), list) {
-        item { SearchField(query, { query = it }, "Search songs, albums, artists, lyrics") }
-        if (query.isBlank()) {
-            recent(app.prefs.recentSearches, { query = it }, catalog.songs.size)
-            return@LazyColumn
-        }
-        if (chips) {
-            stickyHeader(key = "chips") {
-                SectionChips(names, atTop, { chipsHeight = it }) { i -> scope.launch { list.animateScrollToItem(starts[i], -chipsHeight) } }
+    FastScroll(list, Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), list) {
+            item { SearchField(query, { query = it }, "Search songs, albums, artists, lyrics") }
+            if (query.isBlank()) {
+                recent(app.prefs.recentSearches, { query = it }, catalog.songs.size)
+                return@LazyColumn
             }
-        }
-        for (f in found) {
-            item(key = "label/${f.kind}") { SectionLabel(f.kind.label) }
-            val shown = shown(f)
-            if (f.kind == Kind.Songs) {
-                @Suppress("UNCHECKED_CAST")
-                val songs = shown as List<Song>
-                itemsIndexed(songs, key = { _, s -> "song/${s.id}" }) { i, s ->
+            if (chips) {
+                stickyHeader(key = "chips") {
+                    SectionChips(names, atTop, { chipsHeight = it }) { i -> scope.launch { list.animateScrollToItem(starts[i], -chipsHeight) } }
+                }
+            }
+            for (f in found) {
+                item(key = "label/${f.kind}") { SectionLabel(f.kind.label) }
+                val shown = shown(f)
+                if (f.kind == Kind.Songs) {
+                    @Suppress("UNCHECKED_CAST")
+                    val songs = shown as List<Song>
+                    itemsIndexed(songs, key = { _, s -> "song/${s.id}" }) { i, s ->
+                        SongRow(s, onClick = {
+                            keep()
+                            playList(nav, "Search: ${query.trim()}", "search", songs, i)
+                        }, menu = SongMenu(nav = nav))
+                    }
+                } else {
+                    items(shown, key = { "${f.kind}/${keyOf(it)}" }) { h -> FoundRow(h, f.kind, catalog, heard, nav, keep) }
+                }
+                if (more(f)) {
+                    item(key = "more/${f.kind}") {
+                        NameRow(Icons.ExpandMore, "Show all ${f.hits.size} ${f.kind.label.lowercase()}", "") { expanded += ",${f.kind.name}" }
+                    }
+                }
+            }
+            if (lyrics == null || lyrics.isNotEmpty()) item(key = "label/lyrics") { SectionLabel("In lyrics") }
+            if (lyrics == null) {
+                item(key = "lyrics/wait") { Empty("Searching lyrics…") }
+            } else {
+                val songs = lyrics.map { it.first }
+                itemsIndexed(lyrics, key = { _, (s, _) -> "lyrics/${s.id}" }) { i, (s, line) ->
                     SongRow(s, onClick = {
                         keep()
-                        playList(nav, "Search: ${query.trim()}", "search", songs, i)
-                    }, menu = SongMenu(nav = nav))
-                }
-            } else {
-                items(shown, key = { "${f.kind}/${keyOf(it)}" }) { h -> FoundRow(h, f.kind, catalog, heard, nav, keep) }
-            }
-            if (more(f)) {
-                item(key = "more/${f.kind}") {
-                    NameRow(Icons.ExpandMore, "Show all ${f.hits.size} ${f.kind.label.lowercase()}", "") { expanded += ",${f.kind.name}" }
+                        playList(nav, "Lyrics: ${query.trim()}", "search", songs, i)
+                    }, menu = SongMenu(nav = nav), detail = "“$line”")
                 }
             }
+            if (found.isEmpty() && lyrics?.isEmpty() == true) item { Empty("Nothing matches “${query.trim()}”") }
         }
-        if (lyrics == null || lyrics.isNotEmpty()) item(key = "label/lyrics") { SectionLabel("In lyrics") }
-        if (lyrics == null) {
-            item(key = "lyrics/wait") { Empty("Searching lyrics…") }
-        } else {
-            val songs = lyrics.map { it.first }
-            itemsIndexed(lyrics, key = { _, (s, _) -> "lyrics/${s.id}" }) { i, (s, line) ->
-                SongRow(s, onClick = {
-                    keep()
-                    playList(nav, "Lyrics: ${query.trim()}", "search", songs, i)
-                }, menu = SongMenu(nav = nav), detail = "“$line”")
-            }
-        }
-        if (found.isEmpty() && lyrics?.isEmpty() == true) item { Empty("Nothing matches “${query.trim()}”") }
     }
 }
 

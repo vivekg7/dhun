@@ -295,7 +295,10 @@ since 0.13.0. Anything else waits for a later release.
   (owner, 2026-10-10). A search box takes focus, and the keyboard, only
   when tapped; scrolling, swiping or switching tabs, opening or leaving a
   page, tapping a song or the keyboard's Search key puts the keyboard
-  away and keeps the query (owner, 2026-10-10). Light, dark and black
+  away and keeps the query (owner, 2026-10-10). A long list has a thumb
+  at its edge while it scrolls; dragging it jumps through the list, with
+  the current letter beside it on a list in name order (owner,
+  2026-10-19; [plan 035](plans/035_fast_scroller.md)). Light, dark and black
   themes (or following the system, or by time of day) and eight colour
   palettes, Dull Orange first —
   [plans/011](plans/011_android_app.md).

@@ -145,55 +145,60 @@ fun PlaylistsScreen(nav: Nav) {
         }
     }
     val shown = rememberFound(playlists, query) { SearchIndex.names(it, "playlist") { p -> p.name } }.map { it.value }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item { SearchField(query, { query = it }, "Search playlists…") }
-        if (q.isEmpty()) {
-            item {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    for (k in listOf(ListKind.Favorites, ListKind.ListenLater)) {
-                        PinnedCard(k.icon, k.label, summary(lists(k)), Modifier.weight(1f)) { nav.open(Tab.Playlists, Page.ListPage(k)) }
-                    }
-                }
-            }
-            // Each only once its collection has something in it (docs/plans/031_podcasts_and_audiobooks.md).
-            if (catalog.books.isNotEmpty() || catalog.shows.isNotEmpty()) {
+    val list = rememberLazyListState()
+    // The playlists, in name order, are the last rows, after the cards and the automatic lists.
+    val letter = { i: Int -> shown.getOrNull(i - list.layoutInfo.totalItemsCount + shown.size)?.name?.let(::initial) }
+    FastScroll(list, Modifier.fillMaxSize(), letter) {
+        LazyColumn(Modifier.fillMaxSize(), list) {
+            item { SearchField(query, { query = it }, "Search playlists…") }
+            if (q.isEmpty()) {
                 item {
-                    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (catalog.books.isNotEmpty()) {
-                            PinnedCard(
-                                Icons.Book,
-                                "Audiobooks",
-                                "${catalog.books.size} ${if (catalog.books.size == 1) "book" else "books"}",
-                                Modifier.weight(1f),
-                            ) {
-                                nav.open(Tab.Playlists, Page.ShelvesPage(books = true))
-                            }
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        for (k in listOf(ListKind.Favorites, ListKind.ListenLater)) {
+                            PinnedCard(k.icon, k.label, summary(lists(k)), Modifier.weight(1f)) { nav.open(Tab.Playlists, Page.ListPage(k)) }
                         }
-                        if (catalog.shows.isNotEmpty()) {
-                            PinnedCard(
-                                Icons.Podcast,
-                                "Podcasts",
-                                "${catalog.shows.size} ${if (catalog.shows.size == 1) "show" else "shows"}",
-                                Modifier.weight(1f),
-                            ) {
-                                nav.open(Tab.Playlists, Page.ShelvesPage(books = false))
+                    }
+                }
+                // Each only once its collection has something in it (docs/plans/031_podcasts_and_audiobooks.md).
+                if (catalog.books.isNotEmpty() || catalog.shows.isNotEmpty()) {
+                    item {
+                        Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (catalog.books.isNotEmpty()) {
+                                PinnedCard(
+                                    Icons.Book,
+                                    "Audiobooks",
+                                    "${catalog.books.size} ${if (catalog.books.size == 1) "book" else "books"}",
+                                    Modifier.weight(1f),
+                                ) {
+                                    nav.open(Tab.Playlists, Page.ShelvesPage(books = true))
+                                }
+                            }
+                            if (catalog.shows.isNotEmpty()) {
+                                PinnedCard(
+                                    Icons.Podcast,
+                                    "Podcasts",
+                                    "${catalog.shows.size} ${if (catalog.shows.size == 1) "show" else "shows"}",
+                                    Modifier.weight(1f),
+                                ) {
+                                    nav.open(Tab.Playlists, Page.ShelvesPage(books = false))
+                                }
                             }
                         }
                     }
                 }
+                item { DownloadsCard { nav.open(Tab.Playlists, Page.DownloadsPage) } }
+                item { SectionLabel("Automatic") }
+                items(ListKind.entries.drop(2), key = { it.name }) { k ->
+                    NameRow(k.icon, k.label, "${lists(k).size}") { nav.open(Tab.Playlists, Page.ListPage(k)) }
+                }
+                item { SectionLabel("Playlists") }
+                item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
             }
-            item { DownloadsCard { nav.open(Tab.Playlists, Page.DownloadsPage) } }
-            item { SectionLabel("Automatic") }
-            items(ListKind.entries.drop(2), key = { it.name }) { k ->
-                NameRow(k.icon, k.label, "${lists(k).size}") { nav.open(Tab.Playlists, Page.ListPage(k)) }
-            }
-            item { SectionLabel("Playlists") }
-            item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
-        }
-        items(shown, key = { it.id }) { p ->
-            val count = songIds(p.songs).count { it != 0L && catalog.byId.containsKey(it) }
-            NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count", pinned(Downloads.PLAYLIST, p.id.toString())) {
-                nav.open(Tab.Playlists, Page.PlaylistPage(p.id))
+            items(shown, key = { it.id }) { p ->
+                val count = songIds(p.songs).count { it != 0L && catalog.byId.containsKey(it) }
+                NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count", pinned(Downloads.PLAYLIST, p.id.toString())) {
+                    nav.open(Tab.Playlists, Page.PlaylistPage(p.id))
+                }
             }
         }
     }
@@ -314,32 +319,34 @@ fun PlaylistScreen(
     // Moving among the songs found would put them in the wrong places, so dragging waits until the search is cleared.
     val canDrag = editable && q.isBlank()
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f), state = list) {
-            item {
-                PageHeader(
-                    p.name,
-                    summary(songs) + if (p.shared) " · shared" else "",
-                    onBack,
-                    { playList(nav, p.name, source, songs, 0) },
-                    DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
-                    songs = songs,
-                    actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
-                ) { shuffleList(nav, p.name, source, songs) }
-            }
-            items(reorder.shown, key = { (_, r) -> "${r.first}/${r.second.id}" }) { (i, r) ->
-                val (raw, s) = r
-                val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
-                Box(with(reorder) { row("$raw/${s.id}") }) {
-                    SongRow(
-                        s,
-                        onClick = { playList(nav, p.name, source, songs, i) },
-                        leading = if (canDrag) ({ reorder.Handle("$raw/${s.id}") }) else null,
-                        menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
-                    )
+        FastScroll(list, Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), state = list) {
+                item {
+                    PageHeader(
+                        p.name,
+                        summary(songs) + if (p.shared) " · shared" else "",
+                        onBack,
+                        { playList(nav, p.name, source, songs, 0) },
+                        DownloadTarget(Downloads.PLAYLIST, p.id.toString(), p.name, songs),
+                        songs = songs,
+                        actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
+                    ) { shuffleList(nav, p.name, source, songs) }
                 }
+                items(reorder.shown, key = { (_, r) -> "${r.first}/${r.second.id}" }) { (i, r) ->
+                    val (raw, s) = r
+                    val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
+                    Box(with(reorder) { row("$raw/${s.id}") }) {
+                        SongRow(
+                            s,
+                            onClick = { playList(nav, p.name, source, songs, i) },
+                            leading = if (canDrag) ({ reorder.Handle("$raw/${s.id}") }) else null,
+                            menu = SongMenu(extra = if (editable) remove else emptyList(), nav = nav),
+                        )
+                    }
+                }
+                if (rows.isEmpty()) item { Empty(if (editable) "Empty. Add songs with “Add to playlist” in any song's menu." else "Nothing here yet") }
+                if (rows.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
             }
-            if (rows.isEmpty()) item { Empty(if (editable) "Empty. Add songs with “Add to playlist” in any song's menu." else "Nothing here yet") }
-            if (rows.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in this playlist…", bottom = true)
     }

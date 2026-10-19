@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -176,56 +177,59 @@ fun DownloadsScreen(
     val shownPins = rememberFound(pins, q) { SearchIndex.names(it, "name") { p -> p.name } }.map { it.value }
     // A song found still plays every download from it.
     val hits = rememberFound(songs, q) { SearchIndex.songs(it) }
+    val list = rememberLazyListState()
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f)) {
-            item {
-                PageHeader(
-                    "Downloads",
-                    "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
-                    onBack,
-                    { playList(nav, "Downloads", "downloads", songs, 0) },
-                    songs = songs,
-                ) { shuffleList(nav, "Downloads", "downloads", songs) }
-            }
-            // Idle, the header already says it all.
-            if (status.state != State.Idle) {
+        FastScroll(list, Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), list) {
                 item {
-                    Text(
-                        describe(status),
-                        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (status.state in STOPPED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    PageHeader(
+                        "Downloads",
+                        "${bytes(status.usedBytes)} of ${if (limit == 0) "no limit" else "$limit GB"} on ${app.downloads.location()}",
+                        onBack,
+                        { playList(nav, "Downloads", "downloads", songs, 0) },
+                        songs = songs,
+                    ) { shuffleList(nav, "Downloads", "downloads", songs) }
                 }
-            }
-            if (status.state == State.Full) {
-                item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
-            }
-            if (q.isBlank() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
-            items(shownPins, key = { it.key }) { p ->
-                Row(
-                    Modifier.padding(start = 20.dp, end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                        Text(kindLabel(p, catalog), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Idle, the header already says it all.
+                if (status.state != State.Idle) {
+                    item {
+                        Text(
+                            describe(status),
+                            Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (status.state in STOPPED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
                 }
-            }
-            if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
-            if (hits.isNotEmpty()) item { SectionLabel("Songs") }
-            items(hits, key = { (_, s) -> s.id }) { (i, s) ->
-                SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
-            }
-            if (q.isBlank() && spoken.isNotEmpty()) {
-                item { SectionLabel("Podcasts and audiobooks") }
-                items(spoken, key = { it.id }) { s ->
-                    SongRow(s, onClick = { catalog.shelfOf(s)?.let { playShelf(nav, it, heard, s) } }, menu = SongMenu(nav = nav), detail = s.groupTitle)
+                if (status.state == State.Full) {
+                    item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
                 }
+                if (q.isBlank() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
+                items(shownPins, key = { it.key }) { p ->
+                    Row(
+                        Modifier.padding(start = 20.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                            Text(kindLabel(p, catalog), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Tip("Remove download") { IconButton({ removing = p }) { Icon(Icons.Close, "Remove download", Modifier.size(20.dp)) } }
+                    }
+                }
+                if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
+                if (hits.isNotEmpty()) item { SectionLabel("Songs") }
+                items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                    SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
+                }
+                if (q.isBlank() && spoken.isNotEmpty()) {
+                    item { SectionLabel("Podcasts and audiobooks") }
+                    items(spoken, key = { it.id }) { s ->
+                        SongRow(s, onClick = { catalog.shelfOf(s)?.let { playShelf(nav, it, heard, s) } }, menu = SongMenu(nav = nav), detail = s.groupTitle)
+                    }
+                }
+                if (q.isNotBlank() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
             }
-            if (q.isNotBlank() && shownPins.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in Downloads…", bottom = true)
     }

@@ -14,7 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -101,14 +103,17 @@ fun SongList(
     val searchable = songs.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
     val hits = rememberFound(songs, if (searchable) query else "") { SearchIndex.songs(it) }
+    val list = rememberLazyListState()
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f)) {
-            item { header() }
-            items(hits, key = { (i, s) -> "$i/${s.id}" }) { (i, s) ->
-                SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
+        FastScroll(list, Modifier.weight(1f)) {
+            LazyColumn(Modifier.fillMaxSize(), list) {
+                item { header() }
+                items(hits, key = { (i, s) -> "$i/${s.id}" }) { (i, s) ->
+                    SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
+                }
+                if (songs.isEmpty()) item { Empty("Nothing here yet") }
+                if (songs.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
             }
-            if (songs.isEmpty()) item { Empty("Nothing here yet") }
-            if (songs.isNotEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in $name…", bottom = true)
     }
@@ -169,39 +174,43 @@ fun FolderScreen(
     val children = rememberFound(folder.children, q) { SearchIndex.names(it, "folder") { f -> f.name } }.map { it.value }
     val songs = folder.songs
     val hits = rememberFound(songs, q) { SearchIndex.songs(it) }
+    val list = rememberLazyListState()
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f)) {
-            item {
-                if (root) {
-                    SectionLabel("Music · ${catalog.songs.size} songs")
-                } else {
-                    PageHeader(
-                        folder.name,
-                        path.replace("/", " › "),
-                        onBack,
-                        { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
-                        DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
-                        songs = folder.allSongs(),
-                    ) {
-                        shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
+        // Subfolders are in name order after the header; the songs after them are in track order.
+        FastScroll(list, Modifier.weight(1f), letter = { i -> children.getOrNull(i - 1)?.name?.let(::initial) }) {
+            LazyColumn(Modifier.fillMaxSize(), list) {
+                item {
+                    if (root) {
+                        SectionLabel("Music · ${catalog.songs.size} songs")
+                    } else {
+                        PageHeader(
+                            folder.name,
+                            path.replace("/", " › "),
+                            onBack,
+                            { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
+                            DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
+                            songs = folder.allSongs(),
+                        ) {
+                            shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
+                        }
                     }
                 }
+                items(children, key = { "f/" + it.path }) { f ->
+                    val icon =
+                        when (f.path) {
+                            LocalSongs.PHONE_ROOT -> Icons.Phone
+                            Catalog.PODCASTS -> Icons.Podcast
+                            Catalog.AUDIOBOOKS -> Icons.Book
+                            else -> Icons.Folder
+                        }
+                    NameRow(icon, f.name, "", pinned(Downloads.FOLDER, f.path), sub = summary(f)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
+                }
+                // A song found still plays the whole folder from it, as in the queue's search.
+                items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                    SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
+                }
+                if (q.isNotBlank() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
             }
-            items(children, key = { "f/" + it.path }) { f ->
-                val icon =
-                    when (f.path) {
-                        LocalSongs.PHONE_ROOT -> Icons.Phone
-                        Catalog.PODCASTS -> Icons.Podcast
-                        Catalog.AUDIOBOOKS -> Icons.Book
-                        else -> Icons.Folder
-                    }
-                NameRow(icon, f.name, "", pinned(Downloads.FOLDER, f.path), sub = summary(f)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
-            }
-            // A song found still plays the whole folder from it, as in the queue's search.
-            items(hits, key = { (_, s) -> s.id }) { (i, s) ->
-                SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
-            }
-            if (q.isNotBlank() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
         }
         if (searchable) SearchField(query, { query = it }, "Search in this folder…", bottom = true)
     }
@@ -214,40 +223,54 @@ fun AlbumsScreen(nav: Nav) {
     val albums = rememberFound(catalog.albums, query) { catalog.albumIndex }.map { it.value }
     Column(Modifier.fillMaxSize()) {
         SearchField(query, { query = it }, "Search ${catalog.albums.size} albums…")
-        LazyVerticalGrid(
-            GridCells.Adaptive(112.dp),
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            items(albums, key = { it.key }) { a ->
-                Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable { nav.open(Tab.Albums, Page.AlbumPage(a.key)) }) {
-                    androidx.compose.foundation.layout.BoxWithConstraints {
-                        Art(a.songs.first(), maxWidth, RoundedCornerShape(10.dp))
-                    }
-                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val grid = rememberLazyGridState()
+        FastScroll(grid, Modifier.fillMaxSize(), letter = { i -> albums.getOrNull(i)?.name?.let(::initial) }) {
+            LazyVerticalGrid(
+                GridCells.Adaptive(112.dp),
+                Modifier.fillMaxSize(),
+                grid,
+                contentPadding = PaddingValues(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(albums, key = { it.key }) { a ->
+                    Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable { nav.open(Tab.Albums, Page.AlbumPage(a.key)) }) {
+                        androidx.compose.foundation.layout.BoxWithConstraints {
+                            Art(a.songs.first(), maxWidth, RoundedCornerShape(10.dp))
+                        }
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                a.name,
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (pinned(Downloads.ALBUM, a.key)) {
+                                Icon(
+                                    Icons.Downloaded,
+                                    "Downloaded",
+                                    Modifier.padding(start = 4.dp).size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (a.songs.first().onPhone) {
+                                Icon(
+                                    Icons.Phone,
+                                    "On this phone",
+                                    Modifier.padding(start = 4.dp).size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                         Text(
-                            a.name,
-                            Modifier.weight(1f, fill = false),
-                            style = MaterialTheme.typography.titleSmall,
+                            a.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (pinned(Downloads.ALBUM, a.key)) {
-                            Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (a.songs.first().onPhone) {
-                            Icon(Icons.Phone, "On this phone", Modifier.padding(start = 4.dp).size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                     }
-                    Text(
-                        a.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
@@ -289,17 +312,20 @@ fun GroupsScreen(
     var query by rememberSaveable { mutableStateOf("") }
     val all = if (artists) catalog.artists else catalog.genres
     val shown = rememberFound(all, query) { if (artists) catalog.artistIndex else catalog.genreIndex }.map { it.value }
-    LazyColumn(Modifier.fillMaxSize()) {
-        item { SearchField(query, { query = it }, if (artists) "Search ${all.size} artists…" else "Search ${all.size} genres…") }
-        items(shown, key = { it.name }) { g ->
-            NameRow(
-                if (artists) Icons.Artist else Icons.Genre,
-                g.name,
-                "",
-                pinned(if (artists) Downloads.ARTIST else Downloads.GENRE, g.name),
-                sub = summary(g.songs),
-            ) {
-                nav.open(if (artists) Tab.Artists else Tab.Genres, if (artists) Page.ArtistPage(g.name) else Page.GenrePage(g.name))
+    val list = rememberLazyListState()
+    FastScroll(list, Modifier.fillMaxSize(), letter = { i -> shown.getOrNull(i - 1)?.name?.let(::initial) }) {
+        LazyColumn(Modifier.fillMaxSize(), list) {
+            item { SearchField(query, { query = it }, if (artists) "Search ${all.size} artists…" else "Search ${all.size} genres…") }
+            items(shown, key = { it.name }) { g ->
+                NameRow(
+                    if (artists) Icons.Artist else Icons.Genre,
+                    g.name,
+                    "",
+                    pinned(if (artists) Downloads.ARTIST else Downloads.GENRE, g.name),
+                    sub = summary(g.songs),
+                ) {
+                    nav.open(if (artists) Tab.Artists else Tab.Genres, if (artists) Page.ArtistPage(g.name) else Page.GenrePage(g.name))
+                }
             }
         }
     }
