@@ -7,9 +7,16 @@ anything undecided is under [Open questions](#open-questions).
 
 ## Context
 
-- About 7,000 songs (~50 GB, mostly MP3, M4A and Opus) that no longer fit
-  comfortably on the phone. Today they sit on the phone's SD card, organised
-  in folders by language. The full collection has been copied to the NAS.
+- **The goal** (owner, 2026-10-19): a lightweight, fast way for one family
+  to play a large and growing audio archive on the NAS, music, podcasts
+  and audiobooks, offline too. The bar is Musicolet for music and
+  Audiobookshelf for long-form audio. Playback is in daily use; the hard
+  part now is the size of the collection.
+- **About 30,000 songs and growing** (owner, 2026-10-19), up from about
+  6,000 hand-picked ones, plus many podcasts and audiobooks. The music no
+  longer lives on the phone at all. New songs arrive from the owner's own
+  downloader, `music-project`, which also does the curation for now.
+  Design and test for **100,000 songs**, so growth stays cheap.
 - Musicolet has been the daily player for 10+ years. No existing streaming
   client matches it, which is why this project exists. See
   [research/musicolet-feature-inventory.md](research/musicolet-feature-inventory.md)
@@ -129,6 +136,24 @@ anything undecided is under [Open questions](#open-questions).
   rendering engine. With LLM agents writing most of the code, separate native
   code per platform is cheap, so the usual argument for a cross-platform
   engine no longer outweighs its size and runtime overhead.
+
+### Lightweight and fast
+
+Owner, 2026-10-19: staying lightweight and fast is a goal of its own, not
+a side effect. These targets hold at **100,000 songs**, on the owner's
+phone for the apps and on the NAS for the server. The numbers are defaults
+the owner can change. Where Dhun stands is in
+[research/performance-baseline.md](research/performance-baseline.md).
+
+- **Search answers each keystroke in under 50 ms.**
+- **An app opens to a usable library in under 1 s**, and the first search
+  is ready as soon.
+- **A rescan with nothing changed takes a few seconds**; a new song costs
+  its own read, never a full rescan.
+- **The server stays under 256 MB of memory**, on a NAS that also runs
+  Jellyfin and Immich.
+- A change that touches the scan, the catalogue or search is measured
+  against these before it ships.
 
 ### Queues
 

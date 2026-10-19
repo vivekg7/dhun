@@ -13,14 +13,16 @@ file holds the part no program can decide.
 
 ## What this is
 
-A self-hosted music system for one family: a Go backend on a Synology NAS,
-and native clients. The **Android** client is primary and has to be complete;
+A lightweight, fast, self-hosted player for one family's audio archive
+(music, podcasts and audiobooks): a Go backend on a Synology NAS, and
+native clients. The **Android** client is primary and has to be complete;
 the **macOS** and **web** clients match it as far as each platform allows
 (plans [024](docs/plans/024_macos_app.md) and [030](docs/plans/030_web_client.md)),
 and **Linux** is optional. The bar
 for the Android client is **Musicolet**, which the owner has used daily for
 ten years. Its full feature list is in
 [`docs/research/musicolet-feature-inventory.md`](docs/research/musicolet-feature-inventory.md).
+For podcasts and audiobooks the bar is **Audiobookshelf**.
 Open source under GPL-3.0.
 
 ## Product rules
@@ -45,8 +47,14 @@ Open source under GPL-3.0.
 - **User data points at a song ID, never a path.** Moves and upgrades must
   leave play counts, favorites, queues and playlists attached to the song
   ([004](docs/plans/004_curation_workflow.md)).
-- **Sized for one family.** 3–4 users, about 7,000 songs, one NAS. Choose the
-  simple design that fits that, not a generic multi-tenant one.
+- **Sized for one family, not for one album shelf.** 3–4 users and one NAS,
+  but about 30,000 songs and growing: design and test for 100,000. Choose
+  the simple design that fits that, not a generic multi-tenant one.
+- **Lightweight and fast is a goal, with numbers.** The targets are in
+  [REQUIREMENTS](docs/REQUIREMENTS.md#lightweight-and-fast), and where we
+  stand in
+  [`docs/research/performance-baseline.md`](docs/research/performance-baseline.md).
+  Measure a change to the scan, the catalogue or search against them.
 - **Downloads and Cache are separate stores with separate quotas.** Cache
   never holds a song that is already in Downloads. Promoting a cached song to
   Downloads moves the file; it never fetches it again.

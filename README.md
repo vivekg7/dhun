@@ -1,7 +1,7 @@
 # Dhun
 
-Self-hosted music for a family: a lightweight Go server for a NAS, and native
-clients for Android (full-featured, primary), macOS and the web — with
+Self-hosted music, podcasts and audiobooks for a family: a lightweight Go
+server for a NAS, and native clients for Android (full-featured, primary), macOS and the web — with
 **multiple named queues**, offline downloads and synced lyrics. Inspired by
 Musicolet, the offline Android player, rebuilt for a music collection that
 lives on a NAS.
