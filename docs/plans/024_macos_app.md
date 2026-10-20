@@ -271,8 +271,9 @@ moves with it.
 0. **Playback spike. Done (2026-10-08).** It tested MP3, AAC/M4A, FLAC,
    Ogg Opus and WebM Opus, from a file, a still-arriving file and the
    stream, and option B held (results above). The engine it built is the
-   app's: `macos/Sources/DhunKit/Play/`. The `dhun-play` harness stays as
-   the test bench for engine changes, and goes once the app plays music.
+   app's: `macos/Sources/DhunKit/Play/`. The `dhun-play` harness served as
+   the test bench for engine changes and was removed in plan 036, once the
+   app had played music for months.
    The test music is in `~/Music` on the owner's Mac.
 
 1. **Skeleton.** `make mac` and CI (the Makefile's `lint-macos` and

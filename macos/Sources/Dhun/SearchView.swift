@@ -236,7 +236,9 @@ struct SearchResults: View {
             ForEach(found, id: \.kind) { f in
                 SwiftUI.Section {
                     if f.kind == .songs {
-                        ForEach(f.rows) { r in SongHit(app: app, song: r.song!, detail: r.detail).tag(r.id) }
+                        ForEach(f.rows) { r in
+                            SongRow(app: app, song: r.song!, detail: r.detail, size: 30).tag(r.id)
+                        }
                     } else {
                         let whole = expanded.contains(f.kind)
                         ForEach(whole ? f.rows : Array(f.rows.prefix(shown))) { r in
@@ -249,7 +251,7 @@ struct SearchResults: View {
                                 }
                                 .buttonStyle(.plain)
                             } else {
-                                SongHit(app: app, song: r.song!, detail: r.detail).tag(r.id)
+                                SongRow(app: app, song: r.song!, detail: r.detail, size: 30).tag(r.id)
                             }
                         }
                         if !whole && f.rows.count > shown {
@@ -267,7 +269,7 @@ struct SearchResults: View {
                 SwiftUI.Section {
                     if let lyrics {
                         ForEach(lyrics, id: \.song.id) { s, line in
-                            SongHit(app: app, song: s, detail: "“\(line)”").tag("l/\(s.id)")
+                            SongRow(app: app, song: s, detail: "“\(line)”", size: 30).tag("l/\(s.id)")
                         }
                     } else {
                         HStack {
@@ -348,29 +350,6 @@ struct SearchResults: View {
             return ("Search: \(q)", songs, songs.filter { tags.contains("s/\($0.id)") })
         }
         return ("Lyrics: \(q)", inLyrics, inLyrics.filter { tags.contains("l/\($0.id)") })
-    }
-}
-
-/// A song found: its cover, title, and the artist and album, or the line of lyrics.
-private struct SongHit: View {
-    let app: AppModel
-    let song: Song
-    let detail: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Thumb(app: app, song: song, size: 30)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(song.title).lineLimit(1)
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            DownloadedMark(app: app, song: song)
-            Text(song.durationMs > 0 ? clock(Double(song.durationMs) / 1000) : "").font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-        }
-        .opacity(playable(app, song) ? 1 : 0.4)
     }
 }
 

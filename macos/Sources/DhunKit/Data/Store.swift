@@ -300,7 +300,13 @@ public struct Store {
         op["type"] = .string(type)
         op["at"] = .string(formatTime(at))
         let tag = queue.map { ":\($0)" } ?? playlist.map { ":" + Store.playlistTag($0) } ?? ""
-        db.addOp(OutboxOp(id: id, key: key ?? id + tag, json: JSON.object(op).text), replacing: key)
+        do {
+            try db.addOp(OutboxOp(id: id, key: key ?? id + tag, json: JSON.object(op).text), replacing: key)
+        } catch {
+            // The working copy has the change and the server will not: say so where sync errors show.
+            NSLog("outbox: %@ not recorded: %@", type, "\(error)")
+            app.syncError = "A change could not be kept for sending: \(error.localizedDescription)"
+        }
         app.sync.soon()
     }
 

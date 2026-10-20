@@ -84,7 +84,7 @@ struct AlbumsGrid: View {
                             Cover(song: a.songs.first, size: 150)
                             HStack(spacing: 4) {
                                 Text(a.name).font(.callout.weight(.medium)).lineLimit(1)
-                                PinnedMark(app: app, kind: Downloads.album, ref: a.id)
+                                KeptMark(on: app.downloads.pinned(Downloads.album, a.id))
                             }
                             Text(a.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             Text(
@@ -183,9 +183,8 @@ struct ArtistPage: View {
     @State private var query = ""
 
     var body: some View {
-        let albums = app.catalog.albums.filter { a in
-            a.songs.contains { s in group.songs.contains { $0.id == s.id } }
-        }
+        let ids = Set(group.songs.compactMap { app.catalog.albumOf[$0.id] })
+        let albums = app.catalog.albums.filter { ids.contains($0.id) }
         let songs = albumOrder(group.songs)
         VStack(spacing: 0) {
             ListHeader(
@@ -222,7 +221,11 @@ func albumOrder(_ songs: [Song]) -> [Song] { QueueSort.album.apply(songs) }
 
 /// "12 songs · 48:10"
 func summary(_ songs: [Song]) -> String {
-    "\(count(songs.count)) · \(clock(Double(songs.reduce(0) { $0 + $1.durationMs }) / 1000))"
+    summary(songs.count, songs.reduce(0) { $0 + $1.durationMs })
+}
+
+func summary(_ songs: Int, _ durationMs: Int) -> String {
+    "\(count(songs)) · \(clock(Double(durationMs) / 1000))"
 }
 
 /// "1 song", "12 songs"
@@ -240,21 +243,7 @@ private func folderIcon(_ path: String) -> String {
 /// "3 folders · 120 songs · 7:45:00": what a folder holds, its subfolders' songs too.
 func summary(_ f: Folder) -> String {
     let n = f.children.count
-    return (n == 0 ? "" : n == 1 ? "1 folder · " : "\(n) folders · ") + summary(f.allSongs())
-}
-
-/// A download's mark on an album, folder, artist or genre, as the phone shows.
-struct PinnedMark: View {
-    let app: AppModel
-    let kind: String
-    let ref: String
-
-    var body: some View {
-        if app.downloads.pinned(kind, ref) {
-            Image(systemName: "arrow.down.circle.fill").font(.caption2).foregroundStyle(.secondary)
-                .help("Downloaded")
-        }
-    }
+    return (n == 0 ? "" : n == 1 ? "1 folder · " : "\(n) folders · ") + summary(f.songCount, f.durationMs)
 }
 
 /// Artists or genres: a filtered list, each opening its songs.
@@ -278,9 +267,9 @@ struct GroupsList: View {
                     VStack(alignment: .leading) {
                         HStack(spacing: 4) {
                             Text(g.name)
-                            PinnedMark(
-                                app: app, kind: kind == .artist ? Downloads.artist : Downloads.genre,
-                                ref: g.name)
+                            KeptMark(
+                                on: app.downloads.pinned(
+                                    kind == .artist ? Downloads.artist : Downloads.genre, g.name))
                         }
                         Text(summary(g.songs)).font(.caption).foregroundStyle(.secondary)
                     }
@@ -339,7 +328,7 @@ struct FolderView: View {
                                 VStack(alignment: .leading) {
                                     HStack(spacing: 4) {
                                         Text(c.name)
-                                        PinnedMark(app: app, kind: Downloads.folder, ref: c.path)
+                                        KeptMark(on: app.downloads.pinned(Downloads.folder, c.path))
                                     }
                                     Text(summary(c)).font(.caption).foregroundStyle(.secondary)
                                 }

@@ -39,7 +39,7 @@ struct SongTable: View {
                 HStack(spacing: 8) {
                     Thumb(app: app, song: s, size: 22)
                     Text(s.title).lineLimit(1)
-                    DownloadedMark(app: app, song: s)
+                    KeptMark(on: app.downloaded[s.id] != nil)
                     if app.playback.current?.id == s.id {
                         Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                             .foregroundStyle(.tint).font(.caption)
@@ -105,16 +105,52 @@ struct SongTable: View {
     }
 }
 
-/// A small mark on a song kept on this Mac (plan 012), as the phone shows.
-struct DownloadedMark: View {
-    let app: AppModel
-    let song: Song
+/// A small mark on a song kept on this Mac, or on an album, folder, artist
+/// or genre downloaded whole (plan 012), as the phone shows.
+struct KeptMark: View {
+    let on: Bool
 
     var body: some View {
-        if app.downloaded[song.id] != nil {
+        if on {
             Image(systemName: "arrow.down.circle.fill").font(.caption2).foregroundStyle(.secondary)
                 .help("Downloaded")
         }
+    }
+}
+
+/// A song in a list that is not a table: a queue, a playlist, search
+/// results. Its cover, title and a line under it; a number and the resume
+/// bar where the list has them. Dimmed when it cannot play now.
+struct SongRow: View {
+    let app: AppModel
+    let song: Song
+    /// The line under the title; the artist unless the list says otherwise.
+    var detail: String? = nil
+    var number: Int? = nil
+    /// The queue's current song: bold, in the app's colour.
+    var current = false
+    var resumeAt: Int? = nil
+    var size: CGFloat = 26
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let number {
+                Text("\(number)").monospacedDigit().font(.caption).foregroundStyle(.secondary)
+                    .frame(width: 28, alignment: .trailing)
+            }
+            Thumb(app: app, song: song, size: size)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(song.title).lineLimit(1).fontWeight(current ? .semibold : .regular)
+                    .foregroundStyle(current ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                Text(detail ?? song.displayArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let resumeAt { ResumeBar(positionMs: resumeAt, song: song) }
+            }
+            Spacer()
+            KeptMark(on: app.downloaded[song.id] != nil)
+            Text(song.durationMs > 0 ? clock(Double(song.durationMs) / 1000) : "").font(.caption)
+                .monospacedDigit().foregroundStyle(.secondary)
+        }
+        .opacity(playable(app, song) ? 1 : 0.4)
     }
 }
 

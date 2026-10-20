@@ -131,10 +131,11 @@ public final class Sync {
     /// gone (plan 013).
     private func pullLibrary() async throws {
         let lib = try await app.api.library(since: prefs.libraryVersion)
-        let songs = (lib.songs ?? []).map(\.song)
+        let songs = lib.songs ?? []
         if !songs.isEmpty {
+            // Mapped and written off the main actor: a first pull is a hundred thousand rows.
             let db = self.db
-            try await Task.detached { try db.putSongs(songs) }.value
+            try await Task.detached { try db.putSongs(songs.map(\.song)) }.value
         }
         let pending = db.outbox().map(\.key)
         func edited(_ id: Int) -> Bool { pending.contains { $0.hasSuffix(":" + Store.playlistTag(id)) } }
@@ -269,12 +270,16 @@ public final class Sync {
         app.playback.queuesSynced()
     }
 
+    /// Every round; off the main actor, since it is every song ever played, parsed and rewritten.
     private func pullPlays() async throws {
         let plays = try await app.api.plays()
-        try db.replacePlayStats(
-            plays.map {
-                PlayStat(song: $0.song, count: $0.count ?? 0, lastPlayedAt: parseTime($0.lastPlayedAt))
-            })
+        let db = self.db
+        try await Task.detached {
+            try db.replacePlayStats(
+                plays.map {
+                    PlayStat(song: $0.song, count: $0.count ?? 0, lastPlayedAt: parseTime($0.lastPlayedAt))
+                })
+        }.value
         app.reloadStats()
     }
 }

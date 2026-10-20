@@ -228,7 +228,7 @@ public func covered(_ pins: [Pin], _ c: Catalog, _ playlists: [Playlist], _ favs
     for p in pins.sorted(by: { $0.at > $1.at }) {
         switch p.kind {
         case Downloads.song: Int(p.ref).map(add)
-        case Downloads.album: c.albums.first { $0.id == p.ref }?.songs.forEach { add($0.id) }
+        case Downloads.album: c.albumsById[p.ref]?.songs.forEach { add($0.id) }
         case Downloads.folder: c.folders[p.ref]?.allSongs().forEach { add($0.id) }
         case Downloads.artist:
             c.artists.first { $0.name.lowercased() == p.ref.lowercased() }?.songs.forEach { add($0.id) }

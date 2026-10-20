@@ -10,20 +10,17 @@ public final class AppModel {
     public let prefs: Prefs
     @ObservationIgnored public let db: DB
     @ObservationIgnored public let api: Api
-    // Made in init once `self` exists; each is @Observable on its own where it has state.
-    @ObservationIgnored private var _sync: Sync!
-    @ObservationIgnored private var _playback: Playback!
-    @ObservationIgnored private var _covers: Covers!
-    @ObservationIgnored private var _lyrics: Lyrics!
-    @ObservationIgnored private var _downloads: Downloads!
-    @ObservationIgnored private var _cache: SongCache!
-    public var sync: Sync { _sync }
-    public var playback: Playback { _playback }
-    public var covers: Covers { _covers }
-    public var lyrics: Lyrics { _lyrics }
-    public var downloads: Downloads { _downloads }
-    public var cache: SongCache { _cache }
+    // Lazy, because each takes `self`; init touches them in this order. Each is @Observable on its own
+    // where it has state.
+    @ObservationIgnored public private(set) lazy var sync = Sync(app: self)
+    @ObservationIgnored public private(set) lazy var covers = Covers(app: self)
+    @ObservationIgnored public private(set) lazy var lyrics = Lyrics(app: self)
+    @ObservationIgnored public private(set) lazy var cache = SongCache(app: self)
+    @ObservationIgnored public private(set) lazy var downloads = Downloads(app: self)
+    @ObservationIgnored public private(set) lazy var playback = Playback(app: self)
     @ObservationIgnored public let files: URL
+    /// Which `reloadSongs` is newest: an older build that finishes last must not win.
+    @ObservationIgnored private var catalogBuild = 0
 
     public private(set) var catalog = Catalog.empty
     public private(set) var playlists: [Playlist] = []
@@ -116,12 +113,7 @@ public final class AppModel {
         storage = Storage(
             downloadLimitGb: prefs.downloadLimitGb, cacheLimitGb: prefs.cacheLimitGb,
             downloadOnExpensive: prefs.downloadOnExpensive)
-        _sync = Sync(app: self)
-        _covers = Covers(app: self)
-        _lyrics = Lyrics(app: self)
-        _cache = SongCache(app: self)
-        _downloads = Downloads(app: self)
-        _playback = Playback(app: self)
+        _ = (sync, covers, lyrics, cache, downloads, playback)
         api.reachable = { [weak self] ok in
             Task { @MainActor in
                 guard let self, self.reachable != ok else { return }
@@ -150,10 +142,19 @@ public final class AppModel {
         reloadDownloads()
     }
 
-    /// The catalogue is grouped off the main thread: 7,000 songs take a few milliseconds there, but not nothing.
+    /// The catalogue is grouped off the main thread, and the songs' and
+    /// albums' search indexes with it: 30,000 songs today, sized for 100,000
+    /// (plan 036), so the first keystroke in a filter must find them built.
     public func reloadSongs() async {
+        catalogBuild += 1
+        let build = catalogBuild
         let db = self.db
-        let c = await Task.detached { Catalog(db.songs()) }.value
+        let c = await Task.detached {
+            let c = Catalog(db.songs())
+            _ = (c.songIndex, c.albumIndex)
+            return c
+        }.value
+        guard build == catalogBuild else { return }
         catalog = c
         playback.catalogChanged()
     }

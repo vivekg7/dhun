@@ -4,8 +4,6 @@ import SwiftUI
 struct Sidebar: View {
     @Environment(AppModel.self) private var app
     @Environment(Nav.self) private var nav
-    @State private var naming = false
-
     var body: some View {
         @Bindable var nav = nav
         // Only a section other than the one showing: `nav.open` sets the section with a page
@@ -58,9 +56,14 @@ struct Sidebar: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             HStack {
-                Button("New Playlist", systemImage: "plus") { naming = true }
-                    .labelStyle(.titleAndIcon)
-                    .buttonStyle(.borderless)
+                Button("New Playlist", systemImage: "plus") {
+                    Prompt.name("New playlist") { name in
+                        let p = app.store.createPlaylist(name, [])
+                        nav.open(.playlist(p.id))
+                    }
+                }
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.borderless)
                 Spacer()
                 SyncStatus()
             }
@@ -68,12 +71,6 @@ struct Sidebar: View {
             // Its own background, so the list scrolls under it, not through it.
             .background(.bar)
             .overlay(alignment: .top) { Divider() }
-        }
-        .sheet(isPresented: $naming) {
-            NameSheet(title: "New playlist", action: "Create") { name in
-                let p = app.store.createPlaylist(name, [])
-                nav.open(.playlist(p.id))
-            }
         }
     }
 }
@@ -96,39 +93,5 @@ struct SyncStatus: View {
         } else if let e = app.syncError {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(e)
         }
-    }
-}
-
-/// Asks for a name: a new playlist or queue, or a rename.
-struct NameSheet: View {
-    let title: String
-    let action: String
-    var initial = ""
-    let done: (String) -> Void
-    @State private var name = ""
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.headline)
-            TextField("Name", text: $name).frame(width: 300).onSubmit(submit)
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(action, action: submit).keyboardShortcut(.defaultAction)
-                    .disabled(
-                        name.trimmingCharacters(in: .whitespaces).isEmpty
-                            || Prompt.isReserved(name.trimmingCharacters(in: .whitespaces)))
-            }
-        }
-        .padding(20)
-        .onAppear { name = initial }
-    }
-
-    private func submit() {
-        let n = name.trimmingCharacters(in: .whitespaces)
-        guard !n.isEmpty, !Prompt.isReserved(n) else { return }
-        done(n)
-        dismiss()
     }
 }

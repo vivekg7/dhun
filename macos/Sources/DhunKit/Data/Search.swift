@@ -217,7 +217,8 @@ public struct SearchQuery: Sendable {
         public let field: String?
         public let years: ClosedRange<Int>?
         // As bytes, compared with memcmp and memmem: Swift's own string search
-        // made a keystroke over 7,000 songs take a fifth of a second.
+        // made a keystroke over 7,000 songs take a fifth of a second, and the
+        // library is thirty thousand now, sized for a hundred (plan 036).
         let bytes: [UInt8]
         let key: [UInt8]
         /// The key as the phone counts letters, for typos.
@@ -338,7 +339,10 @@ public struct SearchField<T> {
 
 /// The words of every item, each distinct word folded once. A query is
 /// compared with the distinct words, then each item is a few lookups, which
-/// keeps a keystroke over 7,000 songs quick.
+/// keeps a keystroke over 100,000 songs within the 50 ms the targets allow
+/// (plan 036). The index keeps only what a query reads back: word ids per
+/// field, the title's text and the year as a number, and the words of a
+/// multi-word field run together.
 public final class SearchIndex<T: Sendable>: Sendable {
     public let items: [T]
     private let names: [String]
@@ -348,11 +352,15 @@ public final class SearchIndex<T: Sendable>: Sendable {
     private let keyUnits: [[UInt16]]
     /// Words in a field searched without a filter: only they decide that a query word needs no typo match.
     private let open: [Bool]
-    /// For each item and field, its words' numbers; its text as folded, for years and the title;
-    /// and that text run together, for "acdc".
+    /// For each item and field, its words' numbers; and, where a field has
+    /// two words or more, them run together, for "acdc" (one word's run is
+    /// the word, which the cells already find).
     private let cells: [[[Int]]]
-    private let texts: [[String]]
-    private let runs: [[[UInt8]]]
+    private let runs: [[[UInt8]?]]
+    /// The first field's text as folded, for a title that is the whole query.
+    private let titles: [String]
+    /// The field named `year` as a number, 0 for none; empty when the items have no such field.
+    private let years: [Int]
 
     public init(_ items: [T], _ fields: [SearchField<T>]) {
         self.items = items
@@ -361,20 +369,40 @@ public final class SearchIndex<T: Sendable>: Sendable {
         var ids: [String: Int] = [:]
         var words: [String] = []
         var keys: [String] = []
-        let texts = items.map { item in fields.map { Fold.text($0.text(item)) } }
-        cells = texts.map { item in
-            item.map { t in
-                t.isEmpty
-                    ? []
-                    : t.split(separator: " ").map { s in
-                        let w = String(s)
+        // An album's or artist's name comes once per song on it: fold each distinct text once.
+        var folded: [String: [String]] = [:]
+        func fold(_ s: String) -> [String] {
+            if let w = folded[s] { return w }
+            let w = Fold.words(s)
+            folded[s] = w
+            return w
+        }
+        var cells: [[[Int]]] = []
+        var runs: [[[UInt8]?]] = []
+        var titles: [String] = []
+        var years: [Int] = []
+        let yearField = fields.firstIndex { $0.name == "year" }
+        cells.reserveCapacity(items.count)
+        runs.reserveCapacity(items.count)
+        for item in items {
+            var itemCells: [[Int]] = []
+            var itemRuns: [[UInt8]?] = []
+            for (f, field) in fields.enumerated() {
+                let ws = fold(field.text(item))
+                itemCells.append(
+                    ws.map { w in
                         if let id = ids[w] { return id }
                         words.append(w)
                         keys.append(Fold.key(w))
                         ids[w] = words.count - 1
                         return words.count - 1
-                    }
+                    })
+                itemRuns.append(ws.count >= 2 ? Array(ws.joined().utf8) : nil)
+                if f == 0 { titles.append(ws.joined(separator: " ")) }
+                if f == yearField { years.append(Int(ws.first ?? "") ?? 0) }
             }
+            cells.append(itemCells)
+            runs.append(itemRuns)
         }
         var open = [Bool](repeating: false, count: words.count)
         for item in cells {
@@ -386,8 +414,10 @@ public final class SearchIndex<T: Sendable>: Sendable {
         self.keys = keys.map { Array($0.utf8) }
         keyUnits = keys.map { Array($0.utf16) }
         self.open = open
-        self.texts = texts
-        runs = texts.map { $0.map { Array($0.utf8.filter { $0 != 32 }) } }
+        self.cells = cells
+        self.runs = runs
+        self.titles = titles
+        self.years = years
     }
 
     /// What `q` matches, in the items' own order.
@@ -405,7 +435,7 @@ public final class SearchIndex<T: Sendable>: Sendable {
         let s = scores(q)
         var out: [(i: Int, score: Int, boost: Int)] = []
         for i in items.indices where s[i] != noMatch {
-            let title = texts[i][0]
+            let title = titles[i]
             let bonus = q.whole.isEmpty ? 0 : title == q.whole ? 20 : title.hasPrefix(q.whole) ? 10 : 0
             out.append((i, s[i] - bonus, boost(items[i])))
         }
@@ -438,13 +468,14 @@ public final class SearchIndex<T: Sendable>: Sendable {
                 var best = noMatch
                 for (f, w) in plan[n].enumerated() where w >= 0 {
                     if let ys = t.years {
-                        if let y = Int(texts[i][f]), ys.contains(y) { best = min(best, w) }
+                        // Only the field named year is in the plan for a year term.
+                        if !years.isEmpty, ys.contains(years[i]) { best = min(best, w) }
                         continue
                     }
                     let a = qualities[n]!
                     for id in cells[i][f] where a[id] != noMatch { best = min(best, a[id] * 10 + w) }
                     // The field's words run together: "acdc" finds AC/DC.
-                    if best > 20 + w && t.bytes.count >= 3 && has(runs[i][f], t.bytes) {
+                    if best > 20 + w && t.bytes.count >= 3, let run = runs[i][f], has(run, t.bytes) {
                         best = 20 + w
                     }
                 }

@@ -170,25 +170,10 @@ struct QueueSongs: View {
                 Divider()
                 List(selection: $selection) {
                     ForEach(numbered, id: \.element.id) { i, s in
-                        HStack(spacing: 8) {
-                            Text("\(i + 1)").monospacedDigit().font(.caption).foregroundStyle(.secondary)
-                                .frame(width: 28, alignment: .trailing)
-                            Thumb(app: app, song: s, size: 26)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(s.title).lineLimit(1).fontWeight(
-                                    s.id == currentId ? .semibold : .regular
-                                )
-                                .foregroundStyle(
-                                    s.id == currentId ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-                                Text(s.displayArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                ResumeBar(positionMs: resumeAt[s.id], song: s)
-                            }
-                            Spacer()
-                            DownloadedMark(app: app, song: s)
-                            Text(clock(Double(s.durationMs) / 1000)).font(.caption).monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                        .opacity(playable(app, s) ? 1 : 0.4)
+                        SongRow(
+                            app: app, song: s, number: i + 1, current: s.id == currentId,
+                            resumeAt: resumeAt[s.id] ?? 0
+                        )
                         .id(s.id)
                         .tag(s.id)
                     }
@@ -395,20 +380,7 @@ struct PlaylistPage: View {
                 List(selection: $selection) {
                     ForEach(entries, id: \.offset) { i, songId in
                         if let s = app.catalog.byId[songId] {
-                            HStack(spacing: 8) {
-                                Thumb(app: app, song: s, size: 26)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(s.title).lineLimit(1)
-                                    Text(s.displayArtist).font(.caption).foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                DownloadedMark(app: app, song: s)
-                                Text(clock(Double(s.durationMs) / 1000)).font(.caption).monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                            }
-                            .opacity(playable(app, s) ? 1 : 0.4)
-                            .tag(i)
+                            SongRow(app: app, song: s).tag(i)
                         } else {
                             Text("Unavailable").foregroundStyle(.secondary).italic().tag(i)
                         }

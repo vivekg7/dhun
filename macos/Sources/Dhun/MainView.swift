@@ -99,7 +99,7 @@ struct RouteView: View {
     var body: some View {
         switch route {
         case .album(let id):
-            if let a = app.catalog.albums.first(where: { $0.id == id }) {
+            if let a = app.catalog.albumsById[id] {
                 AlbumPage(album: a)
             } else {
                 Missing()

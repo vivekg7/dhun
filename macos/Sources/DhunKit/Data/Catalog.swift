@@ -1,8 +1,10 @@
 import Foundation
 
 /// The library as the sidebar shows it, derived from the song list in
-/// memory, as on the phone: about 7,000 songs group in a few milliseconds,
-/// simpler and faster than keeping albums, artists and folders as tables.
+/// memory, as on the phone. About 30,000 songs today, designed for 100,000
+/// (plan 036): a whole rebuild off the main thread still beats keeping
+/// albums, artists and folders as tables, as long as nothing in it is done
+/// once per comparison or once per row drawn.
 ///
 /// Built whole, off the main thread, and never changed after: safe to read
 /// from the player's queue too.
@@ -14,6 +16,9 @@ public final class Catalog: Sendable {
     /// Every song, episodes and books' files too: what queues, Favorites and Listen Later name.
     public let byId: [Int: Song]
     public let albums: [Album]
+    public let albumsById: [String: Album]
+    /// Each song's album, for "Go to Album" and an artist's album strip.
+    public let albumOf: [Int: String]
     public let artists: [Group]
     public let genres: [Group]
     public let folders: [String: Folder]
@@ -21,18 +26,31 @@ public final class Catalog: Sendable {
     public let books: [Shelf]
     public let shows: [Shelf]
     public let shelves: [String: Shelf]
+    /// The newest `viewSize` songs, newest first: the automatic view (plan 010), chosen here rather than
+    /// by sorting the whole library on the main thread each time the page draws.
+    public let recentlyAdded: [Song]
+
+    /// Each automatic view shows at most this many songs, as on the phone.
+    public static let viewSize = 100
 
     public init(_ all: [Song]) {
-        let songs = all.filter { !$0.spoken }.sorted { natural($0.title, $1.title) < 0 }
+        let songs = naturalSorted(all.filter { !$0.spoken }, \.title)
         self.songs = songs
         byId = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         albums = Catalog.albums(songs)
+        albumsById = Dictionary(albums.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var albumOf: [Int: String] = [:]
+        for a in albums { for s in a.songs { albumOf[s.id] = a.id } }
+        self.albumOf = albumOf
         artists = Catalog.group(songs) { $0.artists.isEmpty ? [$0.displayArtist] : $0.artists }
         genres = Catalog.group(songs) { $0.genres.isEmpty ? ["Unknown genre"] : $0.genres }
         folders = Catalog.folders(songs, all.filter(\.spoken))
         books = Catalog.shelves(all, Song.audiobook)
         shows = Catalog.shelves(all, Song.podcast)
         shelves = Dictionary((books + shows).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // Indices, not songs: a Song is thirty fields, and the sort moves only Ints.
+        recentlyAdded = songs.indices.sorted { songs[$0].addedAt > songs[$1].addedAt }
+            .prefix(Catalog.viewSize).map { songs[$0] }
     }
 
     /// The shelf `s` is on, or nil for music.
@@ -51,17 +69,16 @@ public final class Catalog: Sendable {
     }
 
     private static func shelves(_ all: [Song], _ kind: String) -> [Shelf] {
-        Dictionary(grouping: all.filter { $0.kind == kind }, by: shelfKey).map { key, list in
-            let items = list.sorted {
-                $0.groupIndex != $1.groupIndex ? $0.groupIndex < $1.groupIndex : natural($0.path, $1.path) < 0
-            }
+        let shelves = Dictionary(grouping: all.filter { $0.kind == kind }, by: shelfKey).map { key, list in
+            let items = pathOrder(list) { ($0.groupIndex, 0) }
             let first = items[0]
             let title =
                 first.groupTitle.isEmpty
                 ? String(first.folder.split(separator: "/").last ?? "") : first.groupTitle
             let authors = items.map { $0.artist.isEmpty ? $0.albumArtist : $0.artist }.filter { !$0.isEmpty }
             return Shelf(id: key, kind: kind, title: title, author: mostCommon(authors), items: items)
-        }.sorted { natural($0.title, $1.title) < 0 }
+        }
+        return naturalSorted(shelves, \.title)
     }
 
     public static let empty = Catalog([])
@@ -74,15 +91,16 @@ public final class Catalog: Sendable {
             $0.album.lowercased() + "\u{0}"
                 + ($0.albumArtist.isEmpty ? $0.folder : $0.albumArtist.lowercased())
         }
-        return groups.map { key, list in
-            let sorted = list.sorted(by: Catalog.trackOrder)
+        let albums = groups.map { key, list in
+            let sorted = Catalog.trackOrder(list)
             let first = sorted[0]
             let artist =
                 first.albumArtist.isEmpty ? mostCommon(sorted.map(\.displayArtist)) : first.albumArtist
             return Album(
                 id: key, name: first.album, artist: artist, year: sorted.map(\.year).max() ?? 0, songs: sorted
             )
-        }.sorted { natural($0.name, $1.name) < 0 }
+        }
+        return naturalSorted(albums, \.name)
     }
 
     public static let podcasts = "Podcasts"
@@ -112,22 +130,30 @@ public final class Catalog: Sendable {
         }
         let last: Set = [podcasts, audiobooks]
         for f in map.values {
-            f.children.sort {
-                last.contains($0.path) != last.contains($1.path)
-                    ? last.contains($1.path) : natural($0.name, $1.name) < 0
-            }
-            f.songs.sort { a, b in
-                (a.disc, a.track) != (b.disc, b.track)
-                    ? (a.disc, a.track) < (b.disc, b.track) : natural(a.path, b.path) < 0
+            let keyed = f.children.map { (last.contains($0.path) ? 1 : 0, sortKey($0.name), $0) }
+            f.children = keyed.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+            f.songs = pathOrder(f.songs) { ($0.disc, $0.track) }
+        }
+        let root = folder("")
+        // Each folder's total, children first, so a row never flattens its subtree to count it.
+        func total(_ f: Folder) {
+            f.songCount = f.songs.count
+            f.durationMs = f.songs.reduce(0) { $0 + $1.durationMs }
+            for c in f.children {
+                total(c)
+                f.songCount += c.songCount
+                f.durationMs += c.durationMs
             }
         }
-        _ = folder("")
+        total(root)
         return map
     }
 
     public func songsOf(_ ids: [Int]) -> [Song] { ids.compactMap { byId[$0] } }
 
-    // Search indexes (plan 029), each built on first use: most catalogs are never searched.
+    // Search indexes (plan 029), each built on first use. `reloadSongs` builds
+    // the songs' and albums' with the catalogue, off the main thread, so the
+    // first keystroke in a filter finds them ready (plan 036).
     public var songIndex: SearchIndex<Song> { indexes.get(\.songs) { SearchIndex.songs(songs) } }
     public var albumIndex: SearchIndex<Album> {
         indexes.get(\.albums) {
@@ -143,7 +169,7 @@ public final class Catalog: Sendable {
     }
     public var folderIndex: SearchIndex<Folder> {
         indexes.get(\.folders) {
-            let all = folders.values.filter { !$0.path.isEmpty }.sorted { natural($0.path, $1.path) < 0 }
+            let all = naturalSorted(folders.values.filter { !$0.path.isEmpty }, \.path)
             return SearchIndex.names(all, "folder") { $0.name }
         }
     }
@@ -203,14 +229,19 @@ public final class Catalog: Sendable {
                 map[lower, default: []].append(s)
             }
         }
-        return map.map { Group(name: names[$0.key]!, songs: $0.value) }.sorted {
-            natural($0.name, $1.name) < 0
-        }
+        return naturalSorted(map.map { Group(name: names[$0.key]!, songs: $0.value) }, \.name)
     }
 
-    static func trackOrder(_ a: Song, _ b: Song) -> Bool {
-        (a.disc, a.track) != (b.disc, b.track)
-            ? (a.disc, a.track) < (b.disc, b.track) : natural(a.title, b.title) < 0
+    /// An album's order: disc and track, then the title for untagged files.
+    static func trackOrder(_ songs: [Song]) -> [Song] {
+        songs.map { ($0.disc, $0.track, sortKey($0.title), $0) }
+            .sorted { ($0.0, $0.1, $0.2) < ($1.0, $1.1, $1.2) }.map(\.3)
+    }
+
+    /// `rank` first, then the path in natural order: a folder's or a shelf's files.
+    private static func pathOrder(_ songs: [Song], _ rank: (Song) -> (Int, Int)) -> [Song] {
+        songs.map { (rank($0), sortKey($0.path), $0) }
+            .sorted { ($0.0.0, $0.0.1, $0.1) < ($1.0.0, $1.0.1, $1.1) }.map(\.2)
     }
 }
 
@@ -249,6 +280,9 @@ public final class Folder: Identifiable, @unchecked Sendable {
     public let path: String
     public var children: [Folder] = []
     public var songs: [Song] = []
+    /// This folder's songs and every subfolder's, counted once when the catalogue is built.
+    public internal(set) var songCount = 0
+    public internal(set) var durationMs = 0
     init(path: String) { self.path = path }
     public var id: String { path }
     public var name: String {
@@ -259,33 +293,41 @@ public final class Folder: Identifiable, @unchecked Sendable {
     public func allSongs() -> [Song] { songs + children.flatMap { $0.allSongs() } }
 }
 
-/// Natural, case-blind order: "Track 2" before "Track 10".
-public func natural(_ a: String, _ b: String) -> Int {
-    let a = Array(a.unicodeScalars)
-    let b = Array(b.unicodeScalars)
-    var i = 0
-    var j = 0
-    func digit(_ c: Unicode.Scalar) -> Bool { c.properties.numericType == .decimal }
-    while i < a.count && j < b.count {
-        if digit(a[i]) && digit(b[j]) {
-            let si = i
-            let sj = j
-            while i < a.count && digit(a[i]) { i += 1 }
-            while j < b.count && digit(b[j]) { j += 1 }
-            let na = String(String.UnicodeScalarView(a[si..<i])).drop { $0 == "0" }
-            let nb = String(String.UnicodeScalarView(b[sj..<j])).drop { $0 == "0" }
-            if na.count != nb.count { return na.count - nb.count }
-            if na != nb { return na < nb ? -1 : 1 }
+/// `items` in natural, case-blind order of `text`: "Track 2" before "Track 10".
+/// The key is made once per item, not once per comparison: a sort of n
+/// items compares about n log n times, and a comparator that split both
+/// strings each time was half the cost of building the catalogue (plan 036).
+public func naturalSorted<T>(_ items: [T], _ text: (T) -> String) -> [T] {
+    items.map { (sortKey(text($0)), $0) }.sorted { $0.0 < $1.0 }.map(\.1)
+}
+
+/// A string's natural-order key: lower case, each run of digits without
+/// its leading zeros and padded to a fixed width, so plain `<` on two keys
+/// puts 2 before 10 and ignores case.
+public func sortKey(_ s: String) -> String {
+    var out = String.UnicodeScalarView()
+    var digits: [Unicode.Scalar] = []
+    func flush() {
+        guard !digits.isEmpty else { return }
+        let run = digits.drop { $0 == "0" }
+        out.append(contentsOf: repeatElement("0", count: max(0, digitWidth - run.count)))
+        out.append(contentsOf: run)
+        digits.removeAll(keepingCapacity: true)
+    }
+    for c in s.lowercased().unicodeScalars {
+        if c.properties.numericType == .decimal {
+            digits.append(c)
         } else {
-            let ca = String(a[i]).lowercased()
-            let cb = String(b[j]).lowercased()
-            if ca != cb { return ca < cb ? -1 : 1 }
-            i += 1
-            j += 1
+            flush()
+            out.append(c)
         }
     }
-    return (a.count - i) - (b.count - j)
+    flush()
+    return String(out)
 }
+
+/// Longer runs of digits sort by their text, which is wrong past this many; no title has them.
+private let digitWidth = 20
 
 private func mostCommon(_ names: [String]) -> String {
     Dictionary(grouping: names, by: { $0 }).max { $0.value.count < $1.value.count }?.key ?? ""

@@ -51,7 +51,7 @@ struct ShelvesView: View {
                     VStack(alignment: .leading) {
                         HStack(spacing: 4) {
                             Text(s.title).lineLimit(1)
-                            PinnedMark(app: app, kind: Downloads.shelf, ref: s.id)
+                            KeptMark(on: app.downloads.pinned(Downloads.shelf, s.id))
                         }
                         Text(detail(s, heard)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -104,7 +104,7 @@ struct ShelfPage: View {
                     HStack(spacing: 8) {
                         Thumb(app: app, song: s, size: 22)
                         Text(s.title).lineLimit(1)
-                        DownloadedMark(app: app, song: s)
+                        KeptMark(on: app.downloaded[s.id] != nil)
                         if app.playback.current?.id == s.id {
                             Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                                 .foregroundStyle(.tint).font(.caption)

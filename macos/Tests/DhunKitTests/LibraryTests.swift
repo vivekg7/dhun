@@ -37,10 +37,10 @@ private func song(
     #expect(c.albums[0].songs.map(\.id) == [1, 2])
 }
 
-@Test func numbersSortAsNumbers() {
+@Test func numbersSortAsNumbersAndCaseDoesNotCount() {
     #expect(
-        ["Track 10", "track 2", "Track 1"].sorted { natural($0, $1) < 0 } == [
-            "Track 1", "track 2", "Track 10",
+        naturalSorted(["Track 10", "track 2", "Track 1", "b", "A", "09", "9a"]) { $0 } == [
+            "09", "9a", "A", "b", "Track 1", "track 2", "Track 10",
         ])
 }
 

@@ -11,11 +11,6 @@ let package = Package(
         .target(name: "DhunKit"),
         // The app: windows, menus and the menu bar control.
         .executableTarget(name: "Dhun", dependencies: ["DhunKit"]),
-        // The playback spike's harness (plan 024, step 0).
-        // A top-level script, so Swift 5 mode spares it strict concurrency.
-        .executableTarget(
-            name: "dhun-play", dependencies: ["DhunKit"],
-            swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "DhunKitTests", dependencies: ["DhunKit"], resources: [.copy("Fixtures")]),
     ]
 )

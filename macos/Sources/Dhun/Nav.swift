@@ -70,9 +70,6 @@ enum ListKind: String, CaseIterable, Hashable {
     /// The mark kind for the two lists the user edits.
     var mark: String? { self == .favorites ? "fav" : self == .listenLater ? "later" : nil }
 
-    /// Each automatic view shows at most this many songs, as on the phone.
-    static let viewSize = 100
-
     @MainActor func songs(_ app: AppModel) -> [Song] {
         let c = app.catalog
         let stats = app.playStats.values
@@ -80,18 +77,18 @@ enum ListKind: String, CaseIterable, Hashable {
         case .favorites: return c.songsOf(app.favorites.map(\.song))
         case .listenLater: return c.songsOf(app.listenLater.map(\.song))
         case .continueListening: return c.songsOf(app.resumes.map(\.song))
-        case .recentlyAdded: return Array(c.songs.sorted { $0.addedAt > $1.addedAt }.prefix(Self.viewSize))
+        case .recentlyAdded: return c.recentlyAdded
         case .recentlyPlayed:
             return Array(
                 c.songsOf(
                     stats.filter { $0.lastPlayedAt > 0 }.sorted { $0.lastPlayedAt > $1.lastPlayedAt }.map(
                         \.song)
                 )
-                .prefix(Self.viewSize))
+                .prefix(Catalog.viewSize))
         case .mostPlayed:
             return Array(
                 c.songsOf(stats.filter { $0.count > 0 }.sorted { $0.count > $1.count }.map(\.song)).prefix(
-                    Self.viewSize))
+                    Catalog.viewSize))
         case .notLately:
             // Played at least 3 times, and not in the last 90 days: favourites you have drifted away from.
             let cutoff = nowMs() - 90 * 86_400_000
@@ -99,7 +96,7 @@ enum ListKind: String, CaseIterable, Hashable {
                 c.songsOf(
                     stats.filter { $0.count >= 3 && $0.lastPlayedAt < cutoff }.sorted { $0.count > $1.count }
                         .map(\.song)
-                ).prefix(Self.viewSize))
+                ).prefix(Catalog.viewSize))
         }
     }
 }
@@ -127,7 +124,7 @@ final class Nav {
         if let shelf = app.catalog.shelfOf(s) {
             return open(shelf.isBook ? .books : .shows, .shelf(shelf.id))
         }
-        guard let a = app.catalog.albums.first(where: { $0.songs.contains { $0.id == s.id } }) else { return }
+        guard let a = app.catalog.albumOf[s.id].flatMap({ app.catalog.albumsById[$0] }) else { return }
         open(.albums, .album(a.id))
     }
 

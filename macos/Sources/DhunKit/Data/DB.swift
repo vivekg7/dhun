@@ -12,8 +12,8 @@ public final class DB: @unchecked Sendable {
         try migrate()
     }
 
-    /// Each step runs once, in order; a new one goes at the end. The outbox
-    /// is never dropped: offline edits are never lost (AGENTS.md).
+    /// Each step runs once, in order; a new one goes at the end. No step
+    /// touches the outbox: an upgrade never loses an offline edit (AGENTS.md).
     private func migrate() throws {
         let steps = [
             """
@@ -68,7 +68,10 @@ public final class DB: @unchecked Sendable {
         }
     }
 
-    /// Everything but the outbox can be fetched again; used when another user signs in.
+    /// Everything this account kept, its unsent edits included: used when the
+    /// user signs out or another signs in, as the phone's `forgetAccount`. A
+    /// refused token keeps everything instead (plan 023), so an offline edit
+    /// is only ever dropped by the person who made it.
     public func wipe() throws {
         try sql.exec(
             """
@@ -81,7 +84,7 @@ public final class DB: @unchecked Sendable {
     // MARK: Songs
 
     public func songs() -> [Song] {
-        (try? sql.query("SELECT * FROM song WHERE missing = 0") { r in
+        (try? sql.query("SELECT * FROM song WHERE missing = 0", bulk: true) { r in
             Song(
                 id: r.int(0), path: r.text(1), title: r.text(2), artist: r.text(3), artists: split(r.text(4)),
                 album: r.text(5), albumArtist: r.text(6), composer: r.text(7), genres: split(r.text(8)),
@@ -94,19 +97,25 @@ public final class DB: @unchecked Sendable {
         }) ?? []
     }
 
+    /// In transactions of a couple of thousand rows: the first pull is a
+    /// hundred thousand, and a player's resume point written on the main
+    /// thread waits for the transaction in hand, not for all of them.
     public func putSongs(_ songs: [Song]) throws {
-        try sql.runMany(
-            "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            songs.map { s in
-                ([
-                    s.id, s.path, s.title, s.artist, s.artists.joined(separator: sep), s.album, s.albumArtist,
-                    s.composer, s.genres.joined(separator: sep), s.year, s.track, s.disc, s.durationMs,
-                    s.format,
-                    s.bitrate, s.sampleRate, s.bitDepth, s.size, s.hasArt, s.hasLyrics, s.addedAt, s.missing,
-                    s.art, s.kind, s.date, s.notes, chapters(s.chapters), s.groupKey, s.groupTitle,
-                    s.groupIndex,
-                ] as [any SQLBindable]).sql
-            })
+        let rows = songs.map { s in
+            ([
+                s.id, s.path, s.title, s.artist, s.artists.joined(separator: sep), s.album, s.albumArtist,
+                s.composer, s.genres.joined(separator: sep), s.year, s.track, s.disc, s.durationMs,
+                s.format,
+                s.bitrate, s.sampleRate, s.bitDepth, s.size, s.hasArt, s.hasLyrics, s.addedAt, s.missing,
+                s.art, s.kind, s.date, s.notes, chapters(s.chapters), s.groupKey, s.groupTitle,
+                s.groupIndex,
+            ] as [any SQLBindable]).sql
+        }
+        for start in stride(from: 0, to: rows.count, by: 2000) {
+            try sql.runMany(
+                "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                Array(rows[start..<min(start + 2000, rows.count)]))
+        }
     }
 
     // MARK: Playlists
@@ -238,9 +247,11 @@ public final class DB: @unchecked Sendable {
         (try? sql.query("SELECT count(*) FROM outbox") { $0.int(0) }.first) ?? 0
     }
 
-    /// Drops earlier ops with the same key (only the latest matters), then adds this one.
-    public func addOp(_ op: OutboxOp, replacing key: String?) {
-        try? sql.transaction {
+    /// Drops earlier ops with the same key (only the latest matters), then
+    /// adds this one. Throws rather than swallowing: an edit the outbox did
+    /// not take would be lost without anyone knowing (AGENTS.md).
+    public func addOp(_ op: OutboxOp, replacing key: String?) throws {
+        try sql.transaction {
             if let key { try sql.run("DELETE FROM outbox WHERE key = ?", [.text(key)]) }
             try sql.run(
                 "INSERT INTO outbox (id, key, json) VALUES (?,?,?)",
