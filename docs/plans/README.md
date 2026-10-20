@@ -84,7 +84,7 @@ wrong.
 
 | Plan                                                                                       | Status                                                                                                                                                  |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [036 — Meeting the speed targets at 100,000 songs](036_fast_at_100k.md)                    | `RELEASED` — in the 0.16.0 GitHub release (2026-10-20); not yet installed or deployed                                                                   |
+| [036 — Meeting the speed targets at 100,000 songs](036_fast_at_100k.md)                    | `RELEASED` — in the 0.16.0 GitHub release (2026-10-20); 0.16.0 on the owner's phone and Mac; server and web in `server-v0.16.0` on the NAS (2026-10-20) |
 | [035 — A fast scroller on Android's long lists](035_fast_scroller.md)                      | `RELEASED` — 0.15.1 on the owner's phone (2026-10-19); Android only, no GitHub release                                                                  |
 | [034 — Shorter settings text, marked defaults, reset](034_settings_text_defaults_reset.md) | `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); 0.15.0 on the owner's phone and Mac; server and web in `server-v0.15.0` on the NAS (2026-10-18) |
 | [033 — Bookmarks in long files](033_bookmarks.md)                                          | `RELEASED` — in the 0.15.0 GitHub release (2026-10-18); 0.15.0 on the owner's phone and Mac; server and web in `server-v0.15.0` on the NAS (2026-10-18) |
