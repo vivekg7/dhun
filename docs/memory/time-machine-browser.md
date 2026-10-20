@@ -15,7 +15,9 @@ It is not macOS's backup feature, and not a host on the network.
 **How to apply:** to open or check the web client (`server/web`) in a
 browser, use the `web-capture` skill, which drives `timemachine`. Always
 this, never the Claude in Chrome extension: the owner does not install it
-(owner, 2026-10-18). Sign in
+and does not want to be asked (owner, 2026-10-18, repeated 2026-10-20 after
+an agent asked again; read this whole file before any browser step, the
+index line alone was not enough). Sign in
 with the test account only ([[test-account]]). The NAS serves the released
 client, so to try the checkout's `server/web` against its library, serve
 `web.Handler()` locally with `DHUN_WEB_DIR=server/web` and forward `/api/`
