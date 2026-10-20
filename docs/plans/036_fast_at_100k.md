@@ -1,6 +1,6 @@
 # 036 — Meeting the speed targets at 100,000 songs
 
-**Status:** `MERGED` — server and all three clients on `main` (2026-10-20); not yet released or on the NAS
+**Status:** `RELEASED` — in the 0.16.0 GitHub release (2026-10-20); not yet installed or deployed
 **Started:** 2026-10-20
 
 ## Problem
