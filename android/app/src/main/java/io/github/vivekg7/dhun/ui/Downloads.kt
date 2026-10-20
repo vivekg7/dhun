@@ -205,7 +205,7 @@ fun DownloadsScreen(
                     item { TextButton({ nav.settings = SettingsPage.Downloads }, Modifier.padding(start = 8.dp)) { Text("Change the limit in Settings") } }
                 }
                 if (q.isBlank() || shownPins.isNotEmpty()) item { SectionLabel("Kept in step with the library") }
-                items(shownPins, key = { it.key }) { p ->
+                items(shownPins, key = { it.key }, contentType = { "pin" }) { p ->
                     Row(
                         Modifier.padding(start = 20.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -219,12 +219,12 @@ fun DownloadsScreen(
                 }
                 if (pins.isEmpty()) item { Empty("Use Download on an album, a playlist or a folder to keep it on this phone.") }
                 if (hits.isNotEmpty()) item { SectionLabel("Songs") }
-                items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                items(hits, key = { (_, s) -> s.id }, contentType = { "song" }) { (i, s) ->
                     SongRow(s, onClick = { playList(nav, "Downloads", "downloads", songs, i) }, menu = SongMenu(nav = nav))
                 }
                 if (q.isBlank() && spoken.isNotEmpty()) {
                     item { SectionLabel("Podcasts and audiobooks") }
-                    items(spoken, key = { it.id }) { s ->
+                    items(spoken, key = { it.id }, contentType = { "song" }) { s ->
                         SongRow(s, onClick = { catalog.shelfOf(s)?.let { playShelf(nav, it, heard, s) } }, menu = SongMenu(nav = nav), detail = s.groupTitle)
                     }
                 }

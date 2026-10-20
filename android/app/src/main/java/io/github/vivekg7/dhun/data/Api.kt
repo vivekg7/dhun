@@ -4,12 +4,14 @@ import io.github.vivekg7.dhun.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.put
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -194,16 +196,21 @@ class Api(
         )
     }
 
+    /**
+     * Decoded from the stream: the first library sync is tens of megabytes
+     * of JSON at 100,000 songs, and read whole it would sit on the heap
+     * beside the objects made from it (docs/plans/036_fast_at_100k.md).
+     */
+    @OptIn(ExperimentalSerializationApi::class)
     private suspend inline fun <reified T> call(req: Request): T =
         withContext(Dispatchers.IO) {
             http.newCall(req).execute().use { resp ->
-                val text = resp.body.string()
                 if (!resp.isSuccessful) {
-                    val msg = runCatching { json.decodeFromString<ApiError>(text).message }.getOrNull()
+                    val msg = runCatching { json.decodeFromString<ApiError>(resp.body.string()).message }.getOrNull()
                     throw ApiException(resp.code, msg ?: "HTTP ${resp.code}")
                 }
                 // A 204 has no body to decode.
-                if (T::class == Unit::class) Unit as T else json.decodeFromString<T>(text)
+                if (T::class == Unit::class) Unit as T else json.decodeFromStream<T>(resp.body.byteStream())
             }
         }
 
@@ -220,8 +227,61 @@ class ApiException(
     message: String,
 ) : IOException(message)
 
-/** Server times are RFC 3339; the app keeps epoch milliseconds. */
-fun parseTime(s: String): Long = if (s.isEmpty()) 0 else runCatching { OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrDefault(0)
+/**
+ * Server times are RFC 3339; the app keeps epoch milliseconds. The server
+ * writes them in UTC with a `Z`, with or without fractional seconds, and
+ * that form is read by hand: a date-time parser per song is a visible
+ * share of a 100,000-song pull. Anything else goes through the library.
+ */
+fun parseTime(s: String): Long {
+    if (s.isEmpty()) return 0
+    return utcTime(s) ?: runCatching { OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrDefault(0)
+}
+
+/** `2006-01-02T15:04:05Z` or `2006-01-02T15:04:05.000Z` as epoch milliseconds; null for anything else. */
+private fun utcTime(s: String): Long? {
+    if (s.length < 20 || s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':' || s.last() != 'Z') return null
+
+    fun num(
+        from: Int,
+        to: Int,
+    ): Int {
+        var n = 0
+        for (i in from until to) {
+            val d = s[i] - '0'
+            if (d !in 0..9) return -1
+            n = n * 10 + d
+        }
+        return n
+    }
+    val year = num(0, 4)
+    val month = num(5, 7)
+    val day = num(8, 10)
+    val hour = num(11, 13)
+    val minute = num(14, 16)
+    val second = num(17, 19)
+    if (year < 0 || month !in 1..12 || day !in 1..31 || hour !in 0..23 || minute !in 0..59 || second !in 0..60) return null
+    var millis = 0L
+    if (s.length > 20) {
+        if (s[19] != '.') return null
+        // Up to three places count; the rest are finer than a millisecond.
+        var scale = 100
+        for (i in 20 until s.length - 1) {
+            val d = s[i] - '0'
+            if (d !in 0..9) return null
+            millis += d * scale
+            scale /= 10
+        }
+    }
+    // A day the month does not have (30 February) is no time at all.
+    val days =
+        runCatching {
+            java.time.LocalDate
+                .of(year, month, day)
+                .toEpochDay()
+        }.getOrNull() ?: return 0
+    return ((days * 86_400 + hour * 3_600 + minute * 60 + second) * 1_000) + millis
+}
 
 fun formatTime(ms: Long): String =
     java.time.Instant

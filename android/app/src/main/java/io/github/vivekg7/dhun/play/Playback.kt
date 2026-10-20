@@ -755,7 +755,7 @@ class Playback(
         stoppedAt = if (play) 0 else stoppedSince()
         if (play) player.play()
         current.value = song
-        store.putQueue(q)
+        app.db.dao().putQueue(q)
         openListen(song, start)
     }
 

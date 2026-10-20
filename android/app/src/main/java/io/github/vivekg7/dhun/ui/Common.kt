@@ -73,7 +73,12 @@ fun duration(ms: Long): String {
 }
 
 /** "12 songs · 48 min" */
-fun summary(songs: List<Song>): String = "${songs.size} ${if (songs.size == 1) "song" else "songs"} · ${length(songs.sumOf { it.durationMs })}"
+fun summary(songs: List<Song>): String = summary(songs.size, songs.sumOf { it.durationMs })
+
+fun summary(
+    count: Int,
+    ms: Long,
+): String = "$count ${if (count == 1) "song" else "songs"} · ${length(ms)}"
 
 /** "3 folders · 120 songs · 7 h 45 min": what a folder holds, its subfolders' songs too. */
 fun summary(f: Folder): String {
@@ -83,7 +88,7 @@ fun summary(f: Folder): String {
             1 -> "1 folder · "
             else -> "$n folders · "
         }
-    return folders + summary(f.allSongs())
+    return folders + summary(f.songCount, f.durationMs)
 }
 
 /** "48 min", "12 h 5 min" */

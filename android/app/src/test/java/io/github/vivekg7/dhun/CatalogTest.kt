@@ -2,6 +2,7 @@ package io.github.vivekg7.dhun
 
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.data.sortedNatural
 import io.github.vivekg7.dhun.ui.serverUrl
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -45,8 +46,8 @@ class CatalogTest {
 
     @Test
     fun numbersSortAsNumbers() {
-        val sorted = listOf("Track 10", "track 2", "Track 1").sortedWith(Catalog.TITLE)
-        assertEquals(listOf("Track 1", "track 2", "Track 10"), sorted)
+        val sorted = listOf("Track 10", "track 2", "Track 1", "Track 02").sortedNatural { it }
+        assertEquals(listOf("Track 1", "track 2", "Track 02", "Track 10"), sorted)
     }
 
     @Test
@@ -56,7 +57,7 @@ class CatalogTest {
             setOf(1L, 2L),
             c.folders
                 .getValue("Hindi")
-                .allSongs()
+                .all
                 .map { it.id }
                 .toSet(),
         )

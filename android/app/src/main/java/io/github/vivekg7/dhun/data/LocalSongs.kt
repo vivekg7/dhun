@@ -147,7 +147,7 @@ class LocalSongs(
         }
         uris.keys.retainAll(found.keys)
         uris.putAll(found)
-        folders.value = counts.entries.sortedWith(compareBy(Catalog.TITLE) { it.key }).map { it.key to it.value }
+        folders.value = counts.entries.sortedNatural { it.key }.map { it.key to it.value }
         return out
     }
 

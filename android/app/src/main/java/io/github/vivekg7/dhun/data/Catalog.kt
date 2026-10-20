@@ -1,9 +1,11 @@
 package io.github.vivekg7.dhun.data
 
 /**
- * The library as the tabs show it, derived from the song list in memory.
- * About 7,000 songs group in a few milliseconds, which is simpler and faster
- * than keeping albums, artists and folders as tables.
+ * The library as the tabs show it, derived from the song list in memory:
+ * simpler and faster than keeping albums, artists and folders as tables.
+ * About 30,000 songs today, built for 100,000: the sorts compute one key
+ * per item and the groupings are built once, off the main thread
+ * (docs/plans/036_fast_at_100k.md).
  */
 class Catalog(
     all: List<Song>,
@@ -14,7 +16,7 @@ class Catalog(
      * an episode never turns up in an artist or a shuffle
      * (docs/plans/031_podcasts_and_audiobooks.md).
      */
-    val songs: List<Song> = all.filter { !it.spoken }.sortedWith(compareBy(TITLE) { it.title })
+    val songs: List<Song> = all.filter { !it.spoken }.sortedNatural { it.title }
 
     /** Every song, episodes and books' files too: what queues, Favorites and Listen Later name. */
     val byId: Map<Long, Song> = all.associateBy { it.id }
@@ -31,10 +33,10 @@ class Catalog(
             .filter { it.album.isNotEmpty() }
             .groupBy { (if (it.onPhone) "phone\u0000" else "") + it.album.lowercase() + '\u0000' + it.albumArtist.lowercase().ifEmpty { it.folder } }
             .map { (key, list) ->
-                val sorted = list.sortedWith(compareBy<Song>({ it.disc }, { it.track }).thenBy(TITLE) { it.title })
+                val sorted = list.sortedNatural(TRACK) { it.title }
                 val first = sorted.first()
                 Album(key, first.album, first.albumArtist.ifEmpty { mostCommon(sorted.map { it.displayArtist }) }, sorted.maxOf { it.year }, sorted)
-            }.sortedWith(compareBy(TITLE) { it.name })
+            }.sortedNatural { it.name }
     }
 
     val artists: List<Group> by lazy { group { it.artistList.ifEmpty { listOf(it.displayArtist) } } }
@@ -58,11 +60,21 @@ class Catalog(
         val last = setOf(PODCASTS, AUDIOBOOKS)
         for (f in map.values) {
             // The phone's songs first, before the NAS folders; podcasts and audiobooks last.
-            f.children.sortWith(compareBy<Folder>({ it.path != LocalSongs.PHONE_ROOT }, { it.path in last }).thenBy(TITLE) { it.name })
-            f.songs.sortWith(compareBy<Song>({ it.disc }, { it.track }).thenBy(TITLE) { it.path })
+            f.children.replaceWith(f.children.sortedNatural(compareBy({ it.path != LocalSongs.PHONE_ROOT }, { it.path in last })) { it.name })
+            f.songs.replaceWith(f.songs.sortedNatural(TRACK) { it.path })
         }
         folder("")
         map
+    }
+
+    /** The newest [VIEW_SIZE] songs: a selection, never a sort of the whole library. */
+    val recentlyAdded: List<Song> by lazy {
+        val heap = java.util.PriorityQueue<Song>(VIEW_SIZE + 1, compareBy { it.addedAt })
+        for (s in songs) {
+            heap += s
+            if (heap.size > VIEW_SIZE) heap.poll()
+        }
+        heap.sortedByDescending { it.addedAt }
     }
 
     fun songsOf(ids: List<Long>) = ids.mapNotNull { byId[it] }
@@ -78,13 +90,28 @@ class Catalog(
     /** The shelf [s] is on, or null for music. */
     fun shelfOf(s: Song) = if (s.spoken) shelves[shelfKey(s)] else null
 
-    // Built on first use, with the catalog, so a keystroke folds nothing (docs/plans/029_search.md).
+    /**
+     * Builds the groupings and the song index now, on the caller's thread,
+     * so the first tab opened and the first keystroke only read them. The
+     * rest of the indexes are small, or rarely reached.
+     */
+    fun warm() {
+        albums
+        artists
+        genres
+        folders
+        books
+        shows
+        songIndex
+    }
+
+    // Built once, with the catalog, so a keystroke folds nothing (docs/plans/029_search.md).
     val songIndex by lazy { SearchIndex.songs(songs) }
     val albumIndex by lazy { SearchIndex(albums, listOf(Field<Album>("album", 0) { it.name }, Field("artist", 1) { it.artist })) }
     val artistIndex by lazy { SearchIndex.names(artists, "artist") { it.name } }
     val genreIndex by lazy { SearchIndex.names(genres, "genre") { it.name } }
     val folderIndex by lazy {
-        SearchIndex.names(folders.values.filter { it.path.isNotEmpty() }.sortedWith(compareBy(TITLE) { it.path }), "folder") { it.name }
+        SearchIndex.names(folders.values.filter { it.path.isNotEmpty() }.sortedNatural { it.path }, "folder") { it.name }
     }
     val bookIndex by lazy { SearchIndex(books, listOf(Field<Shelf>("book", 0) { it.title }, Field("artist", 1) { it.author })) }
     val showIndex by lazy { SearchIndex.names(shows, "show") { it.title } }
@@ -100,12 +127,18 @@ class Catalog(
                 map.getOrPut(lower) { mutableListOf() } += s
             }
         }
-        return map.map { (k, list) -> Group(names.getValue(k), list) }.sortedWith(compareBy(TITLE) { it.name })
+        return map.map { (k, list) -> Group(names.getValue(k), list) }.sortedNatural { it.name }
     }
 
     companion object {
         const val PODCASTS = "Podcasts"
         const val AUDIOBOOKS = "Audiobooks"
+
+        /** How long an automatic view is (docs/plans/010_special_playlists.md). */
+        const val VIEW_SIZE = 100
+
+        /** Disc, then track: an album's or a folder's play order, before the natural order of the name. */
+        private val TRACK: Comparator<Song> = compareBy({ it.disc }, { it.track })
 
         private fun spokenRoot(kind: String) = if (kind == Song.PODCAST) PODCASTS else AUDIOBOOKS
 
@@ -120,7 +153,7 @@ class Catalog(
                 .filter { it.kind == kind }
                 .groupBy(::shelfKey)
                 .map { (key, list) ->
-                    val items = list.sortedWith(compareBy<Song> { it.groupIndex }.thenBy(TITLE) { it.path })
+                    val items = list.sortedNatural(compareBy { it.groupIndex }) { it.path }
                     val first = items.first()
                     Shelf(
                         key,
@@ -131,39 +164,7 @@ class Catalog(
                         mostCommon(items.map { it.artist.ifEmpty { it.albumArtist } }.filter { it.isNotEmpty() }.ifEmpty { listOf("") }),
                         items,
                     )
-                }.sortedWith(compareBy(TITLE) { it.title })
-
-        /** Natural, case-blind order: "Track 2" before "Track 10". */
-        val TITLE: Comparator<String> = Comparator { a, b -> natural(a, b) }
-
-        private fun natural(
-            a: String,
-            b: String,
-        ): Int {
-            var i = 0
-            var j = 0
-            while (i < a.length && j < b.length) {
-                val ca = a[i]
-                val cb = b[j]
-                if (ca.isDigit() && cb.isDigit()) {
-                    val si = i
-                    val sj = j
-                    while (i < a.length && a[i].isDigit()) i++
-                    while (j < b.length && b[j].isDigit()) j++
-                    val na = a.substring(si, i).trimStart('0')
-                    val nb = b.substring(sj, j).trimStart('0')
-                    if (na.length != nb.length) return na.length - nb.length
-                    val c = na.compareTo(nb)
-                    if (c != 0) return c
-                } else {
-                    val c = ca.lowercaseChar().compareTo(cb.lowercaseChar())
-                    if (c != 0) return c
-                    i++
-                    j++
-                }
-            }
-            return (a.length - i) - (b.length - j)
-        }
+                }.sortedNatural { it.title }
 
         private fun mostCommon(names: List<String>) =
             names
@@ -212,6 +213,58 @@ class Folder(
     val children = mutableListOf<Folder>()
     val songs = mutableListOf<Song>()
 
-    /** This folder's songs and every subfolder's, in folder order: what "play folder" plays. */
-    fun allSongs(): List<Song> = songs + children.flatMap { it.allSongs() }
+    /** This folder's songs and every subfolder's, in folder order: what "play folder" plays. Built once asked for. */
+    val all: List<Song> by lazy { songs + children.flatMap { it.all } }
+
+    /** What the whole subtree holds, for the row's caption: counted once, not flattened on every draw. */
+    val songCount: Int by lazy { songs.size + children.sumOf { it.songCount } }
+    val durationMs: Long by lazy { songs.sumOf { it.durationMs } + children.sumOf { it.durationMs } }
+}
+
+/**
+ * Natural, case-blind order, "Track 2" before "Track 10", as a key: lower
+ * case, each run of digits stripped of leading zeros and padded to [DIGITS]
+ * places. Plain string comparison of two keys then orders as a natural
+ * comparator would, and the key is computed once per item rather than on
+ * each of the n·log n comparisons of a sort (docs/plans/036_fast_at_100k.md).
+ */
+fun sortKey(s: String): String {
+    val b = StringBuilder(s.length + 8)
+    var i = 0
+    while (i < s.length) {
+        val c = s[i]
+        if (c.isDigit()) {
+            var j = i
+            while (j < s.length && s[j].isDigit()) j++
+            var start = i
+            while (start < j - 1 && s[start] == '0') start++
+            repeat(DIGITS - (j - start)) { b.append('0') }
+            b.append(s, start, j)
+            i = j
+        } else {
+            b.append(c.lowercaseChar())
+            i++
+        }
+    }
+    return b.toString()
+}
+
+/** Digits a number may have and still sort as a number; a longer one sorts as text. */
+private const val DIGITS = 12
+
+/** [this] by [first], then by the natural order of [key]; the key is computed once per item. Stable. */
+fun <T> Collection<T>.sortedNatural(
+    first: Comparator<in T>? = null,
+    key: (T) -> String,
+): List<T> {
+    val items = toList()
+    val keys = Array(items.size) { sortKey(key(items[it])) }
+    var order: Comparator<Int> = compareBy { keys[it] }
+    if (first != null) order = Comparator<Int> { a, b -> first.compare(items[a], items[b]) }.then(order)
+    return items.indices.sortedWith(order).map { items[it] }
+}
+
+private fun <T> MutableList<T>.replaceWith(sorted: List<T>) {
+    clear()
+    addAll(sorted)
 }

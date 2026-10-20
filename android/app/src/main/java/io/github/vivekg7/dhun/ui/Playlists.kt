@@ -33,9 +33,7 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
-import io.github.vivekg7.dhun.data.Mark
 import io.github.vivekg7.dhun.data.PlayStat
-import io.github.vivekg7.dhun.data.Resume
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
@@ -60,7 +58,7 @@ enum class ListKind(
     NotLately("Not played lately", Icons.Hourglass, "not_played_lately"),
 }
 
-private const val VIEW_SIZE = 100
+private const val VIEW_SIZE = Catalog.VIEW_SIZE
 private const val DAY = 86_400_000L
 
 /**
@@ -70,10 +68,11 @@ private const val DAY = 86_400_000L
 private const val LATELY_MIN_PLAYS = 3
 private const val LATELY_DAYS = 90
 
-@Composable
-fun listSongs(kind: ListKind): List<Song> = rememberLists()(kind)
-
-/** All the lists from one read of the data they come from, computed when first asked for. */
+/**
+ * All the lists, each computed when first asked for and kept while what it
+ * reads is unchanged: a resume point written every 30 s of a long file
+ * redoes the marks' lists, not the play counts' (docs/plans/036_fast_at_100k.md).
+ */
 @Composable
 fun rememberLists(): (ListKind) -> List<Song> {
     val app = App.app
@@ -82,38 +81,25 @@ fun rememberLists(): (ListKind) -> List<Song> {
     val later by app.store.listenLater.collectAsState()
     val resumes by app.store.resumes.collectAsState()
     val stats by app.store.playStats.collectAsState()
-    return remember(catalog, favs, later, resumes, stats) {
-        val cache = HashMap<ListKind, List<Song>>()
-        val lists: (ListKind) -> List<Song> = { k -> cache.getOrPut(k) { compute(k, catalog, favs, later, resumes, stats) } }
-        lists
+    val marked = remember(catalog, favs, later, resumes) { HashMap<ListKind, List<Song>>() }
+    val played = remember(catalog, stats) { HashMap<ListKind, List<Song>>() }
+    return { k ->
+        when (k) {
+            ListKind.Favorites -> marked.getOrPut(k) { catalog.songsOf(favs.map { it.song }) }
+            ListKind.ListenLater -> marked.getOrPut(k) { catalog.songsOf(later.map { it.song }) }
+            ListKind.Continue -> marked.getOrPut(k) { catalog.songsOf(resumes.map { it.song }) }
+            ListKind.RecentlyAdded -> catalog.recentlyAdded
+            else -> played.getOrPut(k) { fromStats(k, catalog, stats) }
+        }
     }
 }
 
-private fun compute(
+private fun fromStats(
     kind: ListKind,
     c: Catalog,
-    favs: List<Mark>,
-    later: List<Mark>,
-    resumes: List<Resume>,
     stats: List<PlayStat>,
 ): List<Song> =
     when (kind) {
-        ListKind.Favorites -> {
-            c.songsOf(favs.map { it.song })
-        }
-
-        ListKind.ListenLater -> {
-            c.songsOf(later.map { it.song })
-        }
-
-        ListKind.Continue -> {
-            c.songsOf(resumes.map { it.song })
-        }
-
-        ListKind.RecentlyAdded -> {
-            c.songs.sortedByDescending { it.addedAt }.take(VIEW_SIZE)
-        }
-
         ListKind.RecentlyPlayed -> {
             c.songsOf(stats.filter { it.lastPlayedAt > 0 }.sortedByDescending { it.lastPlayedAt }.map { it.song }).take(VIEW_SIZE)
         }
@@ -125,6 +111,10 @@ private fun compute(
         ListKind.NotLately -> {
             val cutoff = System.currentTimeMillis() - LATELY_DAYS * DAY
             c.songsOf(stats.filter { it.count >= LATELY_MIN_PLAYS && it.lastPlayedAt < cutoff }.sortedByDescending { it.count }.map { it.song }).take(VIEW_SIZE)
+        }
+
+        else -> {
+            error("$kind is not a played list")
         }
     }
 
@@ -260,24 +250,15 @@ fun ListScreen(
     nav: Nav,
     onBack: () -> Unit,
 ) {
-    val songs = listSongs(kind)
-    SongList(kind.label, kind.source, songs, nav) {
-        // Favorites and Listen Later can be downloaded; the automatic views change after every listen (docs/plans/012_downloads.md).
-        val markKind =
-            when (kind) {
-                ListKind.Favorites -> Store.FAV
-                ListKind.ListenLater -> Store.LATER
-                else -> null
-            }
-        PageHeader(
-            kind.label,
-            summary(songs),
-            onBack,
-            { playList(nav, kind.label, kind.source, songs, 0) },
-            markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) },
-            songs = songs,
-        ) { shuffleList(nav, kind.label, kind.source, songs) }
-    }
+    val songs = rememberLists()(kind)
+    // Favorites and Listen Later can be downloaded; the automatic views change after every listen (docs/plans/012_downloads.md).
+    val markKind =
+        when (kind) {
+            ListKind.Favorites -> Store.FAV
+            ListKind.ListenLater -> Store.LATER
+            else -> null
+        }
+    SongList(kind.label, kind.source, songs, nav, summary(songs), onBack, markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) })
 }
 
 /**
@@ -332,7 +313,7 @@ fun PlaylistScreen(
                         actions = if (editable) listOf("Rename" to { renaming = true }, "Delete playlist" to { deleting = true }) else emptyList(),
                     ) { shuffleList(nav, p.name, source, songs) }
                 }
-                items(reorder.shown, key = { (_, r) -> "${r.first}/${r.second.id}" }) { (i, r) ->
+                items(reorder.shown, key = { (_, r) -> "${r.first}/${r.second.id}" }, contentType = { "song" }) { (i, r) ->
                     val (raw, s) = r
                     val remove = listOf("Remove from playlist" to { app.scope.launch { app.store.removeFromPlaylist(p, raw) }.let { } })
                     Box(with(reorder) { row("$raw/${s.id}") }) {

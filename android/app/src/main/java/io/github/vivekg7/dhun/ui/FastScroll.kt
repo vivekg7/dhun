@@ -95,7 +95,7 @@ fun FastScroll(
 
 /**
  * The thumb follows the list's own estimate of where it is, but a drag
- * moves by item, not by pixel: scrolling 7,000 rows by pixels would lay
+ * moves by item, not by pixel: scrolling 30,000 rows by pixels would lay
  * out every row in between.
  */
 @Composable

@@ -87,8 +87,6 @@ room3 {
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation(libs.compose.ui.tooling)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.process)
     implementation(libs.media3.exoplayer)

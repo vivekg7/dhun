@@ -111,8 +111,6 @@ class Store(
         }
     }
 
-    suspend fun putQueue(q: QueueRow) = dao.putQueue(q)
-
     suspend fun createQueue(q: QueueRow) {
         dao.putQueue(q)
         record("queue.create", queue = q.id) {

@@ -73,11 +73,17 @@ class Sync(
         pending =
             app.scope.launch {
                 delay(delayMs)
-                if (now()) {
-                    retryDelay = RETRY_MIN
-                } else {
-                    retryDelay = (retryDelay * 2).coerceAtMost(RETRY_MAX)
-                    soon(retryDelay)
+                // The sync runs in a job of its own: the next soon() replaces
+                // only the wait. Playback records its position every 30 s, and
+                // each record would otherwise cancel a long first pull midway
+                // (docs/plans/036_fast_at_100k.md).
+                app.scope.launch {
+                    if (now()) {
+                        retryDelay = RETRY_MIN
+                    } else {
+                        retryDelay = (retryDelay * 2).coerceAtMost(RETRY_MAX)
+                        soon(retryDelay)
+                    }
                 }
             }
     }
@@ -139,11 +145,22 @@ class Sync(
         if (since == 0L) keepOnly(songs)
         if (songs.isNotEmpty()) dao.putSongs(songs)
         val pending = dao.outbox(Int.MAX_VALUE).map { it.key }
+        val local = dao.localPlaylists()
+        var skipped = false
+        // One transaction: the playlists flow re-runs once, not once per row.
+        dao.inTransaction { skipped = applyPlaylists(lib.playlists, pending, local) }
+        if (!skipped) app.prefs.libraryVersion = lib.version
+    }
 
+    /** Writes the server's playlists; true when one was left as edited here. */
+    private suspend fun applyPlaylists(
+        playlists: List<PlaylistDto>,
+        pending: List<String>,
+        local: List<Playlist>,
+    ): Boolean {
         fun edited(id: Long) = pending.any { it.endsWith(":" + Store.playlistTag(id)) }
         var skipped = false
-        val local = dao.localPlaylists()
-        for (p in lib.playlists) {
+        for (p in playlists) {
             if (p.deleted) {
                 if (edited(p.id)) skipped = true else dao.deletePlaylist(p.id)
                 continue
@@ -167,7 +184,7 @@ class Sync(
             }
             dao.putPlaylist(Playlist(p.id, p.name, p.path, p.shared, p.songs.joinIds(), p.ref))
         }
-        if (!skipped) app.prefs.libraryVersion = lib.version
+        return skipped
     }
 
     /**
@@ -218,8 +235,12 @@ class Sync(
                     ?.let { dao.deletePlaylist(it) }
             }
         }
-        if (done.isNotEmpty()) dao.ackOps(done)
-        apply(state)
+        // One transaction: a first sync's thousands of marks re-run each
+        // observing query once, and a sync cut short leaves nothing half-applied.
+        dao.inTransaction {
+            if (done.isNotEmpty()) dao.ackOps(done)
+            apply(state)
+        }
         app.prefs.syncVersion = state.version
         return done.size
     }
@@ -318,8 +339,7 @@ class Sync(
 
     private suspend fun pullPlays() {
         val plays = app.api.plays().plays
-        dao.clearPlayStats()
-        dao.putPlayStats(plays.map { PlayStat(it.song, it.count, parseTime(it.lastPlayedAt)) })
+        dao.replacePlayStats(plays.map { PlayStat(it.song, it.count, parseTime(it.lastPlayedAt)) })
     }
 }
 

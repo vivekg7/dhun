@@ -422,7 +422,7 @@ fun covered(
             }
 
             Downloads.FOLDER -> {
-                c.folders[p.ref]?.allSongs()?.forEach { ids += it.id }
+                c.folders[p.ref]?.all?.forEach { ids += it.id }
             }
 
             Downloads.ARTIST -> {

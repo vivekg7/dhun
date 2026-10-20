@@ -90,7 +90,10 @@ fun <T> rememberFound(
 
 /**
  * A list of songs where tapping one plays the whole list from there, a song
- * found by its search box included.
+ * found by its search box included. A page of its own, headed by [name],
+ * [facts] and the play, shuffle and download actions; [download] is what
+ * the download button keeps, none for a list that changes after every
+ * listen.
  */
 @Composable
 fun SongList(
@@ -98,7 +101,9 @@ fun SongList(
     source: String,
     songs: List<Song>,
     nav: Nav,
-    header: @Composable () -> Unit = {},
+    facts: String,
+    onBack: () -> Unit,
+    download: DownloadTarget?,
 ) {
     val searchable = songs.size > SEARCH_OVER
     var query by rememberSaveable { mutableStateOf("") }
@@ -107,8 +112,12 @@ fun SongList(
     Column(Modifier.fillMaxSize()) {
         FastScroll(list, Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), list) {
-                item { header() }
-                items(hits, key = { (i, s) -> "$i/${s.id}" }) { (i, s) ->
+                item {
+                    PageHeader(name, facts, onBack, { playList(nav, name, source, songs, 0) }, download, songs = songs) {
+                        shuffleList(nav, name, source, songs)
+                    }
+                }
+                items(hits, key = { (i, s) -> "$i/${s.id}" }, contentType = { "song" }) { (i, s) ->
                     SongRow(s, onClick = { playList(nav, name, source, songs, i) }, menu = SongMenu(nav = nav))
                 }
                 if (songs.isEmpty()) item { Empty("Nothing here yet") }
@@ -183,19 +192,20 @@ fun FolderScreen(
                     if (root) {
                         SectionLabel("Music · ${catalog.songs.size} songs")
                     } else {
+                        val all = folder.all
                         PageHeader(
                             folder.name,
                             path.replace("/", " › "),
                             onBack,
-                            { playList(nav, folder.name, "folder:$path", folder.allSongs(), 0) },
-                            DownloadTarget(Downloads.FOLDER, path, folder.name, folder.allSongs()),
-                            songs = folder.allSongs(),
+                            { playList(nav, folder.name, "folder:$path", all, 0) },
+                            DownloadTarget(Downloads.FOLDER, path, folder.name, all),
+                            songs = all,
                         ) {
-                            shuffleList(nav, folder.name, "folder:$path", folder.allSongs())
+                            shuffleList(nav, folder.name, "folder:$path", all)
                         }
                     }
                 }
-                items(children, key = { "f/" + it.path }) { f ->
+                items(children, key = { "f/" + it.path }, contentType = { "folder" }) { f ->
                     val icon =
                         when (f.path) {
                             LocalSongs.PHONE_ROOT -> Icons.Phone
@@ -206,7 +216,7 @@ fun FolderScreen(
                     NameRow(icon, f.name, "", pinned(Downloads.FOLDER, f.path), sub = summary(f)) { nav.open(nav.tab, Page.FolderPage(f.path)) }
                 }
                 // A song found still plays the whole folder from it, as in the queue's search.
-                items(hits, key = { (_, s) -> s.id }) { (i, s) ->
+                items(hits, key = { (_, s) -> s.id }, contentType = { "song" }) { (i, s) ->
                     SongRow(s, onClick = { playList(nav, folder.name, "folder:$path", songs, i) }, menu = SongMenu(nav = nav))
                 }
                 if (q.isNotBlank() && children.isEmpty() && hits.isEmpty()) item { Empty("Nothing here matches “${query.trim()}”") }
@@ -286,20 +296,7 @@ fun AlbumScreen(
     val catalog by App.app.catalog.collectAsState()
     val album = catalog.albums.firstOrNull { it.key == key } ?: return Empty("This album is gone", page = true)
     val facts = listOfNotNull(album.artist, album.year.takeIf { it > 0 }?.toString(), summary(album.songs)).joinToString(" · ")
-    SongList(album.name, "album:${album.name}", album.songs, nav) {
-        Column {
-            PageHeader(
-                album.name,
-                facts,
-                onBack,
-                { playList(nav, album.name, "album:${album.name}", album.songs, 0) },
-                DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs),
-                songs = album.songs,
-            ) {
-                shuffleList(nav, album.name, "album:${album.name}", album.songs)
-            }
-        }
-    }
+    SongList(album.name, "album:${album.name}", album.songs, nav, facts, onBack, DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs))
 }
 
 /** Artists or genres: a searchable list of names. */
@@ -345,14 +342,13 @@ fun GroupScreen(
     // An artist's songs by album, then track: how they were released.
     val songs = remember(group) { group.songs.sortedWith(compareBy<Song>({ it.album.lowercase() }, { it.disc }, { it.track })) }
     val source = if (artists) "artist:${group.name}" else "genre:${group.name}"
-    SongList(group.name, source, songs, nav) {
-        PageHeader(
-            group.name,
-            summary(songs),
-            onBack,
-            { playList(nav, group.name, source, songs, 0) },
-            DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
-            songs = songs,
-        ) { shuffleList(nav, group.name, source, songs) }
-    }
+    SongList(
+        group.name,
+        source,
+        songs,
+        nav,
+        summary(songs),
+        onBack,
+        DownloadTarget(if (artists) Downloads.ARTIST else Downloads.GENRE, group.name, group.name, songs),
+    )
 }

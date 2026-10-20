@@ -8,12 +8,12 @@ import androidx.room3.Database
 import androidx.room3.Entity
 import androidx.room3.Index
 import androidx.room3.Insert
+import androidx.room3.OnConflictStrategy
 import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.room3.Transaction
-import androidx.room3.Upsert
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
@@ -250,18 +250,33 @@ data class LyricsRow(
     val at: Long,
 )
 
+/**
+ * Rows are written with `INSERT OR REPLACE`, not `@Upsert`: Room's upsert
+ * tries an insert and catches the constraint error before it updates, one
+ * thrown exception per row that already exists, which a pull of 100,000
+ * changed songs pays 100,000 times. No table here has a foreign key or a
+ * generated id that a replace would disturb (docs/plans/036_fast_at_100k.md).
+ */
 @Dao
 interface DbDao {
+    /**
+     * Runs [block] as one transaction: every flow over the tables it writes
+     * re-runs once at the end instead of once per row, and a sync cut short
+     * leaves nothing half-applied.
+     */
+    @Transaction
+    suspend fun inTransaction(block: suspend () -> Unit) = block()
+
     @Query("SELECT * FROM song WHERE missing = 0")
     fun songs(): Flow<List<Song>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putSongs(songs: List<Song>)
 
     @Query("SELECT * FROM playlist ORDER BY shared, name COLLATE NOCASE")
     fun playlists(): Flow<List<Playlist>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putPlaylist(p: Playlist)
 
     @Query("DELETE FROM playlist WHERE id = :id")
@@ -286,7 +301,7 @@ interface DbDao {
     @Query("SELECT * FROM queue WHERE id = :id")
     suspend fun queue(id: String): QueueRow?
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putQueue(q: QueueRow)
 
     @Query("DELETE FROM queue WHERE id = :id")
@@ -301,7 +316,7 @@ interface DbDao {
         song: Long,
     ): Mark?
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putMark(m: Mark)
 
     @Query("SELECT * FROM resume WHERE deleted = 0 ORDER BY at DESC")
@@ -310,7 +325,7 @@ interface DbDao {
     @Query("SELECT * FROM resume WHERE song = :song")
     suspend fun resume(song: Long): Resume?
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putResume(r: Resume)
 
     @Query("SELECT * FROM bookmark WHERE deleted = 0 ORDER BY positionMs")
@@ -319,13 +334,13 @@ interface DbDao {
     @Query("SELECT * FROM bookmark WHERE id = :id")
     suspend fun bookmark(id: String): Bookmark?
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putBookmark(b: Bookmark)
 
     @Query("SELECT * FROM setting")
     fun settings(): Flow<List<Setting>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putSetting(s: Setting)
 
     @Query("DELETE FROM setting WHERE name = :name")
@@ -349,12 +364,19 @@ interface DbDao {
     @Query("SELECT * FROM play_stat")
     fun playStats(): Flow<List<PlayStat>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putPlayStats(stats: List<PlayStat>)
 
     // Phone songs' counts are kept on the phone only (docs/plans/025_phone_local_songs.md).
     @Query("DELETE FROM play_stat WHERE song > 0")
     suspend fun clearPlayStats()
+
+    /** The server's counts in place of the old, with no moment in between where Most played is empty. */
+    @Transaction
+    suspend fun replacePlayStats(stats: List<PlayStat>) {
+        clearPlayStats()
+        putPlayStats(stats)
+    }
 
     @Query("SELECT * FROM play_stat WHERE song = :song")
     suspend fun playStat(song: Long): PlayStat?
@@ -362,7 +384,7 @@ interface DbDao {
     @Query("SELECT * FROM pin ORDER BY at DESC")
     fun pins(): Flow<List<Pin>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putPin(p: Pin)
 
     @Query("DELETE FROM pin WHERE key = :key")
@@ -371,7 +393,7 @@ interface DbDao {
     @Query("SELECT * FROM download")
     fun downloads(): Flow<List<Download>>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putDownload(d: Download)
 
     @Query("DELETE FROM download WHERE song = :song")
@@ -386,7 +408,7 @@ interface DbDao {
     @Query("SELECT song FROM lyrics")
     suspend fun lyricsSongs(): List<Long>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putLyrics(l: LyricsRow)
 
     @Query("DELETE FROM lyrics WHERE song = :song")
@@ -401,7 +423,7 @@ interface DbDao {
     @Query("SELECT `key` FROM thumb")
     suspend fun thumbKeys(): List<String>
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putThumbs(t: List<Thumb>)
 
     @Query("DELETE FROM thumb WHERE `key` IN (:keys)")

@@ -30,7 +30,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,11 +51,17 @@ class App : Application() {
     val local by lazy { LocalSongs(this) }
 
     /**
-     * The catalogue in memory: 7,000 songs browse and search faster there
-     * than through SQL. The NAS songs and the phone's, once both are read.
+     * The catalogue in memory: about 30,000 songs today, built for 100,000,
+     * browse and search faster there than through SQL
+     * (docs/plans/036_fast_at_100k.md). The NAS songs and the phone's, once
+     * both are read. Only a change rebuilds it: Room re-emits the table on
+     * any write to it, and the phone's media index on any change at all.
+     * The groupings and the search index are warmed on this scope right
+     * after, so the main thread only ever reads them.
      */
     val catalog by lazy {
-        combine(db.dao().songs(), local.songs.filterNotNull()) { nas, phone -> Catalog(nas + phone) }
+        combine(db.dao().songs().distinctUntilChanged(), local.songs.filterNotNull().distinctUntilChanged()) { nas, phone -> Catalog(nas + phone) }
+            .onEach { c -> scope.launch { c.warm() } }
             .stateIn(scope, SharingStarted.Eagerly, Catalog(emptyList()))
     }
 

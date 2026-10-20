@@ -381,7 +381,10 @@ class Field<T>(
 /**
  * The words of every item, each distinct word folded once. A query is
  * compared with the distinct words, then each item is a few lookups,
- * which keeps a keystroke over 7,000 songs quick.
+ * which keeps a keystroke over 30,000 songs quick, and 100,000 within
+ * reach (docs/plans/036_fast_at_100k.md). The index keeps only what a
+ * search reads back: the word numbers, the title as folded, the year, and
+ * a field's words run together where it has more than one.
  */
 class SearchIndex<T>(
     val items: List<T>,
@@ -393,29 +396,40 @@ class SearchIndex<T>(
     /** Words in a field searched without a filter: only they decide that a query word needs no typo match. */
     private val open: BooleanArray
 
-    /** For each item and field, its words' numbers; and its text as folded, for "acdc" and years. */
+    /** For each item and field, its words' numbers. */
     private val cells: Array<Array<IntArray>>
-    private val texts: Array<Array<String>>
+
+    /** Each item's first field as folded text, for a title that is the whole query. */
+    private val titles: Array<String>
+
+    /** Each item's `year` field as a number, 0 for none; [yearField] is which field that is, -1 for none. */
+    private val years: IntArray
+    private val yearField = fields.indexOfFirst { it.name == "year" }
+
+    /** Item × field: the words run together ("acdc" for AC/DC), only where there are two or more. */
+    private val runs: Array<String?>
 
     init {
         val ids = HashMap<String, Int>()
-        texts = Array(items.size) { i -> Array(fields.size) { f -> Fold.text(fields[f].text(items[i])) } }
+        // An album's songs share its name, artist and genre: each distinct text folds once.
+        val folded = HashMap<String, List<String>>()
+        titles = Array(items.size) { "" }
+        years = IntArray(items.size)
+        runs = arrayOfNulls(items.size * fields.size)
         cells =
             Array(items.size) { i ->
                 Array(fields.size) { f ->
-                    val t = texts[i][f]
-                    if (t.isEmpty()) {
-                        IntArray(0)
-                    } else {
-                        t
-                            .split(' ')
-                            .map { w ->
-                                ids.getOrPut(w) {
-                                    words += w
-                                    keys += Fold.key(w)
-                                    words.size - 1
-                                }
-                            }.toIntArray()
+                    val raw = fields[f].text(items[i])
+                    val ws = folded.getOrPut(raw) { Fold.words(raw) }
+                    if (f == 0) titles[i] = ws.joinToString(" ")
+                    if (f == yearField) years[i] = ws.singleOrNull()?.toIntOrNull() ?: 0
+                    if (ws.size > 1) runs[i * fields.size + f] = ws.joinToString("")
+                    IntArray(ws.size) { n ->
+                        ids.getOrPut(ws[n]) {
+                            words += ws[n]
+                            keys += Fold.key(ws[n])
+                            words.size - 1
+                        }
                     }
                 }
             }
@@ -444,7 +458,7 @@ class SearchIndex<T>(
         val out = ArrayList<Triple<T, Int, Int>>()
         for (i in items.indices) {
             if (s[i] == NONE) continue
-            val title = texts[i][0]
+            val title = titles[i]
             val bonus =
                 when {
                     q.whole.isEmpty() -> 0
@@ -458,15 +472,28 @@ class SearchIndex<T>(
         return out.map { it.first to it.second }
     }
 
-    private fun scores(q: SearchQuery): IntArray {
-        val qualities =
-            q.terms.map { t ->
-                if (t.years != null) return@map null
+    /**
+     * How well each distinct word matches each term, by the term's word
+     * and field. Kept for the last few terms: typing extends the last one,
+     * and the others cost nothing on the next keystroke.
+     */
+    private val qualities =
+        object : LinkedHashMap<String, IntArray>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, IntArray>?) = size > 8
+        }
+
+    private fun quality(t: SearchQuery.Term): IntArray =
+        synchronized(qualities) {
+            qualities.getOrPut(t.word + '\u0000' + t.field) {
                 val a = IntArray(words.size) { t.quality(words[it], keys[it]) }
                 // Typos only for a word that matches nothing better anywhere: "love" must not bring "live".
                 if (a.indices.none { a[it] <= 3 && (open[it] || t.field != null) }) for (i in a.indices) if (t.typo(keys[i])) a[i] = 4
                 a
             }
+        }
+
+    private fun scores(q: SearchQuery): IntArray {
+        val qualities = q.terms.map { t -> if (t.years != null) null else quality(t) }
         return IntArray(items.size) { i ->
             var total = 0
             for ((n, t) in q.terms.withIndex()) {
@@ -475,13 +502,16 @@ class SearchIndex<T>(
                     val w = field.weight ?: if (t.field == null) continue else 0
                     if (t.field != null && t.field != field.name) continue
                     if (t.years != null) {
-                        if (texts[i][f].toIntOrNull()?.let { it in t.years } == true) best = min(best, w)
+                        if (f == yearField && years[i] in t.years) best = min(best, w)
                         continue
                     }
                     val a = qualities[n]!!
                     for (id in cells[i][f]) if (a[id] != NONE) best = min(best, a[id] * 10 + w)
-                    // The field's words run together: "acdc" finds AC/DC.
-                    if (best > 20 + w && t.word.length >= 3 && texts[i][f].replace(" ", "").contains(t.word)) best = 20 + w
+                    // The field's words run together: "acdc" finds AC/DC. A lone word is already matched above.
+                    if (best > 20 + w && t.word.length >= 3) {
+                        val run = runs[i * fields.size + f]
+                        if (run != null && run.contains(t.word)) best = 20 + w
+                    }
                 }
                 if (best == NONE) return@IntArray NONE
                 total += best
