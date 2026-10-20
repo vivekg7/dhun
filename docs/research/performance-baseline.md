@@ -75,3 +75,65 @@ first sync nearer 3 MB at 27,000 songs and 10 MB at 100,000.
   songs.
 - App cold start to a usable library list, on the phone.
 - The NAS's own `scan done … took=` lines for the real 30,000 songs.
+
+## 2026-10-20, after plan 036's server changes
+
+Measured on the Mac (Apple Silicon), not the Linux desktop, so only the
+before/after pairs compare; the rows are not comparable with the table above.
+
+**`/library` first sync at 100,000 songs**, generated rows inserted straight
+into the database, gzip on, the Go heap sampled every 2 ms during the request
+([plan 036](../plans/036_fast_at_100k.md)):
+
+| Server                   | Peak heap in use | Heap after the request | Allocated | Time   |
+| ------------------------ | ---------------- | ---------------------- | --------- | ------ |
+| 0.15.1, whole response   | 265 MB           | 65 MB                  | 649 MB    | 0.41 s |
+| Plan 036, one row a time | 10 MB            | 4 MB                   | 110 MB    | 0.41 s |
+
+The 65 MB the old server kept after the request is `encoding/json`'s pooled
+encode buffer, which explains why the baseline's steady memory grew with the
+library. The image now also sets `GOMEMLIMIT=192MiB`.
+
+**The web client at 27,000 and 100,000 songs**, the same generated
+libraries and `catalog.js`/`search.js` under Node 24 on the Mac, the second
+run of each. Before is `0.15.1`, after is plan 036: one sort key per item,
+the index built from each distinct string once and keeping only word ids,
+the title and a numeric year.
+
+| What                         | 27,000 before → after | 100,000 before → after |
+| ---------------------------- | --------------------- | ---------------------- |
+| Build the catalogue          | 183 → 74 ms           | 685 → 318 ms           |
+| Song index, cold             | 161 → 40 ms           | 568 → 220 ms           |
+| Index heap                   | 46 → 7 MB             | 168 → 23 MB            |
+| One keystroke, "ari", median | 4.3 → 4 ms            | 20.8 → 15.6 ms         |
+| One keystroke, "tum hi ho"   | 3.7 → 4 ms            | 18.5 → 14.4 ms         |
+
+Old and new `search()` return the same ids and scores on the queries tried.
+The index is now built in idle time right after the catalogue, so the first
+keystroke no longer pays for it, and the page paints before the catalogue
+is built. Android and the Mac got the same changes and are still unmeasured
+on their devices.
+
+**The web client against the NAS**, 2026-10-20: the checkout's `server/web`
+served from a local proxy in front of the NAS (`server-v0.15.0`), signed in
+as the test account, Chrome on the Mac, driven and timed through Time
+Machine. The library was 31,360 songs, 858 of them episodes and book files,
+and 5,488 albums.
+
+| What                                                    | Measured      |
+| ------------------------------------------------------- | ------------- |
+| First sync, `/library?since=0`, raw / on the wire       | 21 MB / 1.1 s |
+| Warm reload: page painted                               | 0.1 s         |
+| Warm reload: albums page drawn, library usable          | 0.8 s         |
+| One keystroke, typing "tum hi ho", including the draw   | 26–43 ms      |
+| One keystroke, "arjit sing" (misspelt, the typo pass)   | 50 ms         |
+| Console errors across sign-in, browsing, search, reload | none          |
+
+The reload numbers are the main thread's long tasks since navigation: the
+cached library lands and the catalogue is built in the first, the albums
+page is drawn in the second. The keystroke figures are the synchronous cost
+of each `input` event in the real page, results drawn included. The browser
+run also caught a start-order race that the shell-first change had opened:
+a sync triggered while the kept copy was still loading would have merged
+the server's changes into an empty catalogue. The sync now waits for the
+load.

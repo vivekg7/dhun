@@ -1,6 +1,6 @@
 # 036 — Meeting the speed targets at 100,000 songs
 
-**Status:** `IN PROGRESS` — server and all three clients
+**Status:** `MERGED` — server and all three clients on `main` (2026-10-20); not yet released or on the NAS
 **Started:** 2026-10-20
 
 ## Problem
