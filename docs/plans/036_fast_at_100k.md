@@ -150,14 +150,22 @@ Mac measurements the baseline asks for still need the devices.
 - [x] macOS: sort keys, eager index, read connection and chunked writes,
       sync work off the main actor, artist page lookup, folder counts,
       `dhun-play` removed, `addOp` throws, duplications.
-- [x] Baseline rerun on the Mac; comments and plan 003 updated. The phone
-      and Mac measurements still need the devices.
+- [x] Baseline rerun on the Mac; comments and plan 003 updated; the Mac app
+      and the Android app (emulator) measured on 2026-10-20 with the timing
+      lines both apps now log. The owner's phone is still to measure.
 
 ## Open questions
 
 - Whether the Android cold start at 100k fits the 1 s target with the whole
-  `song` table read into memory, including `notes` and `chapters`. Measure
+  `song` table read into memory, including `notes` and `chapters`. On the
+  emulator at 29,000 songs the catalogue builds in about 300 ms; measure
   on the phone before slimming the projection.
+- The Mac's catalogue build: 750 ms for 29,000 songs against 74 ms for the
+  same work on the web. `sortKey` builds a `String` per item through
+  `unicodeScalars` and the groupings go through `Dictionary(grouping:)`;
+  profile before guessing.
+- Android searches some keystrokes twice in a row (a recomposition asks
+  again); cheap today, worth removing.
 - Whether the web should cache the slimmed index in IndexedDB across starts.
   Only worth it if the idle-time build is still noticeable on a phone.
 - Server items left to measure before acting: SQLite `cache_size` and

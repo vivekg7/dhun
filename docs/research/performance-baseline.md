@@ -137,3 +137,50 @@ run also caught a start-order race that the shell-first change had opened:
 a sync triggered while the kept copy was still loading would have merged
 the server's changes into an empty catalogue. The sync now waits for the
 load.
+
+## 2026-10-20, the apps on their devices
+
+Both apps now log how long the catalogue takes, so these can be rerun:
+Android prints `catalogue:` and `search` lines under the logcat tag `Dhun`,
+the Mac prints `catalogue:` under the log subsystem `io.github.vivekg7.dhun`
+(`/usr/bin/log stream --level info --predicate 'subsystem == "io.github.vivekg7.dhun"'`,
+the full path because `log` is also a zsh builtin). Both were signed in as
+the test account against the NAS: 29,359 music songs plus 858 episodes and
+book files.
+
+**Mac**, the plan 036 build, release, Apple Silicon, on its own data folder
+(`DHUN_DATA`), five launches:
+
+| What                            | Measured   |
+| ------------------------------- | ---------- |
+| Read the songs from SQLite      | 52–62 ms   |
+| Build the catalogue             | 723–809 ms |
+| Song and album search indexes   | 230–266 ms |
+| First sync of the whole library | about 16 s |
+
+The build is the one to look at next: three quarters of a second for
+29,000 songs is within the 1 s target with the read and the index, but
+not at 100,000. The web does the same work in 74 ms at 27,000 in Node, so
+the Swift `sortKey` and groupings deserve a profile.
+
+**Android**, the plan 036 build and the released 0.15.1, both release
+builds, on the Pixel emulator (API 36, Apple Silicon host). Cold starts
+were screen-recorded at 20 frames a second with Albums tapped 0.4 s after
+launch; the time is from the app's first frame to the grid settling, so
+it includes the tap.
+
+| What                                                 | 0.15.1    | Plan 036   |
+| ---------------------------------------------------- | --------- | ---------- |
+| Cold start to the albums grid                        | 0.9–1.0 s | 0.7–1.0 s  |
+| Catalogue built (29,359 songs, off the main thread)  | —         | 240–362 ms |
+| Groupings and song index warmed, off the main thread | —         | 0.9–1.0 s  |
+| One keystroke, songs index, "t" to "tum hi ho"       | —         | 7–28 ms    |
+| One keystroke, "arjit sing" (misspelt)               | —         | 9 ms       |
+
+The emulator does not show the phone's own CPU, and at 29,000 songs the
+two builds reach the grid in about the same time; the difference the
+plan was after is in what the main thread does afterwards, which the
+emulator video cannot show. The keystroke lines also show each query
+searched twice in a row on some keystrokes (a recomposition asks again),
+cheap at these numbers but worth a look. No errors or crashes in logcat
+across sign-in, browsing, search and playback on either build.
