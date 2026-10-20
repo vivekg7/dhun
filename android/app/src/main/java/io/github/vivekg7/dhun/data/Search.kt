@@ -456,7 +456,6 @@ class SearchIndex<T>(
         boost: (T) -> Int = { 0 },
     ): List<Pair<T, Int>> {
         if (q.isEmpty) return emptyList()
-        val t0 = System.nanoTime()
         val s = scores(q)
         val out = ArrayList<Triple<T, Int, Int>>()
         for (i in items.indices) {
@@ -472,8 +471,6 @@ class SearchIndex<T>(
             out += Triple(items[i], s[i] - bonus, boost(items[i]))
         }
         out.sortWith(compareBy<Triple<T, Int, Int>> { it.second }.thenByDescending { it.third })
-        // The keystroke's cost, for the speed targets (plan 036): the budget is 50 ms with the drawing.
-        Log.d(App.TAG, "search \"${q.whole}\": ${out.size} of ${items.size} in ${(System.nanoTime() - t0) / 1_000_000} ms")
         return out.map { it.first to it.second }
     }
 

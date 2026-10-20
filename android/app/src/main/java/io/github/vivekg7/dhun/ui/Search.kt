@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun.ui
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -103,7 +104,13 @@ private fun find(
         kind: Kind,
         index: SearchIndex<T>,
         boost: (T) -> Int = { 0 },
-    ) = index.search(q, boost).takeIf { it.isNotEmpty() }?.let { hits -> Found(kind, hits.map { it.first as Any }, hits.first().second) }
+    ): Found? {
+        val t0 = System.nanoTime()
+        val hits = index.search(q, boost)
+        // The keystroke's cost, for the speed targets (plan 036): the budget is 50 ms with the drawing.
+        Log.d(App.TAG, "search \"${q.whole}\" in ${kind.name.lowercase()}: ${hits.size} of ${index.items.size} in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        return hits.takeIf { it.isNotEmpty() }?.let { Found(kind, it.map { h -> h.first as Any }, it.first().second) }
+    }
     return listOfNotNull(
         section(Kind.Artists, catalog.artistIndex),
         section(Kind.Albums, catalog.albumIndex),
