@@ -2,8 +2,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Catalog, song, allSongs } from "../js/catalog.js";
-import { natural, uuid } from "../js/util.js";
+import { Catalog, song, allSongs, listSongs, listCount } from "../js/catalog.js";
+import { naturalKey, sortBy, uuid } from "../js/util.js";
 import { parseLyrics, lineAt } from "../js/lyrics.js";
 import { orderOf, playOrder, nextIn, tempoOf, formatSpeed } from "../js/queue.js";
 
@@ -55,12 +55,14 @@ test("a compilation tagged with an album artist is one album across folders", ()
   );
 });
 
-test("numbers sort as numbers", () => {
-  assert.deepEqual(["Track 10", "track 2", "Track 1"].sort(natural), [
-    "Track 1",
-    "track 2",
-    "Track 10",
-  ]);
+test("numbers sort as numbers, case aside", () => {
+  assert.deepEqual(
+    sortBy(["Track 10", "track 2", "Track 1", "Track 02", "track 0"], naturalKey),
+    ["track 0", "Track 1", "track 2", "Track 02", "Track 10"],
+  );
+  // A key, so a sort computes it once per item: the plain string order of the keys is the natural order.
+  assert.ok(naturalKey("Track 2") < naturalKey("Track 10"));
+  assert.ok(naturalKey("0") !== "" && naturalKey("0") === naturalKey("00"));
 });
 
 test("folders hold their subfolders' songs", () => {
@@ -197,4 +199,29 @@ test("ids are made without crypto.randomUUID, which a plain-http page lacks", (t
       id,
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+});
+
+test("recently added picks the newest without sorting the library", () => {
+  const now = Date.now();
+  const songs = Array.from({ length: 250 }, (_, i) =>
+    song({
+      id: i + 1,
+      path: `a/${i}.mp3`,
+      title: `S${i}`,
+      addedAt: now - (i % 125) * 1000,
+    }),
+  );
+  const c = new Catalog(songs);
+  const st = { catalog: c, playStats: new Map() };
+  assert.equal(listSongs("recentlyAdded", st).length, 100);
+  assert.equal(listCount("recentlyAdded", st), 100);
+  // Newest first, the two added at the same second both there.
+  assert.deepEqual(
+    listSongs("recentlyAdded", st)
+      .slice(0, 4)
+      .map((s) => s.addedAt),
+    [now, now, now - 1000, now - 1000],
+  );
+  st.playStats = new Map([[1, { song: 1, count: 2, lastPlayedAt: now }]]);
+  assert.equal(listCount("mostPlayed", st), listSongs("mostPlayed", st).length);
 });

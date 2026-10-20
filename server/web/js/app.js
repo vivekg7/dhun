@@ -8,7 +8,7 @@ import { Catalog, Heard, song as toSong } from "./catalog.js";
 import * as db from "./db.js";
 import { nowMs, parseTime, formatTime, uuid, debounce, distinct } from "./util.js";
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(status, message, code = "") {
     super(message);
     this.status = status;
@@ -84,6 +84,8 @@ export class App extends EventTarget {
     /** A playlist made here and the server id it became, for a page still showing the old one. */
     this.replaced = new Map();
     this.reachable = true;
+    /** Reading the kept copy at start: the pages show a spinner, not an empty library. */
+    this.starting = !!this.prefs.user;
     this.syncing = false;
     this.syncError = null;
     /** Signed in on the server; a refused token keeps everything, outbox included (plan 023). */
@@ -124,9 +126,19 @@ export class App extends EventTarget {
 
   // MARK: Start, the cache
 
-  /** Draws from what was kept, then syncs. */
+  /** Draws from what was kept, then syncs. The window is already up: the pages redraw as each part lands. */
   async start() {
     if (!this.prefs.user) return;
+    this.loading = this.load();
+    try {
+      await this.loading;
+    } finally {
+      this.starting = false;
+      this.emit("catalog");
+    }
+  }
+
+  async load() {
     const [songs, data, thumbs] = await Promise.all([
       db.get("songs"),
       db.get("data"),
@@ -185,9 +197,11 @@ export class App extends EventTarget {
   }
 
   setSongs(raw) {
-    this.rawSongs = raw;
-    this.catalog = new Catalog(raw);
+    const c = (this.catalog = new Catalog(raw));
+    // Kept in the catalogue's order, so the next start sorts a list already in order.
+    this.rawSongs = [...c.songs, ...raw.filter((s) => s.spoken || s.missing)];
     this.emit("catalog");
+    c.warm(() => this.catalog === c);
   }
 
   changed(topic) {
@@ -684,6 +698,9 @@ export class App extends EventTarget {
   /** Returns false when the server could not be reached, so `soon` tries again later. */
   async syncNow() {
     if (!this.signedIn) return true;
+    // Never before the kept copy has landed: the window is up first, and a
+    // sync it triggers would merge the server's changes into an empty catalogue.
+    await this.loading?.catch(() => {});
     // One at a time; a request while one runs makes it run once more.
     if (this.running) {
       this.again = true;
@@ -748,9 +765,8 @@ export class App extends EventTarget {
     if (songs.length) {
       const byId = new Map(since === 0 ? [] : this.rawSongs.map((s) => [s.id, s]));
       for (const s of songs) byId.set(s.id, s);
-      const all = [...byId.values()];
-      db.set("songs", all);
-      this.setSongs(all);
+      this.setSongs([...byId.values()]);
+      db.set("songs", this.rawSongs);
     }
     let skipped = false;
     for (const p of lib.playlists ?? []) {

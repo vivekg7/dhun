@@ -10,7 +10,7 @@ import { synced } from "../synced.js";
 import { guideHtml, slug } from "../guide.js";
 
 /** The phone's eight accent palettes (plan 011), Dull Orange first, with a lighter shade for dark mode. */
-export const palettes = [
+const palettes = [
   ["Dull Orange", "#C27B45", "#D9925C"],
   ["Sage", "#7E9C7A", "#98B594"],
   ["Slate Blue", "#6A7FA8", "#8C9FC6"],

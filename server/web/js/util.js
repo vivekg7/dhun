@@ -80,33 +80,37 @@ export function uuid() {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
 }
 
-const digit = /\p{Nd}/u;
+/**
+ * The key whose plain string order is natural, case-blind order: "Track 2"
+ * before "Track 10". Each run of digits is padded to twelve places, so one
+ * is read as a number ("0" and "00" stay one digit). Computed once per item
+ * and compared with `<`, where a comparator that split both strings on
+ * every call took half the catalogue build at 100,000 songs (plan 036).
+ */
+export const naturalKey = (s) =>
+  s
+    .toLowerCase()
+    .replace(/\p{Nd}+/gu, (d) => d.replace(/^0+(?=\p{Nd})/u, "").padStart(12, "0"));
 
-/** Natural, case-blind order: "Track 2" before "Track 10". */
-export function natural(a, b) {
-  const x = Array.from(a);
-  const y = Array.from(b);
-  let i = 0;
-  let j = 0;
-  while (i < x.length && j < y.length) {
-    if (digit.test(x[i]) && digit.test(y[j])) {
-      const si = i;
-      const sj = j;
-      while (i < x.length && digit.test(x[i])) i++;
-      while (j < y.length && digit.test(y[j])) j++;
-      const na = x.slice(si, i).join("").replace(/^0+/, "");
-      const nb = y.slice(sj, j).join("").replace(/^0+/, "");
-      if (na.length !== nb.length) return na.length - nb.length;
-      if (na !== nb) return na < nb ? -1 : 1;
-    } else {
-      const ca = x[i].toLowerCase();
-      const cb = y[j].toLowerCase();
-      if (ca !== cb) return ca < cb ? -1 : 1;
-      i++;
-      j++;
-    }
-  }
-  return x.length - i - (y.length - j);
+const compare = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+
+/**
+ * `list` sorted by what `key` gives each item: a string or number, or an
+ * array of them compared in order. Each key is computed once, not once per
+ * comparison, which is what keeps a sort of 100,000 songs cheap.
+ */
+export function sortBy(list, key) {
+  return list
+    .map((item) => [key(item), item])
+    .sort(([a], [b]) => {
+      if (!Array.isArray(a)) return compare(a, b);
+      for (let i = 0; i < a.length; i++) {
+        const c = compare(a[i], b[i]);
+        if (c) return c;
+      }
+      return 0;
+    })
+    .map((x) => x[1]);
 }
 
 /** The locale's case-blind order, as the apps' sorts use. */
@@ -131,17 +135,6 @@ export function debounce(f, ms) {
     clearTimeout(t);
     t = setTimeout(() => f(...args), ms);
   };
-}
-
-/** "2.5 MB" */
-export function formatBytes(n) {
-  const units = ["B", "KB", "MB", "GB"];
-  let i = 0;
-  while (n >= 1000 && i < units.length - 1) {
-    n /= 1000;
-    i++;
-  }
-  return `${i ? n.toFixed(1) : n} ${units[i]}`;
 }
 
 /** "3 hours ago", "just now" */

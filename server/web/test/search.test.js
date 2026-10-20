@@ -77,3 +77,20 @@ test("filters narrow a word to a field", () => {
   assert.deepEqual(find("year:1970-2000").sort(), [4, 6]);
   assert.deepEqual(find('artist:"arijit singh" tum'), [1]);
 });
+
+test("an index built a slice at a time answers as one built whole", () => {
+  // Catalog.warm builds in idle time; a keystroke before it is done finishes the build.
+  const sliced = songIndex(index.items);
+  assert.equal(sliced.ready, false);
+  sliced.build(2);
+  assert.equal(sliced.built, 2);
+  for (const q of ["tum hi ho", "acdc", "year:1970-2000", "arjit", "hello"]) {
+    const whole = index.search(new Query(q)).map((r) => [r.item.id, r.score]);
+    assert.deepEqual(
+      sliced.search(new Query(q)).map((r) => [r.item.id, r.score]),
+      whole,
+      q,
+    );
+  }
+  assert.equal(sliced.ready, true);
+});

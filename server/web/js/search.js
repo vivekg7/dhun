@@ -133,7 +133,7 @@ const vowels = [
  * decided for the next. A piece is a letter ({latin, vowel, open}) or the
  * Latin of a vowel or sign (a string).
  */
-export function devanagari(s) {
+function devanagari(s) {
   if (!/[ऀ-ॿ]/.test(s)) return s;
   let out = "";
   let word = [];
@@ -277,11 +277,9 @@ export class Query {
       }
     }
     this.terms = terms;
-    /** The words with no field, as one string: a title that is all of them comes first. */
-    this.whole = terms
-      .filter((t) => !t.field)
-      .map((t) => t.word)
-      .join(" ");
+    /** The words with no field: a title that is all of them comes first. */
+    this.wholeWords = terms.filter((t) => !t.field).map((t) => t.word);
+    this.whole = this.wholeWords.join(" ");
     const narrowed = terms.filter((t) => t.field === "lyrics");
     /** What to look for in lyrics: the `lyrics:` words, or else every word if nothing is narrowed to another field. */
     this.lyrics = narrowed.length
@@ -299,43 +297,83 @@ export class Query {
 /**
  * The words of every item, each distinct word folded once. A query is
  * compared with the distinct words, then each item is a few lookups, which
- * keeps a keystroke over 7,000 songs quick. `fields` are
+ * keeps a keystroke over 100,000 songs quick (plan 036). `fields` are
  * `[name, weight, text]`: a lower weight ranks a match higher; with a null
  * weight the field is searched only through its filter.
+ *
+ * The index keeps what a search reads and nothing else: each field's words
+ * as ids, and its text run together where it has two words or more (for
+ * "acdc"). A field's text is folded once per distinct string, since an
+ * album's name comes once per song on it.
  */
 export class Index {
   constructor(items, fieldList) {
     this.items = items;
     this.names = fieldList.map((f) => f[0]);
     this.weights = fieldList.map((f) => f[1]);
-    const ids = new Map();
-    const ws = [];
-    this.texts = items.map((item) => fieldList.map((f) => text(f[2](item))));
-    this.cells = this.texts.map((item) =>
-      item.map((t) =>
-        t === ""
-          ? []
-          : t.split(" ").map((w) => {
-              let id = ids.get(w);
-              if (id === undefined) {
-                id = ws.length;
-                ws.push(w);
-                ids.set(w, id);
-              }
-              return id;
-            }),
-      ),
-    );
-    this.words = ws;
-    this.keys = ws.map(key);
+    this.fields = fieldList.map((f) => f[2]);
+    this.words = [];
+    this.keys = [];
     // Words in a field searched without a filter: only they decide that a query word needs no typo match.
-    this.open = new Array(ws.length).fill(false);
-    for (const item of this.cells)
-      item.forEach((cell, f) => {
-        if (this.weights[f] != null) for (const id of cell) this.open[id] = true;
+    this.open = [];
+    this.cells = new Array(items.length);
+    this.runs = new Array(items.length);
+    // The field named year, as a number per item, for `year:2010-2015`.
+    this.yearField = this.names.indexOf("year");
+    this.years = this.yearField < 0 ? null : new Int32Array(items.length);
+    this.built = 0;
+    this.ids = new Map();
+    this.folded = new Map();
+  }
+
+  get ready() {
+    return this.built === this.items.length;
+  }
+
+  /**
+   * Indexes the items up to `upTo`, so a large index is built in idle time a
+   * slice at a time (`Catalog.warm`); a search first finishes it.
+   */
+  build(upTo = this.items.length) {
+    const n = Math.min(upTo, this.items.length);
+    for (; this.built < n; this.built++) {
+      const i = this.built;
+      const item = this.items[i];
+      const cells = new Array(this.names.length);
+      const runs = new Array(this.names.length);
+      for (let f = 0; f < this.names.length; f++) {
+        const [cell, run] = this.fold(this.fields[f](item), this.weights[f] != null);
+        cells[f] = cell;
+        runs[f] = run;
+      }
+      this.cells[i] = cells;
+      this.runs[i] = runs;
+      if (this.years) this.years[i] = Number(this.fields[this.yearField](item)) || 0;
+    }
+    if (this.ready) this.folded.clear();
+    return this;
+  }
+
+  /** A field's words as ids and its run, shared by every field with the same text. */
+  fold(s, open) {
+    let r = this.folded.get(s);
+    if (r === undefined) {
+      const ws = words(s);
+      const cell = ws.map((w) => {
+        let id = this.ids.get(w);
+        if (id === undefined) {
+          id = this.words.length;
+          this.words.push(w);
+          this.keys.push(key(w));
+          this.open.push(false);
+        }
+        return id;
       });
-    // Each field's text run together, for "acdc".
-    this.runs = this.texts.map((item) => item.map((t) => t.replaceAll(" ", "")));
+      r = [cell, ws.length > 1 ? ws.join("") : null];
+      this.folded.set(s, r);
+    }
+    if (open) for (const id of r[0]) this.open[id] = true;
+    return r;
   }
 
   /** What `q` matches, in the items' own order. */
@@ -356,21 +394,27 @@ export class Index {
     const out = [];
     for (let i = 0; i < this.items.length; i++) {
       if (s[i] === noMatch) continue;
-      const title = this.texts[i][0];
-      const bonus = !q.whole
-        ? 0
-        : title === q.whole
-          ? 20
-          : title.startsWith(q.whole)
-            ? 10
-            : 0;
-      out.push({ i, score: s[i] - bonus, boost: boost(this.items[i]) });
+      out.push({ i, score: s[i] - this.titleBonus(i, q), boost: boost(this.items[i]) });
     }
     out.sort((a, b) => a.score - b.score || b.boost - a.boost || a.i - b.i);
     return out.map((o) => ({ item: this.items[o.i], score: o.score }));
   }
 
+  /** A title that is the whole query comes first (20), one that starts with it next (10). */
+  titleBonus(i, q) {
+    const want = q.wholeWords;
+    const cell = this.cells[i][0];
+    if (!want.length || cell.length < want.length) return 0;
+    for (let k = 0; k < want.length - 1; k++)
+      if (this.words[cell[k]] !== want[k]) return 0;
+    const last = this.words[cell[want.length - 1]];
+    const typed = want[want.length - 1];
+    if (last === typed) return cell.length === want.length ? 20 : 10;
+    return last.startsWith(typed) ? 10 : 0;
+  }
+
   scores(q) {
+    this.build();
     const qualities = q.terms.map((t) => {
       if (t.years) return null;
       const a = this.words.map((w, i) => t.quality(w, this.keys[i]));
@@ -387,31 +431,34 @@ export class Index {
         return this.weights[f] ?? -1;
       }),
     );
-    return this.items.map((_, i) => {
+    const out = new Array(this.items.length);
+    for (let i = 0; i < this.items.length; i++) {
+      const cells = this.cells[i];
+      const runs = this.runs[i];
       let total = 0;
-      for (let n = 0; n < q.terms.length; n++) {
+      for (let n = 0; n < q.terms.length && total !== noMatch; n++) {
         const t = q.terms[n];
+        const a = qualities[n];
         let best = noMatch;
-        plan[n].forEach((w, f) => {
-          if (w < 0) return;
+        for (let f = 0; f < plan[n].length; f++) {
+          const w = plan[n][f];
+          if (w < 0) continue;
           if (t.years) {
-            const y = Number(this.texts[i][f]);
-            if (this.texts[i][f] !== "" && y >= t.years[0] && y <= t.years[1])
-              best = Math.min(best, w);
-            return;
+            const y = this.years[i];
+            if (y >= t.years[0] && y <= t.years[1]) best = Math.min(best, w);
+            continue;
           }
-          const a = qualities[n];
-          for (const id of this.cells[i][f])
+          for (const id of cells[f])
             if (a[id] !== noMatch) best = Math.min(best, a[id] * 10 + w);
           // The field's words run together: "acdc" finds AC/DC.
-          if (best > 20 + w && t.long && this.runs[i][f].includes(t.word))
+          if (best > 20 + w && t.long && runs[f] !== null && runs[f].includes(t.word))
             best = 20 + w;
-        });
-        if (best === noMatch) return noMatch;
-        total += best;
+        }
+        total = best === noMatch ? noMatch : total + best;
       }
-      return total;
-    });
+      out[i] = total;
+    }
+    return out;
   }
 }
 

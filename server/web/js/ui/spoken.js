@@ -4,15 +4,11 @@
 import { h, clock, count } from "../util.js";
 import { icon } from "../icons.js";
 import { chapterName, day } from "../catalog.js";
-import { Query } from "../search.js";
-import { VList, menuAt, showMenu, emptyNote, iconButton, dialog } from "./kit.js";
+import { rowMenu, emptyNote, iconButton, dialog } from "./kit.js";
 import { SongList, items, thumb, cover } from "./songs.js";
-import { frame, filterBox, missing } from "./pages.js";
+import { frame, filterBox, missing, namesPage, filterOver } from "./pages.js";
 import { ctx } from "./ctx.js";
 import { synced } from "../synced.js";
-
-/** Pages get a filter only past this many rows, as the others do. */
-const filterOver = 12;
 
 /**
  * Playing from a book makes a queue of the whole book, named after it, from
@@ -41,41 +37,15 @@ function detail(s, heard) {
 
 /** Every book, or every show. */
 export function shelvesPage(books) {
-  const title = books ? "Audiobooks" : "Podcasts";
-  let query = "";
-  const list = new VList({
-    cls: "groups",
-    render: (s) => shelfRow(s),
-    empty: h("div"),
+  return namesPage({
+    title: books ? "Audiobooks" : "Podcasts",
+    prompt: books ? "Filter books" : "Filter podcasts",
+    all: (c) => (books ? c.books : c.shows),
+    index: books ? "books" : "shows",
+    row: shelfRow,
+    empty: () => emptyNote("Nothing here yet", null, books ? "book" : "podcast"),
+    topics: ["catalog", "thumbs", "marks", "resumes"],
   });
-  const filter = filterBox(books ? "Filter books" : "Filter podcasts", (q) => {
-    query = q;
-    draw();
-  });
-  const draw = () => {
-    const c = ctx.app.catalog;
-    const all = books ? c.books : c.shows;
-    const shown = query
-      ? c.index(books ? "books" : "shows").filter(new Query(query))
-      : all;
-    list.emptyEl.replaceChildren(
-      all.length === 0
-        ? emptyNote("Nothing here yet", null, books ? "book" : "podcast")
-        : shown.length === 0
-          ? emptyNote(`Nothing matches “${query}”`, null, "search")
-          : "",
-    );
-    list.setItems(shown);
-  };
-  list.el.append(list.emptyEl);
-  draw();
-  return {
-    el: frame({ title, filter, body: list.el }),
-    title,
-    topics: new Set(["catalog", "thumbs", "marks", "resumes"]),
-    update: draw,
-    scroller: list.el,
-  };
 }
 
 function shelfRow(s) {
@@ -88,22 +58,8 @@ function shelfRow(s) {
     { href: ctx.nav.href("shelf", s.id) },
     thumb(s.cover ?? s.items[0]),
     h("span.main", h("span.title", s.title), h("span.sub", detail(s, heard))),
-    h(
-      "button.more",
-      {
-        type: "button",
-        title: "More",
-        "aria-label": "More",
-        onclick: (e) => (e.preventDefault(), menuAt(e.currentTarget, menu(), s.title)),
-      },
-      icon("more"),
-    ),
   );
-  row.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    showMenu(menu(), { x: e.clientX, y: e.clientY }, s.title);
-  });
-  return row;
+  return rowMenu(row, menu, s.title);
 }
 
 /** A book, its files in reading order; or a show, its episodes newest first, those played hidden unless asked for. */
@@ -199,7 +155,7 @@ export function shelfPage(id) {
 }
 
 /** The chapter playing in `s`, as "Chapter 2 of 20 · Name"; null without chapters. */
-export function chapterLabel(s, positionMs) {
+function chapterLabel(s, positionMs) {
   if (!s?.chapters.length) return null;
   const i = Math.max(0, chapterAt(s, positionMs));
   const name = chapterName(s.chapters[i]);

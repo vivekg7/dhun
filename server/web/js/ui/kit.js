@@ -52,7 +52,7 @@ export function holdButton(name, label, onclick, hold) {
 // MARK: The virtual list
 
 /**
- * Only the rows on screen exist, so 7,000 songs scroll like twenty. `el` is
+ * Only the rows on screen exist, so 100,000 songs scroll like twenty. `el` is
  * the scroller; `head` (a page's header) scrolls with the rows above them.
  * Rows are one fixed height, read from the CSS variable --row.
  *
@@ -214,6 +214,45 @@ export class VList {
 // MARK: Menus
 
 let openMenu = null;
+
+/**
+ * The same menu on a right-click (or a long press) anywhere on `el`;
+ * `menu()` builds the items when asked, and with none the browser's own
+ * menu opens. `title` may be a function, for a row whose song changes.
+ */
+export function contextMenu(el, menu, title) {
+  el.addEventListener("contextmenu", (e) => {
+    const items = menu();
+    if (!items.length) return;
+    e.preventDefault();
+    showMenu(
+      items,
+      { x: e.clientX, y: e.clientY },
+      typeof title === "function" ? title() : title,
+    );
+  });
+  return el;
+}
+
+/** A row's More button at its end, and the same menu on a right-click. */
+export function rowMenu(row, menu, title) {
+  row.append(
+    h(
+      "button.more",
+      {
+        type: "button",
+        title: "More",
+        "aria-label": "More",
+        onclick: (e) => {
+          e.preventDefault();
+          menuAt(e.currentTarget, menu(), title);
+        },
+      },
+      icon("more"),
+    ),
+  );
+  return contextMenu(row, menu, title);
+}
 
 export function closeMenu() {
   openMenu?.close();

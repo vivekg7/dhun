@@ -6,7 +6,7 @@
 import { h, count, debounce } from "../util.js";
 import { icon } from "../icons.js";
 import { Query, nameIndex, lyricsHits } from "../search.js";
-import { emptyNote, showMenu } from "./kit.js";
+import { emptyNote, contextMenu } from "./kit.js";
 import { SongList, thumb, items, songMenu } from "./songs.js";
 import { playShelf } from "./spoken.js";
 import { day } from "../catalog.js";
@@ -224,19 +224,16 @@ export function searchPage(initial, { field = false } = {}) {
           ctx.app.keepSearch(query);
           r.play();
         };
-        return h(
+        const row = h(
           "div.row.hit.song",
           {
             tabindex: "0",
             onclick: play,
             onkeydown: (e) => e.key === "Enter" && play(),
-            oncontextmenu: (e) => {
-              e.preventDefault();
-              showMenu(songMenu([r.song]), { x: e.clientX, y: e.clientY }, r.title);
-            },
           },
           inner,
         );
+        return contextMenu(row, () => songMenu([r.song]), r.title);
       }),
       !whole && f.rows.length > shown
         ? h(

@@ -9,6 +9,7 @@ import {
   holdButton,
   popover,
   menuAt,
+  contextMenu,
   reducedMotion,
   toast,
 } from "./kit.js";
@@ -583,13 +584,11 @@ export function nowBar() {
     "dblclick",
     (e) => p.current && !e.target.closest("a") && ctx.nav.album(p.current),
   );
-  left.addEventListener("contextmenu", (e) => {
-    if (!p.current) return;
-    e.preventDefault();
-    import("./kit.js").then(({ showMenu }) =>
-      showMenu(songMenu([p.current]), { x: e.clientX, y: e.clientY }, p.current.title),
-    );
-  });
+  contextMenu(
+    left,
+    () => songMenu(p.current ? [p.current] : []),
+    () => p.current?.title,
+  );
   const el = h(
     "footer.nowbar",
     left,

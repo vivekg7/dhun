@@ -1,9 +1,11 @@
 // The library as the pages show it, derived from the song list in memory, as
-// on the phone and the Mac: about 7,000 songs group in a few milliseconds,
-// simpler than keeping albums, artists and folders as tables of their own.
-// Built whole, and never changed after.
+// on the phone and the Mac: simpler than keeping albums, artists and folders
+// as tables of their own. Built whole, and never changed after. About 30,000
+// songs today, designed for 100,000 (plan 036): every sort goes by a key
+// computed once per item, and the search indexes are built in idle time
+// right after the catalogue, so the first keystroke finds them ready.
 
-import { natural, compareText, shuffled, nowMs, parseTime } from "./util.js";
+import { naturalKey, sortBy, compareText, shuffled, nowMs, parseTime } from "./util.js";
 import { songIndex, nameIndex, Index, Query } from "./search.js";
 
 /** A song as the server sends it (api/openapi.yaml `Song`), with every optional field filled in. */
@@ -67,8 +69,8 @@ export function day(s) {
     : d.slice(0, 10);
 }
 
-const trackOrder = (a, b) =>
-  a.disc - b.disc || a.track - b.track || natural(a.title, b.title);
+const trackOrder = (s) => [s.disc, s.track, naturalKey(s.title)];
+const byName = (x) => naturalKey(x.name);
 
 export class Catalog {
   constructor(all) {
@@ -76,9 +78,11 @@ export class Catalog {
     // The music: what every song list, view and search of songs shows. Podcasts
     // and audiobooks have their own pages, so an episode never turns up in an
     // artist or a shuffle (plan 031).
-    this.songs = present
-      .filter((s) => !s.spoken)
-      .sort((a, b) => natural(a.title, b.title));
+    this.songs = sortBy(
+      present.filter((s) => !s.spoken),
+      (s) => naturalKey(s.title),
+    );
+    this.spoken = present.filter((s) => s.spoken);
     // Every song, episodes and books' files too: what queues, Favorites and Listen Later name.
     this.byId = new Map(present.map((s) => [s.id, s]));
     this.albums = albums(this.songs);
@@ -91,10 +95,7 @@ export class Catalog {
     this.genres = group(this.songs, (s) =>
       s.genres.length ? s.genres : ["Unknown genre"],
     );
-    this.folders = folders(
-      this.songs,
-      present.filter((s) => s.spoken),
-    );
+    this.folders = folders(this.songs, this.spoken);
     this.books = shelves(present, audiobook);
     this.shows = shelves(present, podcast);
     this.shelves = new Map([...this.books, ...this.shows].map((x) => [x.id, x]));
@@ -131,15 +132,26 @@ export class Catalog {
     return this.genres.find((g) => g.id === l);
   }
 
-  // Search indexes (plan 029), each built on first use: most catalogues are never searched.
+  /** The hundred songs added last, for the automatic view and its count. */
+  get recentlyAdded() {
+    return (this._recent ??= newest(this.songs, viewSize));
+  }
+
+  /**
+   * A search index (plan 029), finished on first use. `warm` builds them
+   * all in idle time first, so a keystroke rarely pays for one.
+   */
   index(kind) {
-    return (this.indexes[kind] ??= this.makeIndex(kind));
+    return (this.indexes[kind] ??= this.makeIndex(kind)).build();
   }
 
   makeIndex(kind) {
     switch (kind) {
       case "songs":
         return songIndex(this.songs);
+      // Books' files and episodes, for a list that holds some (Favorites, a queue).
+      case "spoken":
+        return songIndex(this.spoken);
       case "albums":
         return new Index(this.albums, [
           ["album", 0, (a) => a.name],
@@ -150,9 +162,10 @@ export class Catalog {
       case "genres":
         return nameIndex(this.genres, "genre", (g) => g.name);
       case "folders": {
-        const all = [...this.folders.values()]
-          .filter((f) => f.path !== "")
-          .sort((a, b) => natural(a.path, b.path));
+        const all = sortBy(
+          [...this.folders.values()].filter((f) => f.path !== ""),
+          (f) => naturalKey(f.path),
+        );
         return nameIndex(all, "folder", (f) => f.name);
       }
       case "books":
@@ -167,15 +180,65 @@ export class Catalog {
     }
   }
 
+  /**
+   * Builds every index in idle time, a few thousand items a go, so the first
+   * search is ready as soon as the library is and no keystroke stalls on a
+   * build (plan 036). Stops once `alive()` says this catalogue was replaced.
+   */
+  warm(alive = () => true) {
+    const kinds = Object.keys(indexSizes);
+    const idle = globalThis.requestIdleCallback ?? ((f) => setTimeout(f, 50));
+    const step = (deadline) => {
+      if (!alive()) return;
+      while (kinds.length) {
+        const kind = kinds[0];
+        const index = (this.indexes[kind] ??= this.makeIndex(kind));
+        if (index.ready) {
+          kinds.shift();
+          continue;
+        }
+        index.build(index.built + indexSizes[kind]);
+        if (!(deadline?.timeRemaining() > 4)) break;
+      }
+      if (kinds.length) idle(step);
+    };
+    idle(step);
+  }
+
   /** The songs of `list` that `query` finds, in the list's order: what a page's filter box shows. */
   filter(list, query) {
     const q = new Query(query);
     if (q.empty) return list;
+    const found = new Set(this.index("songs").filter(q));
     // Favorites, Listen Later and queues may hold episodes, which the music's index leaves out.
-    const index = list.some((s) => s.spoken) ? songIndex(list) : this.index("songs");
-    const found = new Set(index.filter(q));
+    if (list.some((s) => s.spoken))
+      for (const s of this.index("spoken").filter(q)) found.add(s);
     return list.filter((s) => found.has(s));
   }
+}
+
+/** The indexes `warm` builds, in order, and how many items of each one idle slice takes: about 10 ms each. */
+const indexSizes = {
+  songs: 3000,
+  albums: 5000,
+  artists: 10000,
+  genres: 10000,
+  folders: 10000,
+  spoken: 3000,
+  books: 5000,
+  shows: 10000,
+  episodes: 3000,
+};
+
+/** The `n` songs with the latest `addedAt`, newest first, without sorting them all. */
+function newest(songs, n) {
+  if (songs.length <= n) return sortBy(songs, (s) => -s.addedAt);
+  const times = Float64Array.from(songs, (s) => s.addedAt).sort();
+  const cutoff = times[times.length - n];
+  return sortBy(
+    songs.filter((s) => s.addedAt >= cutoff),
+    (s) => -s.addedAt,
+  ).slice(0, n);
 }
 
 /**
@@ -197,17 +260,17 @@ function albums(songs) {
   }
   const out = [];
   for (const [id, list] of groups) {
-    list.sort(trackOrder);
-    const first = list[0];
+    const songs = sortBy(list, trackOrder);
+    const first = songs[0];
     out.push({
       id,
       name: first.album,
-      artist: first.albumArtist || mostCommon(list.map((s) => s.displayArtist)),
-      year: Math.max(...list.map((s) => s.year)),
-      songs: list,
+      artist: first.albumArtist || mostCommon(songs.map((s) => s.displayArtist)),
+      year: Math.max(...songs.map((s) => s.year)),
+      songs,
     });
   }
-  return out.sort((a, b) => natural(a.name, b.name));
+  return sortBy(out, byName);
 }
 
 function group(songs, keys) {
@@ -219,7 +282,7 @@ function group(songs, keys) {
       if (!g) map.set(l, (g = { id: l, name: k, songs: [] }));
       g.songs.push(s);
     }
-  return [...map.values()].sort((a, b) => natural(a.name, b.name));
+  return sortBy([...map.values()], byName);
 }
 
 const spokenRoot = (s) => (s.kind === podcast ? "Podcasts" : "Audiobooks");
@@ -253,10 +316,8 @@ function folders(songs, spoken) {
     folder(`${spokenRoot(s)}/${s.folder}`.replace(/\/$/, "")).songs.push(s);
   const last = (f) => f.path === "Podcasts" || f.path === "Audiobooks";
   for (const f of map.values()) {
-    f.children.sort((a, b) => last(a) - last(b) || natural(a.name, b.name));
-    f.songs.sort(
-      (a, b) => a.disc - b.disc || a.track - b.track || natural(a.path, b.path),
-    );
+    f.children = sortBy(f.children, (c) => [last(c) ? 1 : 0, naturalKey(c.name)]);
+    f.songs = sortBy(f.songs, (s) => [s.disc, s.track, naturalKey(s.path)]);
   }
   return map;
 }
@@ -278,8 +339,8 @@ function shelves(all, kind) {
     g.push(s);
   }
   const out = [];
-  for (const [id, list] of groups) {
-    list.sort((a, b) => a.groupIndex - b.groupIndex || natural(a.path, b.path));
+  for (const [id, list0] of groups) {
+    const list = sortBy(list0, (s) => [s.groupIndex, naturalKey(s.path)]);
     const first = list[0];
     out.push({
       id,
@@ -293,7 +354,7 @@ function shelves(all, kind) {
       cover: list.find((s) => s.art),
     });
   }
-  return out.sort((a, b) => natural(a.title, b.title));
+  return sortBy(out, (x) => naturalKey(x.title));
 }
 
 /** A folder's songs and every subfolder's, in folder order: what "play folder" plays. */
@@ -383,11 +444,22 @@ export const lists = [
   },
 ];
 
+/** Which play stats an automatic view shows, and in what order. */
+const statLists = {
+  recentlyPlayed: [(p) => p.lastPlayedAt > 0, (p) => -p.lastPlayedAt],
+  mostPlayed: [(p) => p.count > 0, (p) => -p.count],
+  // Played at least 3 times, and not in the last 90 days: favourites you have drifted away from.
+  notLately: [
+    (p) => p.count >= 3 && p.lastPlayedAt < nowMs() - 90 * 86_400_000,
+    (p) => -p.count,
+  ],
+};
+
+const stats = (id, st) => [...st.playStats.values()].filter(statLists[id][0]);
+
 /** The songs of one of `lists`, from the app's state. */
 export function listSongs(id, st) {
   const c = st.catalog;
-  const stats = [...st.playStats.values()];
-  const top = (ids) => c.songsOf(ids).slice(0, viewSize);
   switch (id) {
     case "favorites":
       return c.songsOf(st.marked("fav"));
@@ -396,36 +468,20 @@ export function listSongs(id, st) {
     case "continue":
       return c.songsOf(st.resumes());
     case "recentlyAdded":
-      return c.songs
-        .slice()
-        .sort((a, b) => b.addedAt - a.addedAt)
-        .slice(0, viewSize);
-    case "recentlyPlayed":
-      return top(
-        stats
-          .filter((p) => p.lastPlayedAt > 0)
-          .sort((a, b) => b.lastPlayedAt - a.lastPlayedAt)
-          .map((p) => p.song),
-      );
-    case "mostPlayed":
-      return top(
-        stats
-          .filter((p) => p.count > 0)
-          .sort((a, b) => b.count - a.count)
-          .map((p) => p.song),
-      );
-    case "notLately": {
-      // Played at least 3 times, and not in the last 90 days: favourites you have drifted away from.
-      const cutoff = nowMs() - 90 * 86_400_000;
-      return top(
-        stats
-          .filter((p) => p.count >= 3 && p.lastPlayedAt < cutoff)
-          .sort((a, b) => b.count - a.count)
-          .map((p) => p.song),
-      );
-    }
+      return c.recentlyAdded;
   }
-  return [];
+  if (!statLists[id]) return [];
+  const ids = sortBy(stats(id, st), statLists[id][1]).map((p) => p.song);
+  return c.songsOf(ids).slice(0, viewSize);
+}
+
+/** How many songs one of `lists` holds, for its card: counted, never sorted. */
+export function listCount(id, st) {
+  const c = st.catalog;
+  if (id === "recentlyAdded") return Math.min(viewSize, c.songs.length);
+  if (statLists[id])
+    return Math.min(viewSize, c.songsOf(stats(id, st).map((p) => p.song)).length);
+  return listSongs(id, st).length;
 }
 
 // MARK: What has been heard of the podcasts and audiobooks (plan 031)

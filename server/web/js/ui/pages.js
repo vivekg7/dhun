@@ -5,13 +5,21 @@
 
 import { h, clock, count, summary, shuffled } from "../util.js";
 import { icon } from "../icons.js";
-import { allSongs, albumOrder, lists, listSongs, sorts } from "../catalog.js";
+import {
+  allSongs,
+  albumOrder,
+  lists,
+  listSongs,
+  listCount,
+  sorts,
+} from "../catalog.js";
 import { Query, nameIndex } from "../search.js";
 import {
   VList,
   iconButton,
   menuAt,
-  showMenu,
+  rowMenu,
+  contextMenu,
   prompt,
   confirm,
   emptyNote,
@@ -22,13 +30,13 @@ import {
   thumb,
   cover,
   editable,
-  reserved,
+  checkName,
   songMenu,
 } from "./songs.js";
 import { ctx } from "./ctx.js";
 
 /** Pages get a filter only past this many rows: a shorter list fits on about one screen (plan 011). */
-const filterOver = 12;
+export const filterOver = 12;
 
 /** A page's frame: its bar (Back, the title, the filter), then its body. */
 export function frame({ title, back = false, filter, actions = [], body, cls = "" }) {
@@ -244,26 +252,28 @@ function albumCard(a) {
     h("span.cardsub", a.artist),
     h("span.cardsub", [a.year || "", summary(a.songs)].filter(Boolean).join(" · ")),
   );
-  card.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    showMenu(
-      songMenu(a.songs, {
-        play: () => ctx.playback.playList(a.name, `album:${a.id}`, a.songs, 0),
-      }),
-      { x: e.clientX, y: e.clientY },
-      a.name,
-    );
-  });
-  return card;
+  const menu = () =>
+    songMenu(a.songs, {
+      play: () => ctx.playback.playList(a.name, `album:${a.id}`, a.songs, 0),
+    });
+  return contextMenu(card, menu, a.name);
 }
 
-/** Shown while the library is still arriving. */
+/** Shown while the library is still arriving: being read from the kept copy, or fetched. */
 function loading() {
-  return ctx.app.syncing || !ctx.app.catalog.songs.length
+  const app = ctx.app;
+  return app.starting || app.syncing || !app.catalog.songs.length
     ? h(
         "div.empty",
         h("div.spinner"),
-        h("p.empty-title", ctx.app.syncing ? "Fetching the library…" : "Nothing here"),
+        h(
+          "p.empty-title",
+          app.starting
+            ? "Opening the library…"
+            : app.syncing
+              ? "Fetching the library…"
+              : "Nothing here",
+        ),
       )
     : emptyNote("Nothing here");
 }
@@ -297,28 +307,25 @@ function artistLink(name) {
 
 // MARK: Artists and genres
 
-/** Artists or genres: a filtered list, each opening its songs. */
-export function groupsPage(kind) {
-  const title = kind === "artist" ? "Artists" : "Genres";
+/**
+ * A filtered list of names, each opening its own page: artists, genres,
+ * books or shows. `all(catalog)` gives the items, `index` names their search
+ * index, `empty()` is shown while there are none.
+ */
+export function namesPage({ title, prompt, all, index, row, empty, topics }) {
   let query = "";
-  const list = new VList({
-    cls: "groups",
-    render: (g) => groupRow(kind, g),
-    empty: h("div"),
-  });
-  const filter = filterBox(`Filter ${title.toLowerCase()}`, (q) => {
+  const list = new VList({ cls: "groups", render: row, empty: h("div") });
+  const filter = filterBox(prompt, (q) => {
     query = q;
     draw();
   });
   const draw = () => {
     const c = ctx.app.catalog;
-    const all = kind === "artist" ? c.artists : c.genres;
-    const shown = query
-      ? c.index(kind === "artist" ? "artists" : "genres").filter(new Query(query))
-      : all;
+    const items = all(c);
+    const shown = query ? c.index(index).filter(new Query(query)) : items;
     list.emptyEl.replaceChildren(
-      all.length === 0
-        ? loading()
+      items.length === 0
+        ? empty()
         : shown.length === 0
           ? emptyNote(`Nothing matches “${query}”`, null, "search")
           : "",
@@ -330,10 +337,24 @@ export function groupsPage(kind) {
   return {
     el: frame({ title, filter, body: list.el }),
     title,
-    topics: new Set(["catalog", "thumbs"]),
+    topics: new Set(topics),
     update: draw,
     scroller: list.el,
   };
+}
+
+/** Artists or genres: a filtered list, each opening its songs. */
+export function groupsPage(kind) {
+  const title = kind === "artist" ? "Artists" : "Genres";
+  return namesPage({
+    title,
+    prompt: `Filter ${title.toLowerCase()}`,
+    all: (c) => (kind === "artist" ? c.artists : c.genres),
+    index: kind === "artist" ? "artists" : "genres",
+    row: (g) => groupRow(kind, g),
+    empty: loading,
+    topics: ["catalog", "thumbs"],
+  });
 }
 
 function groupRow(kind, g) {
@@ -343,25 +364,8 @@ function groupRow(kind, g) {
     { href: ctx.nav.href(kind, g.name) },
     thumb(g.songs[0]),
     h("span.main", h("span.title", g.name), h("span.sub", summary(g.songs))),
-    h(
-      "button.more",
-      {
-        type: "button",
-        title: "More",
-        "aria-label": "More",
-        onclick: (e) => {
-          e.preventDefault();
-          menuAt(e.currentTarget, groupMenu(g, source), g.name);
-        },
-      },
-      icon("more"),
-    ),
   );
-  row.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    showMenu(groupMenu(g, source), { x: e.clientX, y: e.clientY }, g.name);
-  });
-  return row;
+  return rowMenu(row, () => groupMenu(g, source), g.name);
 }
 
 const groupMenu = (g, source) =>
@@ -509,22 +513,8 @@ function folderRow(f) {
       icon({ Podcasts: "podcast", Audiobooks: "book" }[f.path] ?? "folder"),
     ),
     h("span.main", h("span.title", f.name), h("span.sub", folderSummary(f))),
-    h(
-      "button.more",
-      {
-        type: "button",
-        title: "More",
-        "aria-label": "More",
-        onclick: (e) => (e.preventDefault(), menuAt(e.currentTarget, menu(), f.name)),
-      },
-      icon("more"),
-    ),
   );
-  row.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    showMenu(menu(), { x: e.clientX, y: e.clientY }, f.name);
-  });
-  return row;
+  return rowMenu(row, menu, f.name);
 }
 
 // MARK: Favorites, Listen Later and the automatic views (plan 010)
@@ -568,7 +558,7 @@ export function playlistsPage() {
             { href: ctx.nav.href("list", l.id) },
             icon(l.icon),
             h("span", l.title),
-            h("small", count(listSongs(l.id, app).length)),
+            h("small", count(listCount(l.id, app))),
           ),
         ),
       ),
@@ -610,10 +600,7 @@ function spokenCards(app) {
 }
 
 export async function newPlaylist() {
-  const n = await prompt("New playlist", "", {
-    action: "Create",
-    check: (n) => (reserved(n) ? `“${n}” is the name of one of your lists.` : ""),
-  });
+  const n = await prompt("New playlist", "", { action: "Create", check: checkName });
   if (n) ctx.nav.go("playlist", ctx.app.createPlaylist(n, []).id);
 }
 
@@ -652,8 +639,7 @@ export function playlistPage(id0) {
         action: async () => {
           const n = await prompt("Rename playlist", p.name, {
             action: "Rename",
-            check: (n) =>
-              reserved(n) ? `“${n}” is the name of one of your lists.` : "",
+            check: checkName,
           });
           if (n) app.renamePlaylist(app.playlist(id()), n);
         },
@@ -820,28 +806,11 @@ function queueRow(q, i, list) {
     active
       ? h("span.eq", { class: p.isPlaying ? "on" : "" }, h("i"), h("i"), h("i"))
       : null,
-    h(
-      "button.more",
-      {
-        type: "button",
-        title: "More",
-        "aria-label": "More",
-        onclick: (e) => (
-          e.preventDefault(),
-          menuAt(e.currentTarget, queueMenu(q), q.name)
-        ),
-      },
-      icon("more"),
-    ),
   );
-  row.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    showMenu(queueMenu(q), { x: e.clientX, y: e.clientY }, q.name);
-  });
-  return row;
+  return rowMenu(row, () => queueMenu(q), q.name);
 }
 
-export function queueMenu(q) {
+function queueMenu(q) {
   const p = ctx.playback;
   const app = ctx.app;
   return [
@@ -854,7 +823,7 @@ export function queueMenu(q) {
       action: async () => {
         const n = await prompt("Rename queue", q.name, {
           action: "Rename",
-          check: (n) => (reserved(n) ? `“${n}” is the name of one of your lists.` : ""),
+          check: checkName,
         });
         if (n) p.rename(q.id, n);
       },
@@ -864,7 +833,7 @@ export function queueMenu(q) {
       action: async () => {
         const n = await prompt("Save as playlist", q.name, {
           action: "Save",
-          check: (n) => (reserved(n) ? `“${n}” is the name of one of your lists.` : ""),
+          check: checkName,
         });
         if (n) app.createPlaylist(n, q.id === p.activeId ? p.items : q.songs);
       },

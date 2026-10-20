@@ -14,9 +14,11 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () =>
   applyTheme(app.prefs),
 );
 ctx.playback = new Playback(app);
-// What was kept is loaded first, so a reload on an album's address finds the album.
-await app.start();
+// The window first, so the page paints at once; the kept copy then lands in
+// it, and a reload on an album's address reaches the album once it has.
+const started = app.start();
 new Shell(document.body);
+await started;
 if (app.signedIn) {
   app.checkHandoff();
   app.syncNow();

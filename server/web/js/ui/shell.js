@@ -36,7 +36,7 @@ const sectionOf = {
   guide: "settings",
 };
 
-export class Nav {
+class Nav {
   constructor(onChange) {
     this.onChange = onChange;
     this.route = this.parse();
@@ -219,8 +219,9 @@ export class Shell {
     }
     this.page?.destroy?.();
     this.page = null;
-    this.routeChanged(null, this.nav.route);
+    // The bar, the panel and the sidebar; then the page, drawn whole by routeChanged.
     this.flush(new Set(["all"]));
+    this.routeChanged(null, this.nav.route);
   }
 
   /** The window's search field: typing shows the results, over any page opened from them. */
@@ -451,11 +452,10 @@ export class Shell {
         add(app.catalog.songsOf(ids));
       },
     });
-    const active = ctx.playback.active;
     this.sidebar.replaceChildren(
       h(
         "div.navscroll",
-        item("queues", undefined, active ? `Queues` : "Queues", "queues"),
+        item("queues", undefined, "Queues", "queues"),
         h("h2.navhead", "Library"),
         item("folders", undefined, "Folders", "folder"),
         item("albums", undefined, "Albums", "album"),

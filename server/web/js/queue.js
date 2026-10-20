@@ -73,7 +73,7 @@ export function nextIn(order, song, repeat) {
  */
 export const minSpeed = 0.5;
 export const maxSpeed = 2;
-export const maxSemitones = 6;
+const maxSemitones = 6;
 
 /** A song's setting (`speed.<id>`), or null when it has none or it cannot be read. */
 export function tempoOf(v) {

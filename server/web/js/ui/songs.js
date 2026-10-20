@@ -3,7 +3,7 @@
 
 import { h, clock, count } from "../util.js";
 import { icon } from "../icons.js";
-import { VList, showMenu, prompt, touch, toast } from "./kit.js";
+import { VList, showMenu, prompt, dialog, touch, toast } from "./kit.js";
 import { ctx } from "./ctx.js";
 
 /** A list row's cover: the thumbnail every cover has, never waiting (plan 019). */
@@ -42,7 +42,8 @@ export const editable = (p) => !p.shared;
 /** The two lists' names cannot name a queue or playlist, as on the phone. */
 export const reserved = (name) =>
   ["favorites", "listen later"].includes(name.toLowerCase());
-const checkName = (n) =>
+/** For a name prompt's `check`: why a name cannot be used, or "". */
+export const checkName = (n) =>
   reserved(n) ? `“${n}” is the name of one of your lists.` : "";
 
 /**
@@ -179,7 +180,6 @@ function leftOut(spoken) {
 
 /** What the file is, as the phone's song details show. */
 async function songInfo(s) {
-  const { dialog } = await import("./kit.js");
   const rows = [
     ["Title", s.title],
     ["Artist", s.artist],
