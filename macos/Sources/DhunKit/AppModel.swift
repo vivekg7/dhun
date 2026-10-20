@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Observation
 
 /// The app's long-lived parts and the state the windows show, the phone's
@@ -150,8 +151,18 @@ public final class AppModel {
         let build = catalogBuild
         let db = self.db
         let c = await Task.detached {
-            let c = Catalog(db.songs())
+            let t0 = ContinuousClock.now
+            let songs = db.songs()
+            let t1 = ContinuousClock.now
+            let c = Catalog(songs)
+            let t2 = ContinuousClock.now
             _ = (c.songIndex, c.albumIndex)
+            // The timing lines the speed targets are checked against (plan 036):
+            // /usr/bin/log stream --level info --predicate 'subsystem == "io.github.vivekg7.dhun"'
+            // (the full path: `log` is also a zsh builtin).
+            Logger(subsystem: "io.github.vivekg7.dhun", category: "catalog").info(
+                "catalogue: \(c.songs.count) songs read in \((t1 - t0).ms) ms, built in \((t2 - t1).ms) ms, indexed in \((ContinuousClock.now - t2).ms) ms"
+            )
             return c
         }.value
         guard build == catalogBuild else { return }
@@ -240,4 +251,9 @@ public struct Storage: Equatable, Sendable {
     public var downloadLimitGb: Int
     public var cacheLimitGb: Int
     public var downloadOnExpensive: Bool
+}
+
+extension Duration {
+    /// Whole milliseconds, for a log line.
+    fileprivate var ms: Int64 { components.seconds * 1000 + components.attoseconds / 1_000_000_000_000_000 }
 }

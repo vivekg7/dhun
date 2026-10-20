@@ -2,6 +2,7 @@ package io.github.vivekg7.dhun
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,9 +61,18 @@ class App : Application() {
      * after, so the main thread only ever reads them.
      */
     val catalog by lazy {
-        combine(db.dao().songs().distinctUntilChanged(), local.songs.filterNotNull().distinctUntilChanged()) { nas, phone -> Catalog(nas + phone) }
-            .onEach { c -> scope.launch { c.warm() } }
-            .stateIn(scope, SharingStarted.Eagerly, Catalog(emptyList()))
+        combine(db.dao().songs().distinctUntilChanged(), local.songs.filterNotNull().distinctUntilChanged()) { nas, phone ->
+            val t0 = System.nanoTime()
+            val c = Catalog(nas + phone)
+            Log.i(TAG, "catalogue: ${c.songs.size} songs built in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            c
+        }.onEach { c ->
+            scope.launch {
+                val t0 = System.nanoTime()
+                c.warm()
+                Log.i(TAG, "catalogue: groupings and search index warm in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            }
+        }.stateIn(scope, SharingStarted.Eagerly, Catalog(emptyList()))
     }
 
     override fun onCreate() {
@@ -111,6 +121,9 @@ class App : Application() {
         }
 
     companion object {
+        /** The logcat tag of the timing lines the speed targets are checked against (plan 036). */
+        const val TAG = "Dhun"
+
         lateinit var app: App
             private set
     }

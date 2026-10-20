@@ -70,7 +70,11 @@ its toolchain only: it is a Swift package, built from the command line.
 The web client needs nothing to build: it is plain HTML, CSS and
 JavaScript, embedded in the server. While working on it, run the server
 with `DHUN_WEB_DIR=server/web`, so a reload shows an edit without a
-rebuild; `make test-web` runs its tests with Node's own runner.
+rebuild; `make test-web` runs its tests with Node's own runner. A Mac
+build under test takes `DHUN_DATA=<folder>`, so it keeps its own library
+and sign-in instead of opening the installed app's. Both apps log how long
+the catalogue takes, for the speed targets
+([performance-baseline](docs/research/performance-baseline.md)).
 
 ### Versions
 

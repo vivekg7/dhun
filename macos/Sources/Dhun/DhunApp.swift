@@ -56,9 +56,12 @@ struct DhunApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let app: AppModel = {
+        // DHUN_DATA points a build under test at a folder of its own, so it never
+        // opens the installed app's library or signs in as its account.
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let files = ProcessInfo.processInfo.environment["DHUN_DATA"].map { URL(fileURLWithPath: $0) }
         do {
-            return try AppModel(files: support.appendingPathComponent("Dhun"))
+            return try AppModel(files: files ?? support.appendingPathComponent("Dhun"))
         } catch {
             fatalError("Cannot open Dhun's data folder: \(error)")
         }
