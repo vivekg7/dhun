@@ -44,12 +44,14 @@ services:
       - DHUN_ADMIN_USER=you
       - DHUN_ADMIN_PASSWORD=change-me-now
     # Hardening: nothing in the container can be modified, gain privileges
-    # or use Linux capabilities, and it cannot take more than 1 GB of memory.
+    # or use Linux capabilities, and it cannot take more than 512 MB of
+    # memory: twice the 256 MB target, so a leak is caught rather than fed.
+    # The image sets GOMEMLIMIT=192MiB, the soft limit; override it here.
     read_only: true
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 1g
+    mem_limit: 512m
     pids_limit: 200
     restart: unless-stopped

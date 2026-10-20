@@ -860,22 +860,50 @@ func songEntry(path, title, artist string, durMS int64) library.WriteEntry {
 }
 
 func (a *applier) songEntries(ids []int64) ([]library.WriteEntry, error) {
-	if err := a.songsExist(ids); err != nil {
-		return nil, err
+	if len(ids) > maxSongsPerOp {
+		return nil, rejected("more than %d songs in one operation", maxSongsPerOp)
+	}
+	// The songs are fetched in the same chunks songsExist uses, not one query
+	// each: a replaced playlist may name 20,000 songs.
+	entries := map[int64]library.WriteEntry{}
+	uniq := slices.Compact(slices.Sorted(slices.Values(ids)))
+	for chunk := range slices.Chunk(uniq, songsPerLookup) {
+		q := `SELECT id, kind, path, title, artist, duration_ms FROM songs WHERE id IN (?` + strings.Repeat(",?", len(chunk)-1) + `)`
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := a.tx.QueryContext(a.ctx, q, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, d int64
+			var kind, p, t, ar string
+			if err := rows.Scan(&id, &kind, &p, &t, &ar, &d); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			// A playlist is a file in Music/ and its paths are relative to it; an
+			// episode is under another root the file cannot point at (plan 031).
+			if kind != library.KindMusic {
+				rows.Close()
+				return nil, rejected("only music can go in a playlist")
+			}
+			entries[id] = songEntry(p, t, ar, d)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]library.WriteEntry, len(ids))
 	for i, id := range ids {
-		var kind, p, t, ar string
-		var d int64
-		if err := a.tx.QueryRowContext(a.ctx, `SELECT kind, path, title, artist, duration_ms FROM songs WHERE id = ?`, id).Scan(&kind, &p, &t, &ar, &d); err != nil {
-			return nil, err
+		e, ok := entries[id]
+		if !ok {
+			return nil, rejected("unknown song id")
 		}
-		// A playlist is a file in Music/ and its paths are relative to it; an
-		// episode is under another root the file cannot point at (plan 031).
-		if kind != library.KindMusic {
-			return nil, rejected("only music can go in a playlist")
-		}
-		out[i] = songEntry(p, t, ar, d)
+		out[i] = e
 	}
 	return out, nil
 }
@@ -1058,6 +1086,9 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		queues = append(queues, q)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	favs, err := marks(ctx, tx, "favorites", userID, since)
 	if err != nil {
@@ -1096,6 +1127,9 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		resume = append(resume, p)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	settings := map[string]json.RawMessage{}
 	rows, err = tx.QueryContext(ctx, `SELECT name, value FROM settings WHERE user_id = ? AND version > ?`, userID, since)
@@ -1111,6 +1145,9 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		settings[name] = json.RawMessage(value)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	type bookmarkJSON struct {
 		ID         string `json:"id"`
@@ -1138,6 +1175,9 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		bookmarks = append(bookmarks, b)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	np, err := nowPlaying(ctx, tx, userID, since)
 	if err != nil {

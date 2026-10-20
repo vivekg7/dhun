@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -137,19 +138,42 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	json.NewEncoder(w).Encode(ae)
 }
 
-// writeJSON gzips when the client accepts it: the first library sync is
-// about 2 MB of JSON and compresses roughly fivefold.
-func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
+// jsonStream is a JSON response written in pieces: values through enc,
+// punctuation through raw. writeJSON covers the usual whole-value case; the
+// library handler streams its rows through one.
+type jsonStream struct {
+	w   io.Writer
+	enc *json.Encoder
+	gz  *gzip.Writer
+}
+
+// startJSON sets the headers and gzips when the client accepts it: the
+// first library sync compresses roughly fivefold.
+func startJSON(w http.ResponseWriter, r *http.Request) *jsonStream {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Add("Vary", "Accept-Encoding")
-	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		json.NewEncoder(w).Encode(v)
-		return
+	js := &jsonStream{w: w}
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		js.gz = gzip.NewWriter(w)
+		js.w = js.gz
 	}
-	w.Header().Set("Content-Encoding", "gzip")
-	gz := gzip.NewWriter(w)
-	json.NewEncoder(gz).Encode(v)
-	gz.Close()
+	js.enc = json.NewEncoder(js.w)
+	return js
+}
+
+func (js *jsonStream) raw(s string) { io.WriteString(js.w, s) }
+
+func (js *jsonStream) close() {
+	if js.gz != nil {
+		js.gz.Close()
+	}
+}
+
+func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
+	js := startJSON(w, r)
+	js.enc.Encode(v)
+	js.close()
 }
 
 func readJSON(r *http.Request, v any) error {

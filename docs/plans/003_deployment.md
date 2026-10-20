@@ -62,8 +62,11 @@ project folder.**
   shell, no package manager) and runs as `nobody` unless told otherwise.
   Compose adds: `user: 1026:100` (the owner, so files Dhun writes stay
   editable over SMB), `read_only: true`, `cap_drop: [ALL]`,
-  `no-new-privileges`, `mem_limit: 1g` (steady state is about 30 MB, the
-  first scan about 150 MB) and `pids_limit`.
+  `no-new-privileges`, `mem_limit: 512m` and `pids_limit`. The image sets
+  `GOMEMLIMIT=192MiB`, so the Go collector works towards the 256 MB target
+  of [plan 036](036_fast_at_100k.md) and `mem_limit` is only the kill
+  switch; the [baseline](../research/performance-baseline.md) has the
+  measured figures.
 - **`latest`, pulled on every Build** (`pull_policy: always`): upgrading is
   Stop → Build in Container Manager, with no file to edit. Each release is
   also published under its own tag (`server-vX.Y.Z`), so staying on one,

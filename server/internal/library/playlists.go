@@ -141,21 +141,9 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 	}
 	urows.Close()
 
-	songIDs := map[string]int64{}
-	srows, err := tx.QueryContext(ctx, `SELECT id, path FROM songs`)
-	if err != nil {
-		return 0, err
-	}
-	for srows.Next() {
-		var id int64
-		var p string
-		if err := srows.Scan(&id, &p); err != nil {
-			srows.Close()
-			return 0, err
-		}
-		songIDs[PathKey(p)] = id
-	}
-	srows.Close()
+	// Loaded on the first playlist that actually changed: most scans change
+	// none, and this runs under the write lock every phone's push waits on.
+	songAt := songAtTx(ctx, tx)
 
 	// As with songs: a missing Playlists folder is a mount problem, not every
 	// playlist deleted at once.
@@ -213,10 +201,7 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 		if ok {
 			existingID = k.id
 		}
-		if _, err := storePlaylist(ctx, tx, rel, existingID, owner, pl, info, version, func(p string) (int64, bool) {
-			id, ok := songIDs[p]
-			return id, ok
-		}); err != nil {
+		if _, err := storePlaylist(ctx, tx, rel, existingID, owner, pl, info, version, songAt); err != nil {
 			return err
 		}
 		changed++
@@ -307,13 +292,16 @@ func RefreshPlaylist(ctx context.Context, tx *sql.Tx, root, rel string, id int64
 }
 
 // songAtTx looks songs up by PathKey. SQL cannot compare in NFC, so the
-// paths are loaded once, on the first lookup (7,000 rows: a few milliseconds).
+// paths are loaded once, on the first lookup: 100,000 rows take well under a
+// second, and only a scan that found a changed playlist, or an edit, pays it.
+// Music only: an episode's path is relative to another root, and a colliding
+// path would turn a playlist entry into an episode.
 func songAtTx(ctx context.Context, tx *sql.Tx) func(string) (int64, bool) {
 	var ids map[string]int64
 	return func(p string) (int64, bool) {
 		if ids == nil {
 			ids = map[string]int64{}
-			rows, err := tx.QueryContext(ctx, `SELECT id, path FROM songs`)
+			rows, err := tx.QueryContext(ctx, `SELECT id, path FROM songs WHERE kind = ?`, KindMusic)
 			if err != nil {
 				return 0, false
 			}

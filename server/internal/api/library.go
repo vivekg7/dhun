@@ -92,6 +92,13 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 		s.fail(w, r, err)
 		return
 	}
+	// The playlists come first: they are small, and an error in them can
+	// still be a 500. Once the songs start streaming, it cannot.
+	playlists, err := s.changedPlaylists(r, tx, since, sess.UserID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 
 	rows, err := tx.QueryContext(ctx, `SELECT id, path, title, artist, artists, album, album_artist, composer,
 		genre, genres, year, track, disc, duration_ms, format, codec, bitrate, sample_rate, bit_depth, size,
@@ -102,7 +109,27 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 		s.fail(w, r, err)
 		return
 	}
-	songs := []songJSON{}
+	defer rows.Close()
+
+	// The songs are encoded one row at a time, straight into the (gzip)
+	// writer: a first sync at 100,000 songs is 50 MB of JSON, and holding
+	// the rows and then the encoded response would be most of the server's
+	// memory budget (docs/plans/036_fast_at_100k.md). The price is that an
+	// error after the first byte cannot become a 500: the connection is
+	// aborted instead, so the client sees a truncated body and retries,
+	// never a valid-looking partial catalogue with a cursor it would keep.
+	js := startJSON(w, r)
+	defer js.close()
+	js.raw(`{"version":`)
+	js.enc.Encode(version)
+	js.raw(`,"playlists":`)
+	js.enc.Encode(playlists)
+	js.raw(`,"songs":[`)
+	abort := func(err error) {
+		s.Log.Error("library stream failed", "since", since, "err", err)
+		panic(http.ErrAbortHandler)
+	}
+	first := true
 	for rows.Next() {
 		var x songJSON
 		var artists, genres, chapters string
@@ -110,9 +137,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 			&x.Genre, &genres, &x.Year, &x.Track, &x.Disc, &x.DurationMS, &x.Format, &x.Codec, &x.Bitrate,
 			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.Art, &x.HasLyrics, &x.AddedAt, &x.Missing,
 			&x.Kind, &x.Date, &x.Notes, &chapters, &x.Group, &x.GroupTitle, &x.GroupIndex); err != nil {
-			rows.Close()
-			s.fail(w, r, err)
-			return
+			abort(err)
 		}
 		x.Artists, x.Genres = json.RawMessage(artists), json.RawMessage(genres)
 		if x.Kind == library.KindMusic {
@@ -120,16 +145,18 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 		} else {
 			x.Chapters = json.RawMessage(chapters)
 		}
-		songs = append(songs, x)
+		if !first {
+			js.raw(",")
+		}
+		first = false
+		if err := js.enc.Encode(&x); err != nil {
+			return // the client went away
+		}
 	}
-	rows.Close()
-
-	playlists, err := s.changedPlaylists(r, tx, since, sess.UserID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
+	if err := rows.Err(); err != nil {
+		abort(err)
 	}
-	writeJSON(w, r, map[string]any{"version": version, "songs": songs, "playlists": playlists})
+	js.raw("]}\n")
 }
 
 // changedPlaylists returns shared playlists and the caller's own; another
@@ -141,6 +168,7 @@ func (s *Server) changedPlaylists(r *http.Request, tx *sql.Tx, since, userID int
 		return nil, err
 	}
 	out := []playlistJSON{}
+	at := map[int64]int{}
 	for rows.Next() {
 		var p playlistJSON
 		if err := rows.Scan(&p.ID, &p.Path, &p.Name, &p.Shared, &p.Ref, &p.Deleted); err != nil {
@@ -149,28 +177,37 @@ func (s *Server) changedPlaylists(r *http.Request, tx *sql.Tx, since, userID int
 		}
 		if p.Deleted {
 			p = playlistJSON{ID: p.ID, Deleted: true}
+		} else {
+			p.Songs = []int64{}
+			at[p.ID] = len(out)
 		}
 		out = append(out, p)
 	}
 	rows.Close()
-	for i := range out {
-		if out[i].Deleted {
-			continue
-		}
-		items, err := tx.QueryContext(r.Context(),
-			`SELECT COALESCE(song_id, 0) FROM playlist_items WHERE playlist_id = ? ORDER BY pos`, out[i].ID)
-		if err != nil {
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(at) == 0 {
+		return out, nil
+	}
+	// One query for every changed playlist's entries rather than one each.
+	items, err := tx.QueryContext(r.Context(), `SELECT i.playlist_id, COALESCE(i.song_id, 0) FROM playlist_items i
+		JOIN playlists p ON p.id = i.playlist_id
+		WHERE p.version > ? AND (p.owner_id IS NULL OR p.owner_id = ?) AND NOT p.deleted ORDER BY i.playlist_id, i.pos`, since, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer items.Close()
+	for items.Next() {
+		var pid, id int64
+		if err := items.Scan(&pid, &id); err != nil {
 			return nil, err
 		}
-		out[i].Songs = []int64{}
-		for items.Next() {
-			var id int64
-			items.Scan(&id)
+		if i, ok := at[pid]; ok {
 			out[i].Songs = append(out[i].Songs, id)
 		}
-		items.Close()
 	}
-	return out, nil
+	return out, items.Err()
 }
 
 func (s *Server) songFile(r *http.Request) (library.SongFile, int64, error) {

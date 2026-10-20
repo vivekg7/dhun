@@ -153,6 +153,19 @@ func TestAuthFlowAndDeviceRevocation(t *testing.T) {
 	e.do("GET", "/api/v1/me", mac, nil, 200, nil)
 }
 
+// The songs are streamed one row at a time, so the brackets and commas are
+// written by hand: an empty library must still be a complete document.
+func TestLibraryStreamIsWholeJSONWhenEmpty(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", true)
+	tok := e.login("vivek")
+	var raw map[string]json.RawMessage
+	e.do("GET", "/api/v1/library?since=0", tok, nil, 200, &raw)
+	if string(raw["songs"]) != "[]" || string(raw["playlists"]) != "[]" {
+		t.Fatalf("empty library = %s", raw)
+	}
+}
+
 func TestLibraryFeedIsIncrementalAndPlaylistsArePrivate(t *testing.T) {
 	e := newEnv(t)
 	e.user("vivek", true)
