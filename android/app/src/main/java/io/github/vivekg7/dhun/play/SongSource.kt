@@ -26,6 +26,9 @@ class SongSource(
 ) : DataSource {
     private var growing: SongCache.Entry? = null
     private var file: RandomAccessFile? = null
+
+    /** Which file of the entry [file] is: a rolled window is a new file under the same name. */
+    private var generation = 0
     private var position = 0L
     private var remaining = 0L
     private var uri: Uri? = null
@@ -41,9 +44,10 @@ class SongSource(
         val local = id?.let { app.downloads.file(it) ?: app.cache.complete(it) }
         val opened = id?.takeIf { local == null }?.let { app.cache.open(it, dataSpec.position) }
         if (opened == null) return other.open(if (local != null) dataSpec.withUri(Uri.fromFile(local)) else dataSpec)
-        val (entry, raf) = opened
+        val (entry, raf, gen) = opened
         growing = entry
         file = raf
+        generation = gen
         position = dataSpec.position
         remaining =
             when {
@@ -62,15 +66,23 @@ class SongSource(
         val e = growing ?: return other.read(buffer, offset, length)
         if (length == 0) return 0
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
+        app.cache.reading(e, position)
         val arrived = e.awaitPast(position)
         if (arrived <= position) return C.RESULT_END_OF_INPUT
         var n = minOf(length.toLong(), arrived - position)
         if (remaining != C.LENGTH_UNSET.toLong()) n = minOf(n, remaining)
+        // After the roll: the bytes just waited for are in the new file only.
+        if (generation != e.generation) {
+            file?.close()
+            file = RandomAccessFile(e.file, "r")
+            generation = e.generation
+        }
         val f = file!!
         f.seek(position)
         val got = f.read(buffer, offset, n.toInt())
         if (got < 0) return C.RESULT_END_OF_INPUT
         position += got
+        e.lastEnd = position
         if (remaining != C.LENGTH_UNSET.toLong()) remaining -= got
         return got
     }

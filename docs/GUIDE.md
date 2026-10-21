@@ -114,6 +114,12 @@ or a phone's hotspot), are kept so they play without waiting. At the
 limit, the songs played longest ago make room. A downloaded song is never
 in the cache as well. The web keeps neither downloads nor a cache.
 
+A long file, an episode, a book or a mix, is not kept whole: **Cache
+ahead**, under Long files on the Playback page, says how many minutes past
+where you are are fetched, 30 unless you change it, and ten minutes behind
+are kept. The window goes when you leave the file and never fills the cache
+in the music's place. To take a book on a trip, download it.
+
 ## Reset to defaults
 
 Each settings page can be put back as it was when Dhun was installed.

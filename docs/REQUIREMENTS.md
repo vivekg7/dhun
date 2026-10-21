@@ -264,6 +264,12 @@ user (example: Downloads 10 GB, Cache 3 GB).
 - The cache is **3 GB by default**, set in Settings → Downloads. It keeps every song played, plus the
   next two songs of the queue on any network and the next ten on Wi-Fi. Full, it drops the songs played longest ago, never one in the
   queue ahead (owner, 2026-10-07; [plan 019](plans/019_networking_and_caching.md)).
+- **A long file is cached as a window, not whole** (owner, 2026-10-20;
+  [plan 037](plans/037_long_file_cache_window.md)): the minutes past the
+  playing position that **Cache ahead** sets, 30 by default or the whole
+  file, and ten minutes behind it. A window sits outside the cache's budget,
+  so a book never evicts the music; it goes when the file leaves the player,
+  and never counts as playable offline: a book for a trip is a download.
 - **A network drop never skips a song.** The player says it is waiting
   for the network, keeps trying, and carries on from the same place when
   the network is back (owner, 2026-10-07).

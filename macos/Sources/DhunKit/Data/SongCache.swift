@@ -7,11 +7,18 @@ import Foundation
 /// or two on an expensive network. The player reads a file while it is still
 /// arriving (`open`).
 ///
+/// A long file (an episode, a book, a mix: `Playback.isLong`) is not fetched
+/// whole but as a window around where it plays (plan 037): the minutes ahead
+/// that `longFiles.cacheAhead` says, ten behind, in a `.window` file the
+/// fetcher fills wherever the reader is. A window is never a cached song: it
+/// sits outside the music budget, is dropped as soon as its file leaves the
+/// plan, and is never promoted to a download.
+///
 /// Plain files beside Downloads, so a cached song becomes a download by a
 /// rename; a file's modification time is when it was last played, for
 /// dropping the oldest at the limit. Never holds a downloaded song. A part
-/// left by an earlier run is dropped: which of its bytes arrived was only
-/// ever known in memory.
+/// or window left by an earlier run is dropped: which of its bytes arrived
+/// was only ever known in memory.
 @MainActor @Observable
 public final class SongCache {
     /// Bytes in the cache, for Settings.
@@ -26,13 +33,16 @@ public final class SongCache {
 
     static let aheadExpensive = 2
     static let ahead = 10
+    /// How much of a long file is kept behind the reader (plan 037).
+    static let behindMinutes = 10
+    static let partial = [".part", ".window", ".tmp"]
 
     init(app: AppModel) {
         self.app = app
         dir = app.files.appendingPathComponent("cache")
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        for f in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where f.hasSuffix(".part") {
+        for f in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where !Self.isWhole(f) {
             try? fm.removeItem(at: dir.appendingPathComponent(f))
         }
         measure()
@@ -108,28 +118,43 @@ public final class SongCache {
             try? FileManager.default.removeItem(at: e.file.url)
         }
         trim(limit, keep: wanted)
-        // One at a time, in the plan's order, as the phone fetches.
-        if entries.isEmpty, let next = plan.first(where: { complete($0.id) == nil }),
+        // One at a time, in the plan's order, as the phone fetches. A window
+        // paused at its end does not count: the next file is fetched meanwhile.
+        if !entries.values.contains(where: \.active),
+            let next = plan.first(where: { complete($0.id) == nil && entries[$0.id] == nil }),
             limit > 0 || next.id == plan.first?.id
         {
-            start(next)
+            // The next file's window starts at its start; the one playing anchors on its reader.
+            if let e = start(next), next.id != plan.first?.id { e.anchor(0) }
         }
     }
 
     @discardableResult
     private func start(_ s: Song) -> Fetch? {
         guard s.size > 0 else { return nil }
-        let part = dir.appendingPathComponent(name(s) + ".part")
+        let (ahead, behind) = window(for: s)
+        let part = dir.appendingPathComponent(name(s) + (ahead > 0 ? ".window" : ".part"))
         try? FileManager.default.removeItem(at: part)
         guard let file = try? SparseFile(part, size: Int64(s.size)) else { return nil }
-        let e = Fetch(request: app.api.request(app.api.streamURL(s.id)), file: file)
+        let e = Fetch(
+            request: app.api.request(app.api.streamURL(s.id)), file: file, ahead: ahead, behind: behind)
         let api = app.api
         e.reachable = { ok in api.reachable?(ok) }
         e.completed = { [weak self] in Task { @MainActor in self?.finished(s, e) } }
         e.gone = { [weak self] in Task { @MainActor in self?.dropped(s.id, e) } }
+        e.paused = { [weak self] in Task { @MainActor in self?.poke() } }
         entries[s.id] = e
         e.start()
         return e
+    }
+
+    /// The bytes fetched ahead of the reader and kept behind it: a window for
+    /// a long file whose size and length are known, else (0, 0), fetched whole.
+    private func window(for s: Song) -> (ahead: Int64, behind: Int64) {
+        let perMinute = s.size > 0 && s.durationMs > 0 ? Int64(s.size) * 60_000 / Int64(s.durationMs) : 0
+        guard perMinute > 0, app.playback.isLong(s) else { return (0, 0) }
+        let minutes = Int64(app.setting(Synced.cacheAhead))
+        return minutes > 0 ? (minutes * perMinute, Int64(Self.behindMinutes) * perMinute) : (0, 0)
     }
 
     private func finished(_ s: Song, _ e: Fetch) {
@@ -153,7 +178,10 @@ public final class SongCache {
     }
 
     /// Drops the songs played longest ago until the cache is within `limit`;
-    /// never one in the plan. Also drops any song since downloaded.
+    /// never one in the plan. Also drops any song since downloaded, and, once
+    /// it has left the plan, a long file an earlier version or setting kept
+    /// whole, which is cached as a window now. Parts and windows are not
+    /// songs: `run` drops them with their fetch.
     private func trim(_ limit: Int, keep: Set<Int>) {
         let fm = FileManager.default
         guard
@@ -161,9 +189,10 @@ public final class SongCache {
                 at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])
         else { return }
         var rest: [(URL, Date, Int)] = []
-        for f in files where !f.lastPathComponent.hasSuffix(".part") {
+        for f in files where Self.isWhole(f.lastPathComponent) {
             guard let id = Int(f.lastPathComponent.prefix { $0 != "." }) else { continue }
-            if app.downloads.file(id) != nil {
+            let windowed = app.catalog.byId[id].map { window(for: $0).ahead > 0 } ?? false
+            if app.downloads.file(id) != nil || (windowed && !keep.contains(id)) {
                 try? fm.removeItem(at: f)
                 continue
             }
@@ -181,14 +210,20 @@ public final class SongCache {
 
     private func measure() {
         let files =
-            (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]))
-            ?? []
-        used = files.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+            (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.totalFileAllocatedSizeKey])) ?? []
+        // Blocks, not length: a window is a sparse file as long as the whole book.
+        used = files.reduce(0) {
+            $0 + ((try? $1.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize) ?? 0)
+        }
         songs = Set(
-            files.filter { !$0.lastPathComponent.hasSuffix(".part") }.compactMap {
+            files.filter { Self.isWhole($0.lastPathComponent) }.compactMap {
                 Int($0.lastPathComponent.prefix { $0 != "." })
             })
     }
+
+    /// A file by its final name, not a part, a window or a roll in progress.
+    private static func isWhole(_ name: String) -> Bool { !partial.contains { name.hasSuffix($0) } }
 
     private func name(_ s: Song) -> String {
         "\(s.id).\(s.fileExtension.isEmpty ? s.format : s.fileExtension)"

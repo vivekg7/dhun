@@ -55,17 +55,23 @@ public final class FileBytes: Bytes {
 /// A file being filled out of order: the cache entry of a song that plays
 /// while it arrives. Whoever fetches calls `write`; readers wait for their
 /// range. `wanted` tells the fetcher where a reader is stuck, so it can jump
-/// there (a seek past what has arrived, or an MP4 whose index is at the end).
+/// there (a seek past what has arrived, or an MP4 whose index is at the end);
+/// `reading` tells it where every read is, so a window can follow the reader
+/// (plan 037).
 public final class SparseFile: Bytes, @unchecked Sendable {
     public let size: Int64
     public let url: URL
-    private let fd: Int32
+    private var fd: Int32
+    /// The file before the last `drop`: closed at the next one, when no read can still be on it.
+    private var retired: Int32 = -1
     private let cond = NSCondition()
     private var have: [Range<Int64>] = []  // sorted, disjoint
     private var failure: Error?
     private var interrupts = 0
     /// Called (off the lock) with the offset a reader waits for.
     public var wanted: (@Sendable (Int64) -> Void)?
+    /// Called (off the lock) with the offset and length of every read.
+    public var reading: (@Sendable (Int64, Int64) -> Void)?
 
     public init(_ url: URL, size: Int64) throws {
         self.url = url
@@ -75,7 +81,10 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         ftruncate(fd, off_t(size))
     }
 
-    deinit { close(fd) }
+    deinit {
+        close(fd)
+        if retired >= 0 { close(retired) }
+    }
 
     public var complete: Bool {
         cond.lock()
@@ -89,11 +98,66 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         return end(from: offset)
     }
 
+    /// Where the first bytes held start, or nil while none has arrived.
+    public var firstStart: Int64? {
+        cond.lock()
+        defer { cond.unlock() }
+        return have.first?.lowerBound
+    }
+
+    /// Where the next run after `offset` starts, or nil: a fetch from `offset` stops there.
+    public func nextStart(after offset: Int64) -> Int64? {
+        cond.lock()
+        defer { cond.unlock() }
+        return have.first { $0.lowerBound > offset }?.lowerBound
+    }
+
     public func write(_ offset: Int64, _ data: Data) {
+        cond.lock()
+        let fd = fd
+        cond.unlock()
         data.withUnsafeBytes { _ = pwrite(fd, $0.baseAddress, data.count, off_t(offset)) }
         cond.lock()
         add(offset..<offset + Int64(data.count))
         cond.broadcast()
+        cond.unlock()
+    }
+
+    /// Copies the bytes from `keepFrom` on into a fresh file that takes this
+    /// one's place, and forgets the rest: a window rolls behind its reader
+    /// (plan 037). Called by the writer between writes, so nothing is lost;
+    /// a read on the old file goes on, as it stays open until the next drop.
+    public func drop(before keepFrom: Int64) {
+        cond.lock()
+        let runs = have.compactMap { r -> Range<Int64>? in
+            r.upperBound > keepFrom ? max(r.lowerBound, keepFrom)..<r.upperBound : nil
+        }
+        let old = fd
+        cond.unlock()
+        let tmp = url.appendingPathExtension("tmp")
+        let nfd = open(tmp.path, O_RDWR | O_CREAT | O_TRUNC, 0o644)
+        guard nfd >= 0 else { return }
+        ftruncate(nfd, off_t(size))
+        var buf = [UInt8](repeating: 0, count: 256 * 1024)
+        for r in runs {
+            var p = r.lowerBound
+            while p < r.upperBound {
+                let n = pread(old, &buf, min(buf.count, Int(r.upperBound - p)), off_t(p))
+                guard n > 0 else { break }
+                pwrite(nfd, buf, n, off_t(p))
+                p += Int64(n)
+            }
+        }
+        guard rename(tmp.path, url.path) == 0 else {
+            close(nfd)
+            unlink(tmp.path)
+            return
+        }
+        cond.lock()
+        if retired >= 0 { close(retired) }
+        retired = fd
+        fd = nfd
+        have = runs
         cond.unlock()
     }
 
@@ -122,6 +186,7 @@ public final class SparseFile: Bytes, @unchecked Sendable {
     public func read(_ offset: Int64, _ count: Int, into: UnsafeMutableRawPointer) throws -> Int {
         let want = min(Int64(count), size - offset)
         guard want > 0 else { return 0 }
+        reading?(offset, want)
         cond.lock()
         var told = false
         let asOf = interrupts
@@ -144,6 +209,8 @@ public final class SparseFile: Bytes, @unchecked Sendable {
             }
             cond.wait()
         }
+        // The file as of now: a drop meanwhile moved these bytes to a new one.
+        let fd = fd
         cond.unlock()
         let n = pread(fd, into, Int(want), off_t(offset))
         guard n >= 0 else { throw BytesError.failed("read: \(errno)") }

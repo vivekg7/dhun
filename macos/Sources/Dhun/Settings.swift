@@ -209,6 +209,10 @@ struct PlaybackSettings: View {
                     choice("Rewind on resume", Synced.rewind) { $0 == 0 ? "Off" : "\($0) s" }
                     choice("After pauses of", Synced.rewindAfter) { "\($0) min" }
                         .disabled(app.setting(Synced.rewind) == 0)
+                    choice("Cache ahead", Synced.cacheAhead, info: "Song cache") {
+                        $0 == 0 ? "Whole file" : "\($0) min"
+                    }
+                    .help("A long file is cached around where you are, not whole.")
                 }
                 SwiftUI.Section("Listen Later") {
                     Toggle("Remove when finished", isOn: synced(Synced.autoRemove))

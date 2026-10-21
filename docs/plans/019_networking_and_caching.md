@@ -1,6 +1,6 @@
 # 019 — Networking, retries and caching on Android
 
-**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); app in 0.5.0 on the owner's phone; server side in `server-v0.1.4` on the NAS
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); app in 0.5.0 on the owner's phone; server side in `server-v0.1.4` on the NAS. Long files are cached as a window, not whole, since [037](037_long_file_cache_window.md)
 **Started:** 2026-10-07
 
 ## Problem

@@ -16,6 +16,8 @@ export const synced = {
   seekForward: s("longFiles.seekForward", 30, [10, 15, 30, 60, 120]),
   rewind: s("longFiles.rewind", 10, [0, 5, 10, 15, 30]),
   rewindAfter: s("longFiles.rewindAfter", 5, [1, 5, 10, 30, 60]),
+  // How many minutes of a long file the phone and the Mac cache ahead; 0 is the whole file (plan 037).
+  cacheAhead: s("longFiles.cacheAhead", 30, [10, 15, 30, 60, 0]),
   autoRemove: s("listenLater.autoRemove", true, [true, false]),
   finishedPercent: s("listenLater.finishedPercent", 90, [80, 90, 95, 100]),
   // Whether a show's page leaves out the episodes already played.

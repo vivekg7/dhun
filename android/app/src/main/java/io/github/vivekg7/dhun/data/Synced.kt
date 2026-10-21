@@ -52,6 +52,7 @@ class Synced<T> private constructor(
         val seekForward = int("longFiles.seekForward", 30, 10, 15, 30, 60, 120)
         val rewind = int("longFiles.rewind", 10, 0, 5, 10, 15, 30)
         val rewindAfter = int("longFiles.rewindAfter", 5, 1, 5, 10, 30, 60)
+        val longCacheAhead = int("longFiles.cacheAhead", 30, 10, 15, 30, 60, 0)
         val laterAutoRemove = bool("listenLater.autoRemove", true)
         val laterFinishedPercent = int("listenLater.finishedPercent", 90, 80, 90, 95, 100)
 
@@ -70,6 +71,7 @@ class Synced<T> private constructor(
                 seekForward,
                 rewind,
                 rewindAfter,
+                longCacheAhead,
                 laterAutoRemove,
                 laterFinishedPercent,
             )

@@ -308,6 +308,13 @@ private fun PlaybackSettings(openGuide: (String?) -> Unit) {
     val rewind = Synced.rewind.of(settings)
     Choice("Rewind on resume", Synced.rewind, { if (it == 0) "Off" else "$it s" })
     Choice("After pauses of", Synced.rewindAfter, { "$it min" }, enabled = rewind > 0)
+    Choice(
+        "Cache ahead",
+        Synced.longCacheAhead,
+        { if (it == 0) "Whole file" else "$it min" },
+        "A long file is cached around where you are, not whole.",
+        guide = "Song cache",
+    )
 
     SectionLabel("Listen Later")
     val autoRemove = Synced.laterAutoRemove.of(settings)

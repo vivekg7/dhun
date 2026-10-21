@@ -58,9 +58,11 @@ and every device sees the same one.
   | `longFiles.seekForward` | seconds                                   | `30`     |
   | `longFiles.rewind`      | seconds, `0` for none                     | `10`     |
   | `longFiles.rewindAfter` | minutes                                   | `5`      |
+  | `longFiles.cacheAhead`  | minutes, `0` for the whole file           | `30`     |
 
   `longFiles.next`, the last four and `longFiles.previous: "seek"` came
-  later (see below).
+  later (see below); `longFiles.cacheAhead` with
+  [037](037_long_file_cache_window.md).
 
   A missing setting, or `null`, means the default. Names are 1–64 letters,
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,

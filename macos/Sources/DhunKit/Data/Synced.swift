@@ -12,6 +12,7 @@ public enum Synced {
     public static let seekForward = Key("longFiles.seekForward", 30, [10, 15, 30, 60, 120])
     public static let rewind = Key("longFiles.rewind", 10, [0, 5, 10, 15, 30])
     public static let rewindAfter = Key("longFiles.rewindAfter", 5, [1, 5, 10, 30, 60])
+    public static let cacheAhead = Key("longFiles.cacheAhead", 30, [10, 15, 30, 60, 0])
     public static let autoRemove = Key("listenLater.autoRemove", true)
     public static let finishedPercent = Key("listenLater.finishedPercent", 90, [80, 90, 95, 100])
     /// Whether a show's page leaves out the episodes already played: set on that page, not in Settings.
@@ -20,7 +21,8 @@ public enum Synced {
     /// The ones on the Playback page, which its Reset to defaults clears.
     public static let playback = [
         previousRestart.name, minMinutes.name, resume.name, previous.name, next.name, seekBack.name,
-        seekForward.name, rewind.name, rewindAfter.name, autoRemove.name, finishedPercent.name,
+        seekForward.name, rewind.name, rewindAfter.name, cacheAhead.name, autoRemove.name,
+        finishedPercent.name,
     ]
 
     public struct Key<Value: SyncedValue>: Sendable {

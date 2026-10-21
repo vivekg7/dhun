@@ -31,6 +31,26 @@ import Testing
     #expect(throws: BytesError.self) { try file.read(0, 4, into: &got) }
 }
 
+/// A long file's window rolls behind its reader (plan 037): the bytes from
+/// the keep point on move to a new file at their offsets, the rest is
+/// forgotten, and reads and writes go on in the new file.
+@Test func dropKeepsTheBytesBehindTheReader() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let file = try SparseFile(url, size: 16)
+    file.write(0, Data([1, 2, 3, 4, 5, 6, 7, 8]))
+    file.write(8, Data([9, 10, 11, 12]))
+    file.drop(before: 6)
+    #expect(file.firstStart == 6)
+    #expect(file.arrived(from: 0) == 0)
+    #expect(file.arrived(from: 6) == 12)
+    file.write(12, Data([13, 14, 15, 16]))
+    var got = [UInt8](repeating: 0, count: 10)
+    #expect(try file.read(6, 10, into: &got) == 10)
+    #expect(got == [7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+    #expect(!file.complete)
+}
+
 final class Locked<T>: @unchecked Sendable {
     private var value: T
     private let lock = NSLock()
