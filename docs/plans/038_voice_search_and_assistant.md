@@ -1,6 +1,6 @@
 # 038 — Voice search, "play it on Dhun", and shortcuts on the icon
 
-**Status:** `MERGED` — Android on `main` (2026-10-21); not yet released
+**Status:** `RELEASED` — in the 0.16.2 GitHub release (2026-10-21); Android only; not yet installed
 **Started:** 2026-10-21
 
 ## Problem

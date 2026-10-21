@@ -10,7 +10,7 @@ lives on a NAS.
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
 Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
-runs on the owner's phone as 0.16.1, with downloads, playlist editing, the
+runs on the owner's phone as 0.16.2, with downloads, playlist editing, the
 sleep timer, lyrics, speed and pitch, hand-off, settings grouped as in
 Musicolet, a song cache, playback that waits out a network drop
 ([plan 019](docs/plans/019_networking_and_caching.md)), Musicolet's
@@ -28,9 +28,11 @@ control, a floating mini player and Open With from Finder; 0.16.1 is in
 daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone. The APK and the Mac app are in the
-[0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1);
-the server image is in the
+online-only, on a computer or a phone. The APK is in the
+[0.16.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.2),
+the Mac app in the
+[0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1)
+and the server image in the
 [0.16.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.0).
 
 ## Run the server
