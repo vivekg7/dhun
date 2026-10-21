@@ -1,6 +1,10 @@
 package io.github.vivekg7.dhun.ui
 
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
@@ -168,6 +173,19 @@ fun SearchScreen(nav: Nav) {
     val keep = { app.prefs.keepSearch(query) }
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    // The Search shortcut on the icon: the box takes focus, and the flag goes once it has.
+    val focusAsked by app.intents.focusSearch.collectAsState()
+    if (focusAsked) LaunchedEffect(Unit) { app.intents.focusSearch.value = false }
+    // The system's recogniser, where one is installed; what it heard goes into the box as if typed (docs/plans/038_voice_search_and_assistant.md).
+    val context = LocalContext.current
+    val canHear = remember { listen().resolveActivity(context.packageManager) != null }
+    val hear =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            r.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.let { query = it }
+        }
 
     fun whole(f: Found) = f.kind == Kind.Songs || f.kind.name in expanded.split(',')
 
@@ -196,7 +214,11 @@ fun SearchScreen(nav: Nav) {
 
     FastScroll(list, Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), list) {
-            item { SearchField(query, { query = it }, "Search songs, albums, artists, lyrics") }
+            item {
+                SearchField(query, { query = it }, "Search songs, albums, artists, lyrics", autofocus = focusAsked) {
+                    if (canHear) Tip("Search by voice") { IconButton({ hear.launch(listen()) }) { Icon(Icons.Mic, "Search by voice", Modifier.size(22.dp)) } }
+                }
+            }
             if (query.isBlank()) {
                 recent(app.prefs.recentSearches, { query = it }, catalog.songs.size)
                 return@LazyColumn
@@ -243,6 +265,18 @@ fun SearchScreen(nav: Nav) {
         }
     }
 }
+
+/**
+ * What the mic asks of the recogniser: free speech, on the device where it
+ * can (Android 12 phones without the model use the online one), in the
+ * phone's language. Devanagari folds to Latin in search, so Hindi needs
+ * nothing more.
+ */
+private fun listen(): Intent =
+    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Say a song, an artist, an album or a line")
 
 /**
  * The sections found, one tap away (docs/plans/029_search.md). Pinned under

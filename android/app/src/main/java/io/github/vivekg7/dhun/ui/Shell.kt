@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.play.Intents
 import io.github.vivekg7.dhun.ui.Motion.page
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -307,6 +308,24 @@ fun Shell() {
                 pager.animateScrollToPage(to)
             } else {
                 pager.scrollToPage(to)
+            }
+        }
+    }
+
+    // A request from outside (the assistant, a shortcut on the icon) brings its tab up (docs/plans/038_voice_search_and_assistant.md).
+    LaunchedEffect(Unit) {
+        App.app.intents.show.collect { s ->
+            nav.settings = null
+            when (s) {
+                Intents.Screen.Now -> {
+                    nav.slide = true
+                    nav.tab = Tab.Now
+                }
+
+                Intents.Screen.Search -> {
+                    while (nav.canPop(Tab.Search)) nav.pop(Tab.Search)
+                    nav.tab = Tab.Search
+                }
             }
         }
     }

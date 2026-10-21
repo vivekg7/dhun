@@ -350,6 +350,14 @@ since 0.13.0. Anything else waits for a later release.
   (दिल and dil), accents, and a typo where nothing better matches. Recent
   searches are kept (owner, 2026-10-10;
   [plans/029](plans/029_search.md)).
+- **Asking by voice, on Android.** A mic in the Search box puts what the
+  phone's recogniser heard into the box, on the device where it can. The
+  phone's assistant can be asked to play something "on Dhun" with the app
+  closed or running: the request is resolved against the catalogue on the
+  phone and plays a new queue named after it, never the current one
+  changed. Long-press shortcuts on the icon: Search, Resume, Shuffle all.
+  Nothing is bundled for any of it; lightweight comes first (owner,
+  2026-10-21; [plans/038](plans/038_voice_search_and_assistant.md)).
 - **Multiple queues.** Playing from any list starts a new queue instead of
   replacing the current one. You can:
   - switch to or resume a queue, rename it, remove it;
@@ -398,7 +406,10 @@ since 0.13.0. Anything else waits for a later release.
 - Media notification, lock-screen and Bluetooth / headset controls. A
   wired headset's button: one press plays or pauses, two go to the next
   song, three to the previous (owner, 2026-10-11). Pause on disconnect,
-  and audio focus (pause during calls).
+  and audio focus (pause during calls). **With no player running, the
+  button starts Dhun** and plays on where it was, when Dhun was the last
+  player used, rather than whichever app Android last remembered (owner,
+  2026-10-21; [plan 038](plans/038_voice_search_and_assistant.md)).
 - **Every listen logged** to the server, skips included, with its local
   time and how it ended, for a future recommender. A listen adds to the
   play count only when at least half the song was heard —

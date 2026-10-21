@@ -18,6 +18,13 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Whether a speech recogniser is installed, for the mic in Search (docs/plans/038_voice_search_and_assistant.md). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <!--
       No backup (allowBackup for old devices, no_backup.xml for Android 12+):
       everything comes back from the server on sign-in,
@@ -45,6 +52,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Hey Google, play X on Dhun" with the app closed (docs/plans/038_voice_search_and_assistant.md). -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Long-press the icon: Search, Resume, Shuffle all (res/xml/shortcuts.xml). -->
+            <intent-filter>
+                <action android:name="io.github.vivekg7.dhun.SEARCH" />
+                <action android:name="io.github.vivekg7.dhun.RESUME" />
+                <action android:name="io.github.vivekg7.dhun.SHUFFLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!--
@@ -80,6 +102,21 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!--
+          A headset button with no player running: Android sends it to the
+          receiver of the last session that had one, so this is what makes
+          the button start Dhun rather than the app used before it
+          (docs/plans/038_voice_search_and_assistant.md). The service then
+          resumes through SessionCallback.onPlaybackResumption.
+        -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".play.DownloadService"

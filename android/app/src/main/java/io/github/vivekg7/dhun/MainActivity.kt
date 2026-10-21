@@ -1,6 +1,7 @@
 package io.github.vivekg7.dhun
 
 import android.content.ComponentName
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // A fresh start only: a recreate (a rotation) brings the launching intent again.
+        if (savedInstanceState == null) app.intents.handle(intent)
+    }
+
+    /** The assistant's "play X on Dhun" or a shortcut on the icon while the app is up (docs/plans/038_voice_search_and_assistant.md). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        (application as App).intents.handle(intent)
     }
 
     /**

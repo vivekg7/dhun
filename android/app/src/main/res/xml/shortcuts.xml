@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The shortcuts under a long press on the icon, as Musicolet's
+  (docs/plans/038_voice_search_and_assistant.md). Each is an action on the
+  main activity, by the action alone: a target package would have to be
+  written in, and a debug build's id ends in ".debug".
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutId="search"
+        android:shortcutShortLabel="@string/shortcut_search">
+        <intent
+            android:action="io.github.vivekg7.dhun.SEARCH" />
+    </shortcut>
+    <shortcut
+        android:icon="@drawable/ic_shortcut_resume"
+        android:shortcutId="resume"
+        android:shortcutShortLabel="@string/shortcut_resume">
+        <intent
+            android:action="io.github.vivekg7.dhun.RESUME" />
+    </shortcut>
+    <shortcut
+        android:icon="@drawable/ic_shortcut_shuffle"
+        android:shortcutId="shuffle"
+        android:shortcutShortLabel="@string/shortcut_shuffle">
+        <intent
+            android:action="io.github.vivekg7.dhun.SHUFFLE" />
+    </shortcut>
+</shortcuts>

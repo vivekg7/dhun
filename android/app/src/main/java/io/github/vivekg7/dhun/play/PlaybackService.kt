@@ -12,6 +12,7 @@ import androidx.annotation.OptIn
 import androidx.core.content.IntentCompat
 import androidx.media3.common.FlagSet
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.BitmapLoader
@@ -23,6 +24,7 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import io.github.vivekg7.dhun.App
@@ -68,7 +70,7 @@ class PlaybackService : MediaSessionService() {
             MediaSession
                 .Builder(this, SleepAware(app.playback.player, app.playback.sleep))
                 .setSessionActivity(open)
-                .setCallback(HeadsetButton())
+                .setCallback(SessionCallback())
                 .setBitmapLoader(CoverLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build()))
                 .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_stat) })
@@ -214,16 +216,66 @@ private class SleepAware(
 }
 
 /**
+ * What other controllers ask of the session, beyond the player's own commands.
+ *
  * A wired headset's button sends each press as it comes, and the app counts
  * them: one plays or pauses, two go to the next song, three to the previous,
  * once the presses stop. Media3 counts only to two, so a third press paused.
  * Buds count their own taps and send Next or Previous, which never get here.
  * The notification's Play sends the same key, and acts at once.
+ *
+ * "Play X on Dhun" while the app runs arrives as the assistant's
+ * playFromSearch, which Media3 hands on as items to set with a search query
+ * in their request metadata (docs/plans/038_voice_search_and_assistant.md).
  */
 @OptIn(UnstableApi::class)
-private class HeadsetButton : MediaSession.Callback {
+private class SessionCallback : MediaSession.Callback {
     private val handler = Handler(Looper.getMainLooper())
     private var presses = 0
+
+    override fun onSetMediaItems(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        mediaItems: List<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        val asked =
+            mediaItems.firstOrNull { it.requestMetadata.searchQuery != null }
+                ?: return super.onSetMediaItems(mediaSession, controller, mediaItems, startIndex, startPositionMs)
+        App.app.intents.play(asked.requestMetadata.searchQuery!!, asked.requestMetadata.extras)
+        // The queue is Playback's to make. A failed future tells Media3 the session
+        // chose to ignore the request, and it leaves the player alone.
+        return Futures.immediateFailedFuture(UnsupportedOperationException("Dhun plays it as a queue"))
+    }
+
+    /**
+     * A headset button, or Bluetooth, with no player running: the receiver
+     * in the manifest starts the service, and Media3 asks for something to
+     * play. Playback restores the last queue itself, so this waits for it
+     * and presses Play; the future fails on purpose, since the items it
+     * would carry are already in the player, and Media3 then only calls
+     * play on a player that is playing.
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        val done = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+        if (!isForPlayback) {
+            done.setException(UnsupportedOperationException("No resumption notification without a library service"))
+            return done
+        }
+        App.app.scope.launch {
+            try {
+                App.app.intents.resume(show = false)
+            } finally {
+                done.setException(IllegalStateException("Dhun restored its own queue"))
+            }
+        }
+        return done
+    }
 
     override fun onMediaButtonEvent(
         session: MediaSession,

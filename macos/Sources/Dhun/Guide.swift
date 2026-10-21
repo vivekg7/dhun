@@ -12,6 +12,22 @@ let guideText = #"""
     A **playlist** is kept until you delete it. Changing a queue never changes
     a playlist.
 
+    ## Asking by voice
+
+    The mic in the Search box listens, and what you said goes into the box as
+    if you had typed it. Hindi works: a name heard in Devanagari finds the
+    same songs as its Latin spelling.
+
+    On a phone, "Hey Google, play Kishore Kumar on Dhun" opens the app and
+    plays a new queue named after what you asked for: an artist, an album, a
+    genre, a playlist, a book or a show, or the songs matching a title. Asking
+    for nothing in particular ("play something on Dhun") plays on where you
+    were. Long-press the app's icon for Search, Resume and Shuffle all.
+
+    With nothing playing and the app closed, the button on a wired headset
+    or Bluetooth starts Dhun and plays on where you were, as long as Dhun was
+    the last player you used.
+
     ## What follows you
 
     Queues, playlists, favourites, Listen Later, play counts, where you are

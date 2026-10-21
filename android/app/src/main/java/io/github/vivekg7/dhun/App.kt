@@ -21,6 +21,7 @@ import io.github.vivekg7.dhun.data.Lyrics
 import io.github.vivekg7.dhun.data.SongCache
 import io.github.vivekg7.dhun.data.Store
 import io.github.vivekg7.dhun.data.Sync
+import io.github.vivekg7.dhun.play.Intents
 import io.github.vivekg7.dhun.play.Playback
 import io.github.vivekg7.dhun.play.Tempo
 import io.github.vivekg7.dhun.ui.MiniPlayerStyle
@@ -50,6 +51,7 @@ class App : Application() {
     val lyrics by lazy { Lyrics(this) }
     val cache by lazy { SongCache(this) }
     val local by lazy { LocalSongs(this) }
+    val intents by lazy { Intents(this) }
 
     /**
      * The catalogue in memory: about 30,000 songs today, built for 100,000,
