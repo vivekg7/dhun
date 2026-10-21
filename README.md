@@ -10,7 +10,7 @@ lives on a NAS.
 scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
 of every listen, resume points for long files, and Favorites and Listen
 Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
-runs on the owner's phone as 0.16.0, with downloads, playlist editing, the
+runs on the owner's phone as 0.16.1, with downloads, playlist editing, the
 sleep timer, lyrics, speed and pitch, hand-off, settings grouped as in
 Musicolet, a song cache, playback that waits out a network drop
 ([plan 019](docs/plans/019_networking_and_caching.md)), Musicolet's
@@ -24,7 +24,7 @@ playable without signing in, with downloads kept through a sign-out
 ([plan 026](docs/plans/026_without_an_account.md)).
 The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
 is built to the Android app's level, offline included, with a menu bar
-control, a floating mini player and Open With from Finder; 0.16.0 is in
+control, a floating mini player and Open With from Finder; 0.16.1 is in
 daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,

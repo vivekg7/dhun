@@ -1,6 +1,6 @@
 # 037 — A window, not the whole file, for long files in the cache
 
-**Status:** `RELEASED` — in the 0.16.1 GitHub release (2026-10-21); Android and the Mac only; not yet installed
+**Status:** `RELEASED` — in the 0.16.1 GitHub release (2026-10-21); 0.16.1 on the owner's phone and Mac; the server stays at `server-v0.16.0`
 **Started:** 2026-10-20
 
 ## Problem
