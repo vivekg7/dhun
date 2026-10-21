@@ -28,9 +28,10 @@ control, a floating mini player and Open With from Finder; 0.16.0 is in
 daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone. All three are in the
-[0.16.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.0):
-the APK, the Mac app and the server image.
+online-only, on a computer or a phone. The APK and the Mac app are in the
+[0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1);
+the server image is in the
+[0.16.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.0).
 
 ## Run the server
 

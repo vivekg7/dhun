@@ -1,6 +1,6 @@
 # 037 — A window, not the whole file, for long files in the cache
 
-**Status:** `MERGED` — Android and the Mac on `main` (2026-10-21); not yet released
+**Status:** `RELEASED` — in the 0.16.1 GitHub release (2026-10-21); Android and the Mac only; not yet installed
 **Started:** 2026-10-20
 
 ## Problem
