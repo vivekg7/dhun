@@ -31,3 +31,8 @@ macos/.build/
 
 # Time Machine browser captures: large, and they hold session cookies.
 storage/
+
+# Cargo and flatpak-builder output for the Linux app.
+linux/target/
+linux/.flatpak-builder/
+linux/build-dir/

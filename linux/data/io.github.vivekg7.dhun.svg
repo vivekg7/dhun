@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 1024 1024">
+  <!-- Dhun's mark, as android/app/src/main/res/drawable/ic_glyph.xml and
+       macos/make-icon.swift draw it: the play triangle cut into three slices,
+       white on the brand colour, in a rounded square. -->
+  <defs>
+    <clipPath id="slices">
+      <rect x="0" y="0" width="108" height="45.05"/>
+      <rect x="0" y="49.55" width="108" height="8.9"/>
+      <rect x="0" y="62.95" width="108" height="45.05"/>
+    </clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#C27B45"/>
+  <g transform="translate(100 100) scale(7.6296)">
+    <path d="M44 34 L76 54 L44 74 Z" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round" clip-path="url(#slices)"/>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+[package]
+name = "dhun"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dhun-core = { path = "../core" }
+# Ubuntu 24.04's GTK and libadwaita are the oldest the app builds against (plan 039).
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }

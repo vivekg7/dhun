@@ -184,3 +184,29 @@ emulator video cannot show. The keystroke lines also show each query
 searched twice in a row on some keystrokes (a recomposition asks again),
 cheap at these numbers but worth a look. No errors or crashes in logcat
 across sign-in, browsing, search and playback on either build.
+
+## 2026-10-23, the Linux app (plan 039, step 1)
+
+The first Linux build, release, on the Linux desktop, signed in as the test
+account against the NAS: 31,212 songs once the missing are left out. The
+Linux app logs `catalogue:` and `search indexes:` under the GLib log domain
+`Dhun` (`G_MESSAGES_DEBUG=Dhun`).
+
+| What                                               | Measured                                 |
+| -------------------------------------------------- | ---------------------------------------- |
+| First pull of the library, 32,434 songs            | 1.5 s                                    |
+| Read the songs from SQLite                         | 115–135 ms                               |
+| Build the catalogue                                | 145–165 ms                               |
+| Song and album search indexes, after the catalogue | 315–370 ms                               |
+| Process start to the window, then to the library   | 0.8 s, then about 1.1 s                  |
+| One keystroke, songs index, "t" to "tum hi ho"     | 6–15 ms                                  |
+| One keystroke, "arjit sing" (misspelt)             | 15–20 ms                                 |
+| Memory, nothing signed in / library and album grid | 126 MB / about 280 MB, on Wayland        |
+| The library's own memory, without GTK              | 71 MB: songs 39, catalogue 13, index 13  |
+| The Flatpak, as a bundle / installed               | 793 KB / 2.5 MB, on the GNOME 51 runtime |
+
+The catalogue build is five times faster than the Mac's for the same
+songs, which supports profiling the Mac's `sortKey` and groupings, as the
+section above suggests. Memory is the number to watch: GTK's GPU renderer
+alone is 126 MB, and decoded covers add up to 32 MB. Not yet measured: the
+same at 100,000 songs, and the native build.

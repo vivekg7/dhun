@@ -28,7 +28,9 @@ control, a floating mini player and Open With from Finder; 0.16.1 is in
 daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone. The APK is in the
+online-only, on a computer or a phone. A Linux app (`linux/`,
+[plan 039](docs/plans/039_linux_app.md)) is being built in Rust and GTK:
+it signs in and browses the library, and plays nothing yet. The APK is in the
 [0.16.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.2),
 the Mac app in the
 [0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1)
@@ -73,10 +75,16 @@ its toolchain only: it is a Swift package, built from the command line.
 The web client needs nothing to build: it is plain HTML, CSS and
 JavaScript, embedded in the server. While working on it, run the server
 with `DHUN_WEB_DIR=server/web`, so a reload shows an edit without a
-rebuild; `make test-web` runs its tests with Node's own runner. A Mac
+rebuild; `make test-web` runs its tests with Node's own runner. The Linux
+app needs Rust and the GTK 4, libadwaita and SQLite `-dev` packages, or
+else only Flatpak: without `cargo` on the PATH the Makefile runs it inside
+the GNOME SDK (`scripts/sdk.sh`, which says what to install once).
+`DHUN_SCREENSHOT=<png>` with `DHUN_OPEN` draws its window to a file and
+quits, for checking a change with no one at the screen
+([plan 039](docs/plans/039_linux_app.md)). A Mac
 build under test takes `DHUN_DATA=<folder>`, so it keeps its own library
-and sign-in instead of opening the installed app's. Both apps log how long
-the catalogue takes, for the speed targets
+and sign-in instead of opening the installed app's, as does a Linux build.
+The apps log how long the catalogue takes, for the speed targets
 ([performance-baseline](docs/research/performance-baseline.md)).
 
 ### Versions
@@ -102,7 +110,8 @@ to 0.12.0, the first number none had used (owner, 2026-10-10).
 
 The Android version is in `android/app/build.gradle.kts` (raise
 `versionCode` too), the Mac's in `macos/Info.plist` (raise
-`CFBundleVersion` too), and the server's is its tag, `server-vX.Y.Z`.
+`CFBundleVersion` too), the Linux app's in `linux/app/Cargo.toml`, and the
+server's is its tag, `server-vX.Y.Z`.
 
 ### Release builds
 
@@ -134,6 +143,13 @@ Apple account or certificate), and archives it in `local/` as
 copies it to `/Applications`. The version is in `macos/Info.plist`. On a
 Mac other than the one that built it, allow the first launch under System
 Settings → Privacy & Security.
+
+`make linux` (`scripts/build-linux.sh`) builds the Linux app's Flatpak and
+archives it in `local/` as `dhun-linux-v<version>.flatpak`, under the same
+naming rules; `--install` also installs it for this user, and
+`flatpak install --user <file>` does on another machine. `make
+linux-install` builds against the system's GTK instead and installs into
+`~/.local`.
 
 A GitHub release is tagged `vX.Y.Z` on the commit the version came from,
 beside its `server-vX.Y.Z`, and carries the APK and the Mac zip with their

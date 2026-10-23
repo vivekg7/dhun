@@ -1,0 +1,25 @@
+# The Linux half of `make check`, when the Linux app changes (plan 039). On
+# Ubuntu 24.04, the oldest GTK and libadwaita the app builds against.
+name: linux
+
+on:
+  push:
+    branches: [main]
+    paths:
+      ["linux/**", "api/search-fold.tsv", "Makefile", ".github/workflows/linux.yml"]
+  pull_request:
+    paths:
+      ["linux/**", "api/search-fold.tsv", "Makefile", ".github/workflows/linux.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libsqlite3-dev
+      # A Rust new enough for edition 2024, with rustfmt and clippy.
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - run: make lint-linux test-linux

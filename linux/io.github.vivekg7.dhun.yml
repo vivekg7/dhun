@@ -1,0 +1,39 @@
+# The Flatpak (docs/plans/039_linux_app.md). `make linux` builds it with
+# org.flatpak.Builder. Not for Flathub: the build fetches the crates
+# Cargo.lock pins, rather than listing each one as a source.
+id: io.github.vivekg7.dhun
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: dhun
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: dhun
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/dhun/cargo
+    build-commands:
+      - cargo build --release --locked -p dhun
+      - install -Dm755 target/release/dhun /app/bin/dhun
+      - install -Dm644 data/io.github.vivekg7.dhun.desktop /app/share/applications/io.github.vivekg7.dhun.desktop
+      - install -Dm644 data/io.github.vivekg7.dhun.svg /app/share/icons/hicolor/scalable/apps/io.github.vivekg7.dhun.svg
+      - install -Dm644 data/io.github.vivekg7.dhun.metainfo.xml /app/share/metainfo/io.github.vivekg7.dhun.metainfo.xml
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - target
+          - build-dir
+          - .flatpak-builder

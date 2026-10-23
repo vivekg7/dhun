@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — the playback spike is done (2026-10-23); step 1 next
+**Status:** `IN PROGRESS` — steps 0 and 1 done (2026-10-23): the library browses, nothing plays yet; not released
 **Started:** 2026-10-23
 
 ## Problem
@@ -277,24 +277,33 @@ override:
   from **Sync now**.
 - **Dependencies** (crates): `gtk4`, `libadwaita`, `gstreamer`,
   `gstreamer-app` and `glib`/`gio` from the gtk-rs project; `rusqlite` on
-  the system's SQLite (not its bundled copy); `ureq` for HTTP, with its TLS
-  off because the NAS is reached over plain HTTP, on worker threads so no
-  async runtime joins; `serde` and `serde_json`. D-Bus, the network monitor
-  and file paths come from GIO, so `zbus`, `dirs` and the like stay out.
-  `Cargo.lock` is committed.
+  the system's SQLite (not its bundled copy); `ureq` for HTTP, with gzip
+  for the first sync and its TLS off because the NAS is reached over plain
+  HTTP, on worker threads so no async runtime joins; `serde` and
+  `serde_json`; `unicode-normalization` for search's NFKD folding, which
+  the standard library lacks. D-Bus, the network monitor and file paths
+  come from GIO, so `zbus`, `dirs` and the like stay out. Thumbnails'
+  base64 is twenty lines of our own. `Cargo.lock` is committed.
+- **No HTTPS yet.** An `https://` server (the NAS behind `tailscale serve`,
+  [003](003_deployment.md)) is refused with a message. Supporting it means
+  a TLS crate, which waits until someone uses that setup.
 - **Two crates in one workspace.** `linux/core` holds what needs no display:
   the API client, the database, `Store` and `Sync`, the catalogue and
   search, the cache and the fetcher, lyrics. `linux/app` holds the window,
   the player, MPRIS and the tray. The split exists for the tests, which
   run `cargo test` on `core` without GTK, GStreamer or a display, as
   `DhunKit` is tested apart from the Mac's window.
-- **The Flatpak builds offline**, as Flatpak requires: the crates come from
-  a generated `cargo-sources.json` (flatpak-builder-tools' cargo
-  generator), committed beside the manifest and regenerated when
-  `Cargo.lock` changes. Sandbox permissions: network, Wayland with X11 as a
-  fallback, PulseAudio (PipeWire answers it), the GPU, the MPRIS name, the
-  StatusNotifierItem watcher and logind's sleep signal. No file system
-  access: Open With hands files in through the document portal.
+- **The Flatpak's build fetches the crates** that `Cargo.lock` pins, with
+  network access for that one build step. Flathub would want each crate
+  listed as a source (`cargo-sources.json`, from flatpak-builder-tools'
+  generator); this Flatpak is built on the owner's machine and handed out
+  in GitHub releases, so a generator and a second file to keep in step with
+  `Cargo.lock` buy nothing (changed in step 1). Sandbox permissions grow
+  with the steps: network, IPC, Wayland with X11 as a fallback and the GPU
+  now; PulseAudio (PipeWire answers it) with playing; the MPRIS name, the
+  StatusNotifierItem watcher and logind's sleep signal with what uses them.
+  No file system access: Open With hands files in through the document
+  portal.
 - **Versioning.** Linux joins the shared sequence (README, Versions). Its
   version lives in `linux/app/Cargo.toml`. Its first release takes the next
   free patch number, for Linux alone.
@@ -305,8 +314,20 @@ override:
 - **Tooling.** `cargo fmt` joins `make fmt`; `lint-linux` (`cargo fmt
 --check`, `cargo clippy -D warnings`) and `test-linux` (`cargo test`) join
   the `Makefile`, and a CI job runs them on `ubuntu-24.04` with the GTK and
-  GStreamer development packages. `scripts/check-settings.sh` learns the
-  Linux app's copy of the synced defaults and the guide (034).
+  GStreamer development packages. Where `cargo` is not on the PATH they run
+  inside the GNOME SDK through `scripts/sdk.sh`, so the owner's desktop
+  needs no Rust or `-dev` packages; a machine with neither (the Mac) leaves
+  them out of `make check` and to CI, since its pre-push hook runs `make
+check`. `scripts/check-settings.sh` learns the Linux app's copy of the
+  synced defaults and the guide (034).
+- **Checking the window with no one at the screen.** `DHUN_SCREENSHOT=<png>`
+  draws the window to a PNG a few seconds after start and quits;
+  `DHUN_OPEN` opens pages once the library has loaded (`artists`,
+  `artist:<name>`, `album:<name>`, `search:<words>`, …) and `DHUN_SIZE`
+  sets the window's size. Run on GTK's headless Broadway display
+  (`gtk4-broadwayd`, in the SDK), nothing appears on the desktop: how an
+  agent checks a change to the window. `DHUN_DATA` keeps a build under
+  test apart from the installed app's library and sign-in, as on the Mac.
 - **The speed targets apply.** The app logs `catalogue:` and `search`
   timings under the GLib log domain `Dhun`, as the other apps do, and
   `performance-baseline.md` gets a Linux section at 30,000 and 100,000
@@ -339,13 +360,14 @@ moves with it.
    pre-skip. **Done (2026-10-23)**; the results are under
    [What the spike showed](#what-the-spike-showed-2026-10-23). MP3 needed
    such a step, the tag renamed. The spike stays out of the repository:
-   the source element and the fetcher are written again in step 1.
+   the source element and the fetcher are written again in step 2.
 
 1. **Skeleton.** The workspace, `make linux`, `make linux-install`, the
    Makefile targets and CI. Sign-in, the token file, the schema, the library
    pull, the catalogue (natural sort, groupings, the folder tree, search),
    browsing with covers. Ported tests: the catalogue's. Measured against
-   the speed targets before going further.
+   the speed targets before going further. **Done (2026-10-23)**; see
+   [How step 1 went](#how-step-1-went-2026-10-23).
 2. **Playing.** The player under `Playback`: the 20 queues, the queue panel
    and picker, listens, resume points (009), hand-off (017), MPRIS, pause
    on an output change. **First release**, the first install.
@@ -362,6 +384,67 @@ moves with it.
    launcher's three shortcuts, the Background portal.
 6. **Measure and release.** The Linux section of `performance-baseline.md`;
    REQUIREMENTS, README and this plan's status brought up to date.
+
+## How step 1 went (2026-10-23)
+
+**Built:** `linux/core` (the API client, the database with the Mac's
+schema and migrations, the library pull with the playlist rules of plan
+013, covers, the catalogue and search) and `linux/app` (sign-in, the
+sidebar with the library's sections and the playlists, albums as a grid of
+covers, artists, genres, the folder tree, audiobooks and podcasts, each
+page's filter past 12 rows, and search over all of them). The window
+collapses to one pane below 640 px. The Flatpak builds; the bundle is
+793 KB, 2.5 MB installed, since GTK, libadwaita and SQLite come with the
+runtime.
+
+**Checked:** the 15 tests, among them the phone's and the Mac's catalogue
+and search cases and `api/search-fold.tsv`, which the Rust fold passes as
+the other four copies do. Signed in as the test account against the NAS,
+the first pull took 32,434 songs in 1.5 s and the 6,975 thumbnails in
+104 s over the desktop's Wi-Fi, once. Every page was looked at in
+screenshots taken on Broadway.
+
+**Measured** on the desktop, release build, 31,212 songs:
+
+| What                                                      | Measured                                   | Target      |
+| --------------------------------------------------------- | ------------------------------------------ | ----------- |
+| Process start to the window                               | 0.8 s                                      | —           |
+| Read the songs, build the catalogue (off the main thread) | 120–135 ms, 145–160 ms                     | —           |
+| Process start to the library on screen                    | about 1.1 s                                | under 1 s   |
+| Song and album search indexes (after, in the background)  | 325–370 ms                                 | —           |
+| One keystroke, songs index, "t" to "tum hi ho"            | 6–15 ms; "arjit sing" (misspelt) 15–20 ms  | under 50 ms |
+| Memory, nothing signed in, on Wayland                     | 126 MB, all of it GTK and its GPU renderer | —           |
+| Memory, the library and the album grid, on Wayland        | about 280 MB                               | —           |
+| The library's own data, measured without GTK              | 71 MB (songs 39, catalogue 13, index 13)   | —           |
+
+The Mac takes 723–809 ms to build the same catalogue
+([performance-baseline](../research/performance-baseline.md)).
+
+**Changed while building:**
+
+- **The search index keeps its words, sound keys and titles packed** in a
+  few large arrays rather than an allocation each. The first build took
+  41 MB for the song index, half of it pages freed by the build that could
+  not go back to the system because the index's own small allocations sat
+  among them; packed, it takes 13 MB, and keystrokes are as fast. The Mac's
+  and the phone's indexes hold the same data the old way, which is worth a
+  look there.
+- **The catalogue shows before the search indexes are built**, in a second
+  pass; together they had kept the library off the screen for a third of a
+  second more.
+- **Songs are read straight into shared pointers**, so building the
+  catalogue no longer copies each into an allocation of its own (13 MB
+  freed and stranded).
+- **Decoded covers are kept up to 32 MB** rather than up to 200 covers,
+  which at 256 px came to 50 MB.
+- **This machine's settings are a JSON file**, `prefs.json` in the app's
+  folder, not GSettings, whose schema would have to be compiled and
+  installed beside the app for a handful of values only it reads.
+
+**Not done:** the native install has not been built here, as the desktop
+has no GTK `-dev` packages; CI builds and tests against Ubuntu 24.04's.
+The sidebar has no Queues, lists or Downloads yet: they come with what
+fills them, in steps 2 to 4.
 
 ## Open questions
 

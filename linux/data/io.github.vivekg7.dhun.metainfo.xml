@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.vivekg7.dhun</id>
+  <name>Dhun</name>
+  <summary>The family's music, podcasts and audiobooks, from the NAS</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.vivekg7">
+    <name>Vivek Kumar Gupta</name>
+  </developer>
+  <description>
+    <p>
+      A lightweight player for a self-hosted Dhun server: many named queues,
+      offline downloads, synced lyrics, and podcasts and audiobooks beside the music.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.vivekg7.dhun.desktop</launchable>
+  <url type="homepage">https://github.com/vivekg7/dhun</url>
+  <content_rating type="oars-1.1"/>
+</component>

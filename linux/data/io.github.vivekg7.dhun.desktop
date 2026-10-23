@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Dhun
+Comment=The family's music, podcasts and audiobooks, from the NAS
+Exec=dhun
+Icon=io.github.vivekg7.dhun
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;podcast;audiobook;player;
+StartupNotify=true

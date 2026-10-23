@@ -11,18 +11,25 @@ GRADLE = cd android && ./gradlew -q
 # swift-format ships with Xcode, so the Mac app adds no tool of its own.
 SWIFT_SRC = macos/Package.swift macos/make-icon.swift macos/Sources macos/Tests
 SWIFT_FORMAT = xcrun swift-format
+# Rust and GTK from the system, or else inside the GNOME SDK (plan 039). A
+# machine with neither (the Mac) leaves the Linux app to CI.
+CARGO = $(if $(shell command -v cargo),cd linux && cargo,scripts/sdk.sh cargo)
+LINUX = $(if $(or $(shell command -v cargo),$(shell command -v flatpak)),linux,)
+PREFIX ?= $(HOME)/.local
 
-.PHONY: help init fmt lint test check image apk mac lint-server lint-android lint-macos test-server test-web test-android test-macos
+.PHONY: help init fmt lint test check image apk mac linux linux-install lint-server lint-android lint-macos lint-linux test-server test-web test-android test-macos test-linux
 
 help:
 	@echo 'init   install git hooks, verify agent symlinks, point agent memory at docs/memory'
 	@echo 'fmt    rewrite files -- the only target that edits anything'
-	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint, swift-format'
-	@echo 'test   the server suite (race detector), the web, Android and macOS unit tests'
+	@echo 'lint   prettier --check, gofmt, go vet, ktlint, Android lint, swift-format, rustfmt, clippy'
+	@echo 'test   the server suite (race detector), the web, Android, macOS and Linux unit tests'
 	@echo 'check  lint test -- what pre-push and CI run'
 	@echo 'image  build the server Docker image as dhun:dev'
 	@echo 'apk    build the signed release APK and archive it in local/'
 	@echo 'mac    build Dhun.app, signed ad hoc, and archive it in local/'
+	@echo 'linux  build the Linux Flatpak and archive it in local/'
+	@echo 'linux-install  build the Linux app against the system GTK, install it into ~/.local'
 
 # Writes the one setting that cannot be committed: autoMemoryDirectory takes an
 # absolute path, so it lives in the git-ignored settings.local.json while the
@@ -50,8 +57,9 @@ fmt:
 	gofmt -w server
 	$(GRADLE) ktlintFormat
 	$(SWIFT_FORMAT) format -i -r $(SWIFT_SRC)
+	$(CARGO) fmt
 
-lint: lint-server lint-android lint-macos
+lint: lint-server lint-android lint-macos $(LINUX:%=lint-%)
 
 # The docs and the web client are linted here too: the server's CI job is the
 # one that runs on every push, and the web client is part of the server. So
@@ -69,7 +77,11 @@ lint-android:
 lint-macos:
 	$(SWIFT_FORMAT) lint --strict -r $(SWIFT_SRC)
 
-test: test-server test-web test-android test-macos
+lint-linux:
+	$(CARGO) fmt --check
+	$(CARGO) clippy --all-targets --locked -- -D warnings
+
+test: test-server test-web test-android test-macos $(LINUX:%=test-%)
 
 test-server:
 	cd server && go test -race -count=1 ./...
@@ -84,6 +96,9 @@ test-android:
 test-macos:
 	cd macos && swift test
 
+test-linux:
+	$(CARGO) test --locked
+
 check: lint test
 
 image:
@@ -94,3 +109,15 @@ apk:
 
 mac:
 	scripts/build-mac.sh
+
+linux:
+	scripts/build-linux.sh
+
+# Against the system's GTK, libadwaita and SQLite (the -dev packages) and a
+# Rust from rustup; ~/.local/bin must be on the PATH for the launcher.
+linux-install:
+	cd linux && cargo build --release --locked -p dhun
+	install -Dm755 linux/target/release/dhun $(PREFIX)/bin/dhun
+	install -Dm644 linux/data/io.github.vivekg7.dhun.desktop $(PREFIX)/share/applications/io.github.vivekg7.dhun.desktop
+	install -Dm644 linux/data/io.github.vivekg7.dhun.svg $(PREFIX)/share/icons/hicolor/scalable/apps/io.github.vivekg7.dhun.svg
+	install -Dm644 linux/data/io.github.vivekg7.dhun.metainfo.xml $(PREFIX)/share/metainfo/io.github.vivekg7.dhun.metainfo.xml

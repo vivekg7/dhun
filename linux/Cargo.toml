@@ -1,0 +1,14 @@
+# The Linux app: docs/plans/039_linux_app.md. Two crates so the logic is
+# tested without GTK, GStreamer or a display, as DhunKit is on the Mac.
+[workspace]
+members = ["core", "app"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.85"
+
+[profile.release]
+lto = "thin"
+strip = true
