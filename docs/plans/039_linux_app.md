@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 to 2 done (2026-10-23): it plays; 0.16.3 built, not yet released or installed
+**Status:** `IN PROGRESS` — steps 0 to 2 done (2026-10-23): it plays; 0.16.3 installed on the owner's desktop (2026-10-23), not released
 **Started:** 2026-10-23
 
 ## Problem
