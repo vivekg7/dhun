@@ -84,7 +84,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
 /// For screenshots under test (`DHUN_SCREENSHOT`): pages to open once the
 /// library has loaded, as `artists,artist:Name`, `album:Name`,
 /// `folder:Path`, `books`, `search:words`, `play-album:Name`,
-/// `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
+/// `play:<song id>`, `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
 /// `sidebar` for a narrow window, or a click two seconds on: `activate:N` on a song row, `nav:N` on a sidebar row.
 fn open_when_loaded(
     app: &Rc<App>,
@@ -102,6 +102,7 @@ fn open_when_loaded(
             let (what, arg) = step.split_once(':').unwrap_or((step, ""));
             let route = match what {
                 "queues" => Route::Queues,
+                "downloads" => Route::Downloads,
                 "artists" => Route::Artists,
                 "genres" => Route::Genres,
                 "folders" => Route::Folder(String::new()),
@@ -161,6 +162,12 @@ fn open_when_loaded(
                     let id = a.queues.borrow().iter().find(|q| q.name == arg).map(|q| q.id.clone());
                     if let Some(id) = id {
                         a.playback().switch_to(&id);
+                    }
+                    continue;
+                }
+                "play" => {
+                    if let Some(x) = arg.parse().ok().and_then(|id: i64| a.catalog().by_id.get(&id).cloned()) {
+                        a.playback().play_list(&x.title, "", std::slice::from_ref(&x), 0);
                     }
                     continue;
                 }
@@ -294,6 +301,8 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
                     );
                 }
             }
+            item("", "", None);
+            item("folder-download-symbolic", "Downloads", Some(Route::Downloads));
         }
     };
     fill();

@@ -48,6 +48,12 @@ impl Song {
         !self.kind.is_empty()
     }
 
+    /// Its name in the song cache and in Downloads: `<id>.<ext>`.
+    pub fn file_name(&self) -> String {
+        let ext = std::path::Path::new(&self.path).extension().and_then(|e| e.to_str()).unwrap_or(&self.format);
+        format!("{}.{}", self.id, ext.to_lowercase())
+    }
+
     pub fn folder(&self) -> &str {
         self.path.rfind('/').map_or("", |i| &self.path[..i])
     }
@@ -150,6 +156,27 @@ pub struct PlayStat {
     pub song: i64,
     pub count: i64,
     pub last_played_at: i64,
+}
+
+/// Something downloaded (plan 012): a song, an album, a folder, an artist,
+/// a genre, a playlist, a list or a shelf, as `kind` and `ref`. This
+/// computer's own, never synced.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pin {
+    pub key: String,
+    pub kind: String,
+    pub r#ref: String,
+    pub name: String,
+    pub at: i64,
+}
+
+/// A song's file in Downloads.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Download {
+    pub song: i64,
+    pub path: String,
+    pub size: i64,
+    pub at: i64,
 }
 
 /// What a device of the user's plays, for hand-off (plan 017).

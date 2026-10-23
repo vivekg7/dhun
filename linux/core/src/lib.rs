@@ -5,9 +5,11 @@
 
 pub mod api;
 pub mod base64;
+pub mod cache;
 pub mod catalog;
 pub mod covers;
 pub mod db;
+pub mod downloads;
 pub mod model;
 pub mod prefs;
 pub mod queue;

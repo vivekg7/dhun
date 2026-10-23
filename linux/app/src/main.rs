@@ -2,6 +2,7 @@
 //! the window; the logic is in `dhun-core`.
 
 mod app;
+mod downloads;
 mod engine;
 mod mpris;
 mod nowplaying;
@@ -22,7 +23,14 @@ const ID: &str = "io.github.vivekg7.dhun";
 
 fn main() -> glib::ExitCode {
     gstreamer::init().expect("GStreamer");
-    let gapp = adw::Application::builder().application_id(ID).build();
+    // A build under test (DHUN_DATA) runs beside the installed app rather
+    // than handing itself to it, as a second launch of the same app does.
+    let flags = if std::env::var_os("DHUN_DATA").is_some() {
+        gio::ApplicationFlags::NON_UNIQUE
+    } else {
+        gio::ApplicationFlags::empty()
+    };
+    let gapp = adw::Application::builder().application_id(ID).flags(flags).build();
     gapp.connect_startup(|_| {
         let css = gtk::CssProvider::new();
         css.load_from_string(include_str!("style.css"));
@@ -65,6 +73,7 @@ fn data_dir() -> PathBuf {
 fn start(gapp: &adw::Application) -> Rc<App> {
     let app = App::new(data_dir());
     let _ = app.playback.set(playback::Playback::new(&app));
+    let _ = app.downloads.set(downloads::Downloads::new(&app));
     mpris::start(gapp, &app);
     // On quitting: the open listen and the place are kept, as on pause.
     let a = app.clone();

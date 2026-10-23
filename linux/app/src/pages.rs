@@ -5,6 +5,7 @@ use crate::app::{App, Change};
 use crate::widgets::{self, Columns, Play, cover, header, row, songs_page, summary, summary_of};
 use adw::prelude::*;
 use dhun_core::catalog::{self, Album, Group, Shelf, SongRef};
+use dhun_core::downloads::{self as dl, format_bytes};
 use dhun_core::search::Query;
 use gtk::{gio, glib};
 use std::cell::RefCell;
@@ -29,6 +30,7 @@ pub enum Route {
     Search,
     Queues,
     Queue(String),
+    Downloads,
 }
 
 /// The content pane's page stack. It keeps the routes, so a new catalogue
@@ -41,6 +43,9 @@ pub struct Nav {
     pub search: gtk::SearchEntry,
     /// Fills the search page showing, if one is.
     search_fill: RefCell<Option<Rc<dyn Fn()>>>,
+    /// What the Downloads page was last built with, its pins and songs: it is
+    /// built again when they change, between files rather than at each one.
+    pins_shown: RefCell<Vec<String>>,
 }
 
 impl Nav {
@@ -51,6 +56,7 @@ impl Nav {
             app: app.clone(),
             search: gtk::SearchEntry::builder().placeholder_text("Search").hexpand(true).build(),
             search_fill: RefCell::new(None),
+            pins_shown: RefCell::default(),
         });
         let weak = Rc::downgrade(&nav);
         nav.search.connect_search_changed(move |e| {
@@ -83,6 +89,10 @@ impl Nav {
             if c == Change::Catalog
                 || (c == Change::Playlists && shows(|r| matches!(r, Route::Playlist(_))))
                 || (c == Change::Queues && shows(|r| matches!(r, Route::Queues | Route::Queue(_))))
+                || (c == Change::Downloads
+                    && shows(|r| *r == Route::Downloads)
+                    && n.app.downloads().status.borrow().state != crate::downloads::State::Downloading
+                    && *n.pins_shown.borrow() != pin_keys(&n.app))
             {
                 n.rebuild();
             }
@@ -162,7 +172,8 @@ impl Nav {
                 match found {
                     Some(p) => {
                         let songs = c.songs_of(&p.songs);
-                        let top = header(app, songs.first(), &p.name, &summary(&songs));
+                        let pin = Some((dl::PLAYLIST, p.id.to_string()));
+                        let top = header(app, songs.first(), &p.name, &summary(&songs), pin);
                         let play = Play::List { name: p.name.clone(), source: format!("playlist:{}", p.id) };
                         let cols = Columns { track: false, album: true };
                         (p.name.clone(), songs_page(app, Some(top.upcast()), songs, cols, play).upcast())
@@ -171,6 +182,7 @@ impl Nav {
                 }
             }
             Route::Search => ("Search".into(), crate::search::page(self)),
+            Route::Downloads => ("Downloads".into(), downloads_page(self)),
             Route::Queues => ("Queues".into(), queues_page(self)),
             Route::Queue(id) => {
                 let found = app.queues.borrow().iter().find(|q| &q.id == id).cloned();
@@ -292,7 +304,8 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
 
 fn album_page(app: &Rc<App>, a: &Album) -> gtk::Widget {
     let year = if a.year > 0 { format!(" · {}", a.year) } else { String::new() };
-    let top = header(app, a.songs.first(), &a.name, &format!("{}{year} · {}", a.artist, summary(&a.songs)));
+    let what = format!("{}{year} · {}", a.artist, summary(&a.songs));
+    let top = header(app, a.songs.first(), &a.name, &what, Some((dl::ALBUM, a.id.clone())));
     let play = Play::List { name: a.name.clone(), source: format!("album:{}", a.id) };
     songs_page(app, Some(top.upcast()), a.songs.clone(), Columns { track: true, album: false }, play).upcast()
 }
@@ -361,7 +374,8 @@ fn group_page(nav: &Rc<Nav>, g: &Group, artist: bool) -> gtk::Widget {
     let albums: Vec<&Arc<Album>> = c.albums.iter().filter(|a| ids.contains(a.id.as_str())).collect();
     let top = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     let what = if artist { format!("{} albums · ", albums.len()) } else { String::new() };
-    top.append(&header(app, songs.first(), &g.name, &format!("{what}{}", summary(&songs))));
+    let pin = Some((if artist { dl::ARTIST } else { dl::GENRE }, g.name.clone()));
+    top.append(&header(app, songs.first(), &g.name, &format!("{what}{}", summary(&songs)), pin));
     if artist && albums.len() > 1 {
         let strip = gtk::Box::builder().spacing(14).margin_start(18).margin_end(18).margin_bottom(12).build();
         for a in albums {
@@ -402,7 +416,8 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
             1 => "1 folder · ".into(),
             _ => format!("{n} folders · "),
         };
-        b.append(&header(app, None, f.name(), &format!("{folders}{}", summary_of(f.song_count, f.duration_ms))));
+        let what = format!("{folders}{}", summary_of(f.song_count, f.duration_ms));
+        b.append(&header(app, None, f.name(), &what, Some((dl::FOLDER, f.path.clone()))));
     }
     if !f.children.is_empty() {
         let n = nav.clone();
@@ -464,7 +479,7 @@ fn shelves_page(nav: &Rc<Nav>, shelves: &[Arc<Shelf>]) -> gtk::Widget {
 /// One book's files in reading order, or one show's episodes oldest first.
 fn shelf_page(app: &Rc<App>, s: &Shelf) -> gtk::Widget {
     let what = if s.author.is_empty() { summary(&s.items) } else { format!("{} · {}", s.author, summary(&s.items)) };
-    let top = header(app, s.items.first(), &s.title, &what);
+    let top = header(app, s.items.first(), &s.title, &what, Some((dl::SHELF, s.id.clone())));
     let songs: Vec<SongRef> = s.items.clone();
     // A book plays whole from the file picked, its resume point doing the rest (plan 031).
     let source = format!("{}:{}", if s.is_book() { "book" } else { "show" }, s.title);
@@ -507,7 +522,7 @@ fn queues_page(nav: &Rc<Nav>) -> gtk::Widget {
 fn queue_page(nav: &Rc<Nav>, q: &dhun_core::model::QueueRow) -> gtk::Widget {
     let app = &nav.app;
     let songs = app.catalog().songs_of(&q.songs);
-    let top = header(app, songs.first(), &q.name, &summary(&songs));
+    let top = header(app, songs.first(), &q.name, &summary(&songs), None);
     let buttons = gtk::Box::builder().spacing(8).valign(gtk::Align::Center).build();
     let play = gtk::Button::builder().label("Play").css_classes(["pill", "suggested-action"]).build();
     let rename = gtk::Button::builder()
@@ -552,4 +567,152 @@ fn queue_page(nav: &Rc<Nav>, q: &dhun_core::model::QueueRow) -> gtk::Widget {
     });
     songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true }, Play::Queue(q.id.clone()))
         .upcast()
+}
+
+fn pin_keys(app: &App) -> Vec<String> {
+    let mut songs: Vec<i64> = app.downloaded.borrow().keys().copied().collect();
+    songs.sort();
+    let pins = app.pins.borrow().iter().map(|p| p.key.clone()).collect::<Vec<_>>();
+    pins.into_iter().chain(songs.iter().map(|s| s.to_string())).collect()
+}
+
+/// What is kept on this computer (plan 012): how far along it is, each
+/// download by name, and the songs themselves to play without the server.
+fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
+    let app = &nav.app;
+    *nav.pins_shown.borrow_mut() = pin_keys(app);
+    let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    let top = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .margin_top(18)
+        .margin_bottom(12)
+        .margin_start(18)
+        .margin_end(18)
+        .build();
+    top.append(&gtk::Label::builder().label("Downloads").xalign(0.0).css_classes(["title-2"]).build());
+    let line = gtk::Label::builder().xalign(0.0).wrap(true).css_classes(["dim-label"]).build();
+    let state = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    let bar = gtk::ProgressBar::builder().visible(false).build();
+    top.append(&line);
+    top.append(&state);
+    top.append(&bar);
+    b.append(&top);
+    let show = {
+        let (app, line, state, bar) = (app.clone(), line.downgrade(), state.downgrade(), bar.downgrade());
+        move || {
+            let (Some(line), Some(state), Some(bar)) = (line.upgrade(), state.upgrade(), bar.upgrade()) else {
+                return false;
+            };
+            let st = app.downloads().status.borrow().clone();
+            line.set_label(&format!(
+                "{} of {} songs on this computer · {} used",
+                st.done,
+                st.wanted,
+                format_bytes(st.used)
+            ));
+            use crate::downloads::State;
+            let (text, class) = match st.state {
+                State::Downloading => (st.current.as_ref().map(|s| format!("Downloading “{}”", s.title)), None),
+                State::NoNetwork => (Some("Waiting for the server".into()), Some("warning")),
+                State::Metered => (Some("Waiting for a network that is not metered".into()), Some("warning")),
+                State::Full => {
+                    (Some(format!("At the storage limit: {} more needed", format_bytes(st.need))), Some("warning"))
+                }
+                State::NoSpace => {
+                    (Some(format!("The disk is full: {} more needed", format_bytes(st.need))), Some("warning"))
+                }
+                State::Failed => (Some(format!("Failed: {}. Trying again shortly.", st.error)), Some("error")),
+                State::Idle => (None, None),
+            };
+            state.set_visible(text.is_some());
+            state.set_label(text.as_deref().unwrap_or(""));
+            state.set_css_classes(class.as_slice());
+            bar.set_visible(st.state == State::Downloading);
+            bar.set_fraction(st.progress.clamp(0.0, 1.0));
+            true
+        }
+    };
+    show();
+    app.listen(move |c| if matches!(c, Change::Downloads | Change::Playable) { show() } else { true });
+
+    let pins = app.pins.borrow().clone();
+    if pins.is_empty() {
+        let s = adw::StatusPage::builder()
+            .title("Nothing downloaded")
+            .icon_name("folder-download-symbolic")
+            .description("Download an album, a playlist or a folder to play it without the server.")
+            .vexpand(true)
+            .build();
+        b.append(&s);
+        return b.upcast();
+    }
+    let c = app.catalog();
+    let a = app.clone();
+    let list = widgets::list(
+        app,
+        &pins,
+        move |p| {
+            let (icon, kind) = match p.kind.as_str() {
+                dl::ALBUM => ("media-optical-symbolic", "Album"),
+                dl::FOLDER => ("folder-symbolic", "Folder"),
+                dl::ARTIST => ("avatar-default-symbolic", "Artist"),
+                dl::GENRE => ("view-grid-symbolic", "Genre"),
+                dl::PLAYLIST => ("view-list-symbolic", "Playlist"),
+                dl::LIST => ("starred-symbolic", "List"),
+                dl::SHELF if c.shelves.get(&p.r#ref).is_some_and(|s| !s.is_book()) => {
+                    ("audio-input-microphone-symbolic", "Podcast")
+                }
+                dl::SHELF => ("accessories-dictionary-symbolic", "Audiobook"),
+                _ => ("audio-x-generic-symbolic", "Song"),
+            };
+            let image = gtk::Image::builder().icon_name(icon).pixel_size(24).width_request(36).build();
+            let r = row(&image.upcast(), &p.name, kind);
+            let remove = gtk::Button::builder()
+                .icon_name("window-close-symbolic")
+                .tooltip_text("Remove the download")
+                .css_classes(["flat", "circular"])
+                .valign(gtk::Align::Center)
+                .hexpand(true)
+                .halign(gtk::Align::End)
+                .build();
+            let (a, key, name) = (a.clone(), p.key.clone(), p.name.clone());
+            remove.connect_clicked(move |b| {
+                let (d, key) = (a.downloads().clone(), key.clone());
+                widgets::confirm_unpin(b.upcast_ref(), &name, move || d.unpin(&key));
+            });
+            r.append(&remove);
+            r.upcast()
+        },
+        |_| {},
+    );
+    let scroll = widgets::scrolled(&list);
+    let have: Vec<i64> = app.downloaded.borrow().keys().copied().collect();
+    let mut songs = app.catalog().songs_of(&have);
+    // Apart from the songs, so playing every download plays music only (plan 031).
+    songs.retain(|s| !s.spoken());
+    if !songs.is_empty() {
+        scroll.set_vexpand(false);
+        scroll.set_min_content_height(120);
+        scroll.set_max_content_height(220);
+        scroll.set_propagate_natural_height(true);
+    }
+    b.append(&scroll);
+    if !songs.is_empty() {
+        let songs = catalog::natural_sorted(songs, |s| s.title.as_str());
+        b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        let what = format!("Songs on this computer · {}", summary(&songs));
+        b.append(
+            &gtk::Label::builder()
+                .label(what)
+                .xalign(0.0)
+                .margin_start(18)
+                .margin_top(12)
+                .css_classes(["heading"])
+                .build(),
+        );
+        let play = Play::List { name: "Downloads".into(), source: "downloads".into() };
+        b.append(&songs_page(app, None, songs, Columns { track: false, album: true }, play));
+    }
+    b.upcast()
 }

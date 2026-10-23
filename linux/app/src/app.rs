@@ -5,10 +5,11 @@
 //! in what it built.
 
 use dhun_core::api::Api;
+use dhun_core::cache::SongCache;
 use dhun_core::catalog::{Catalog, SongRef};
 use dhun_core::covers::{self, Files};
 use dhun_core::db::Db;
-use dhun_core::model::{NowPlaying, Playlist, QueueRow};
+use dhun_core::model::{Download, NowPlaying, Pin, Playlist, QueueRow};
 use dhun_core::prefs::Prefs;
 use dhun_core::sync;
 use dhun_core::synced::Settings;
@@ -39,6 +40,10 @@ pub enum Change {
     Handoff,
     /// Another sidebar section is showing.
     Section,
+    /// The pins, or the downloads' progress.
+    Downloads,
+    /// Which songs play without the server: a download done or gone, or the server lost or found.
+    Playable,
 }
 
 type Listener = Rc<dyn Fn(Change) -> bool>;
@@ -57,6 +62,10 @@ pub struct App {
     pub settings: RefCell<Settings>,
     pub now_playing: RefCell<Option<NowPlaying>>,
     pub playback: std::cell::OnceCell<Rc<crate::playback::Playback>>,
+    pub cache: Arc<SongCache>,
+    pub downloads: std::cell::OnceCell<Rc<crate::downloads::Downloads>>,
+    pub pins: RefCell<Vec<Pin>>,
+    pub downloaded: RefCell<HashMap<i64, Download>>,
     pub syncing: Cell<bool>,
     /// The server could not be reached on the last try.
     pub offline: Cell<bool>,
@@ -91,9 +100,12 @@ impl App {
         std::fs::create_dir_all(&dir).expect("the app's data folder");
         let prefs = Arc::new(Prefs::open(&dir));
         let db = Db::open(&dir.join("dhun.db")).expect("the app's database");
+        let api = Arc::new(Api::new(prefs.clone()));
+        let pins = db.pins().unwrap_or_default();
         Rc::new(App {
             dir: dir.clone(),
-            api: Arc::new(Api::new(prefs.clone())),
+            cache: Arc::new(SongCache::new(api.clone(), dir.join("cache"))),
+            api,
             prefs,
             db: Arc::new(Mutex::new(db)),
             files: Arc::new(Files::new(dir.join("covers"))),
@@ -103,6 +115,9 @@ impl App {
             settings: RefCell::new(Settings::new()),
             now_playing: RefCell::new(None),
             playback: std::cell::OnceCell::new(),
+            downloads: std::cell::OnceCell::new(),
+            pins: RefCell::new(pins),
+            downloaded: RefCell::default(),
             syncing: Cell::new(false),
             offline: Cell::new(false),
             sync_error: RefCell::new(None),
@@ -192,6 +207,52 @@ impl App {
         self.sync_soon(Duration::from_secs(2));
     }
 
+    pub fn downloads(&self) -> &Rc<crate::downloads::Downloads> {
+        self.downloads.get().expect("downloads are made at start")
+    }
+
+    pub fn reload_pins(&self) {
+        *self.pins.borrow_mut() = self.db.lock().unwrap().pins().unwrap_or_default();
+        self.changed(Change::Downloads);
+    }
+
+    /// The songs in Downloads, which the player opens before the cache.
+    pub fn reload_downloads(&self) {
+        let now = self.db.lock().unwrap().downloads().unwrap_or_default();
+        let same = {
+            let before = self.downloaded.borrow();
+            before.len() == now.len() && now.keys().all(|k| before.contains_key(k))
+        };
+        self.cache.set_downloaded(now.values().map(|d| (d.song, PathBuf::from(&d.path))).collect());
+        *self.downloaded.borrow_mut() = now;
+        if !same {
+            self.changed(Change::Playable);
+        }
+    }
+
+    /// Whether a song can play now: the server is there, or the song is on this computer.
+    pub fn playable(&self, song: i64) -> bool {
+        !self.offline.get() || self.downloaded.borrow().contains_key(&song) || self.cache.has(song)
+    }
+
+    fn set_offline(&self, offline: bool) {
+        if self.offline.replace(offline) != offline {
+            self.changed(Change::Playable);
+        }
+    }
+
+    /// The songs kept here belong to the account being left.
+    fn forget_files(&self) {
+        if let Some(d) = self.downloads.get() {
+            d.remove_all();
+        }
+        self.cache.remove_all();
+        self.pins.borrow_mut().clear();
+        self.downloaded.borrow_mut().clear();
+        self.changed(Change::Downloads);
+        self.changed(Change::Playable);
+    }
+
     pub fn reload_playlists(&self) {
         *self.playlists.borrow_mut() = self.db.lock().unwrap().playlists().unwrap_or_default();
         self.changed(Change::Playlists);
@@ -253,7 +314,7 @@ impl App {
         let pulled = match pulled {
             Ok(Ok(p)) => p,
             Ok(Err(e)) => {
-                self.offline.set(e.code() == 0);
+                self.set_offline(e.code() == 0);
                 *self.sync_error.borrow_mut() = Some(e.to_string());
                 // A revoked token (password reset, device removed): sign in
                 // again, but keep everything, unsent edits included (plan 023).
@@ -265,7 +326,7 @@ impl App {
             }
             Err(_) => return false,
         };
-        self.offline.set(false);
+        self.set_offline(false);
         *self.sync_error.borrow_mut() = None;
         if pulled.playlists || pulled.refused {
             self.reload_playlists();
@@ -282,6 +343,10 @@ impl App {
         }
         if pulled.songs > 0 || self.catalog.borrow().by_id.is_empty() {
             self.reload_songs().await;
+        }
+        // The server is there: whatever waited for it can go on.
+        if let Some(d) = self.downloads.get() {
+            d.poke();
         }
         let (api, db) = (self.api.clone(), self.db.clone());
         let app = self.clone();
@@ -414,6 +479,7 @@ impl App {
             let _ = self.db.lock().unwrap().wipe();
             self.prefs.forget_account();
             *self.catalog.borrow_mut() = Arc::new(Catalog::empty());
+            self.forget_files();
         }
         self.prefs.set_token(&login.token);
         self.prefs.update(|p| {
@@ -438,6 +504,7 @@ impl App {
         let _ = self.db.lock().unwrap().wipe();
         self.prefs.forget_account();
         *self.catalog.borrow_mut() = Arc::new(Catalog::empty());
+        self.forget_files();
         self.playlists.borrow_mut().clear();
         self.queues.borrow_mut().clear();
         self.settings.borrow_mut().clear();

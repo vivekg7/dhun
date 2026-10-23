@@ -3,6 +3,7 @@
 use crate::app::{App, Change};
 use adw::prelude::*;
 use dhun_core::catalog::SongRef;
+use dhun_core::downloads as dl;
 use gtk::{gio, glib};
 use std::rc::Rc;
 
@@ -100,6 +101,34 @@ pub fn summary_of(n: usize, ms: i64) -> String {
     format!("{} · {}", count(n), clock(ms))
 }
 
+/// How a song that cannot play offline shows.
+const UNPLAYABLE: f64 = 0.45;
+
+/// Dims a song list's cell when its song cannot play now, and marks the
+/// title of one kept in Downloads.
+fn show_kept(app: &App, item: &gtk::ListItem) {
+    let (Some(obj), Some(cell)) = (item.item().and_downcast::<glib::BoxedAnyObject>(), item.child()) else { return };
+    let id = obj.borrow::<SongRef>().id;
+    cell.set_opacity(if app.playable(id) { 1.0 } else { UNPLAYABLE });
+    // The title cell: cover, title, mark, and any menu opened on it after these.
+    if let Some(mark) = cell.first_child().and_then(|c| c.next_sibling()).and_then(|t| t.next_sibling()) {
+        mark.set_visible(app.downloaded.borrow().contains_key(&id));
+    }
+}
+
+/// Keeps a cell's `show_kept` current while it lives: a row already on
+/// screen is not bound again when only this changes.
+fn follow_kept(app: &Rc<App>, item: &gtk::ListItem) {
+    let (a, w) = (app.clone(), item.downgrade());
+    app.listen(move |c| {
+        let Some(item) = w.upgrade() else { return false };
+        if c == Change::Playable {
+            show_kept(&a, &item);
+        }
+        true
+    });
+}
+
 /// Pages get a filter only past this many rows: a shorter list fits on about one screen.
 pub const FILTER_OVER: usize = 12;
 
@@ -121,8 +150,15 @@ pub fn row(image: &gtk::Widget, title: &str, subtitle: &str) -> gtk::Box {
     b
 }
 
-/// A header over a list: cover, title and what the list holds.
-pub fn header(app: &Rc<App>, song: Option<&SongRef>, title: &str, subtitle: &str) -> gtk::Box {
+/// A header over a list: cover, title, what the list holds, and its
+/// Download button when `pin` names it as a kind and a ref (plan 012).
+pub fn header(
+    app: &Rc<App>,
+    song: Option<&SongRef>,
+    title: &str,
+    subtitle: &str,
+    pin: Option<(&str, String)>,
+) -> gtk::Box {
     let b = gtk::Box::builder().spacing(18).margin_top(18).margin_bottom(12).margin_start(18).margin_end(18).build();
     if song.is_some() {
         b.append(&cover(app, song, 140));
@@ -131,8 +167,70 @@ pub fn header(app: &Rc<App>, song: Option<&SongRef>, title: &str, subtitle: &str
         gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).spacing(6).build();
     text.append(&gtk::Label::builder().label(title).xalign(0.0).wrap(true).css_classes(["title-2"]).build());
     text.append(&gtk::Label::builder().label(subtitle).xalign(0.0).wrap(true).css_classes(["dim-label"]).build());
+    if let Some((kind, r#ref)) = pin {
+        text.append(&pin_button(app, kind, r#ref, title));
+    }
     b.append(&text);
     b
+}
+
+/// Downloads a whole album, folder, artist, genre, playlist or shelf; once
+/// downloaded it says how far along it is, and a click asks to remove it.
+pub fn pin_button(app: &Rc<App>, kind: &str, r#ref: String, name: &str) -> gtk::Widget {
+    let button = gtk::Button::builder().halign(gtk::Align::Start).css_classes(["pill"]).margin_top(6).build();
+    let show = {
+        let (app, kind, r#ref, b) = (app.clone(), kind.to_string(), r#ref.clone(), button.downgrade());
+        move || {
+            let Some(b) = b.upgrade() else { return false };
+            let d = app.downloads();
+            let (icon, label) = if d.pinned(&kind, &r#ref) {
+                let songs = d.songs(&kind, &r#ref);
+                let have = app.downloaded.borrow();
+                let done = songs.iter().filter(|s| have.contains_key(&s.id)).count();
+                if done < songs.len() {
+                    ("folder-download-symbolic", format!("{done}/{}", songs.len()))
+                } else {
+                    ("object-select-symbolic", "Downloaded".to_string())
+                }
+            } else {
+                ("folder-download-symbolic", "Download".to_string())
+            };
+            b.set_child(Some(&adw::ButtonContent::builder().icon_name(icon).label(label).build()));
+            b.set_tooltip_text(Some(if d.pinned(&kind, &r#ref) {
+                "Remove the download"
+            } else {
+                "Keep on this computer"
+            }));
+            true
+        }
+    };
+    show();
+    app.listen(move |c| if matches!(c, Change::Downloads | Change::Playable) { show() } else { true });
+    let (app, kind, name) = (app.clone(), kind.to_string(), name.to_string());
+    button.connect_clicked(move |b| {
+        let d = app.downloads().clone();
+        if d.pinned(&kind, &r#ref) {
+            let key = dhun_core::downloads::key(&kind, &r#ref);
+            confirm_unpin(b.upcast_ref(), &name, move || d.unpin(&key));
+        } else {
+            d.pin(&kind, &r#ref, &name);
+        }
+    });
+    button.upcast()
+}
+
+/// Asks before a download goes, as the phone does.
+pub fn confirm_unpin(parent: &gtk::Widget, name: &str, remove: impl Fn() + 'static) {
+    let dialog = adw::AlertDialog::builder()
+        .heading("Remove Download?")
+        .body(format!(
+            "“{name}” stays in the library. Its songs are deleted from this computer, unless something else you downloaded has them too."
+        ))
+        .build();
+    dialog.add_responses(&[("cancel", "Cancel"), ("remove", "Remove")]);
+    dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
+    dialog.connect_response(Some("remove"), move |_, _| remove());
+    dialog.present(Some(parent));
 }
 
 /// A list of things in a `GtkListView`, which builds rows only for what is
@@ -207,23 +305,42 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
     view.set_show_column_separators(false);
     view.set_reorderable(false);
     view.add_css_class("data-table");
+    let list: Rc<Vec<SongRef>> = Rc::new(songs.to_vec());
+    let selected = {
+        let (sel, list) = (sel.clone(), list.clone());
+        move || -> Vec<SongRef> {
+            (0..list.len() as u32).filter(|&i| sel.is_selected(i)).map(|i| list[i as usize].clone()).collect()
+        }
+    };
     let menu = gio::Menu::new();
     menu.append(Some("Play Next"), Some("songs.play-next"));
     menu.append(Some("Add to Queue"), Some("songs.add-to-queue"));
     if matches!(play, Play::Queue(_)) {
         menu.append(Some("Remove from Queue"), Some("songs.remove"));
     }
+    // Download or Remove Download, as the songs picked are (plan 012).
+    let keep = gio::Menu::new();
+    menu.append_section(None, &keep);
     // A right-click selects the row under it, unless it is in the selection already, and opens the menu.
     let menu_on = {
-        let (sel, menu) = (sel.clone(), menu.clone());
+        let (sel, menu, app, selected) = (sel.clone(), menu.clone(), app.clone(), selected.clone());
         move |cell: &gtk::Widget, item: &gtk::ListItem| {
             let g = gtk::GestureClick::builder().button(3).build();
             let (sel, menu, item, cell2) = (sel.clone(), menu.clone(), item.downgrade(), cell.downgrade());
+            let (app, keep, selected) = (app.clone(), keep.clone(), selected.clone());
             g.connect_pressed(move |_, _, x, y| {
                 let (Some(item), Some(cell)) = (item.upgrade(), cell2.upgrade()) else { return };
                 let pos = item.position();
                 if !sel.is_selected(pos) {
                     sel.select_item(pos, true);
+                }
+                let picked = selected();
+                let d = app.downloads();
+                keep.remove_all();
+                if matches!(picked.as_slice(), [s] if d.pinned(dl::SONG, &s.id.to_string())) {
+                    keep.append(Some("Remove Download"), Some("songs.unpin"));
+                } else if picked.iter().any(|s| !app.downloaded.borrow().contains_key(&s.id)) {
+                    keep.append(Some("Download"), Some("songs.download"));
                 }
                 let pop = gtk::PopoverMenu::from_model(Some(&menu));
                 pop.set_parent(&cell);
@@ -241,6 +358,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
     let column = |title: &str, expand: bool, text: Box<dyn Fn(&SongRef) -> String>, dim: bool, numeric: bool| {
         let factory = gtk::SignalListItemFactory::new();
         let menu_on = menu_on.clone();
+        let a = app.clone();
         factory.connect_setup(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let label = gtk::Label::builder()
@@ -255,12 +373,15 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
             }
             menu_on(label.upcast_ref(), item);
             item.set_child(Some(&label));
+            follow_kept(&a, item);
         });
+        let a = app.clone();
         factory.connect_bind(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let obj = item.item().and_downcast::<glib::BoxedAnyObject>().unwrap();
             let label = item.child().and_downcast::<gtk::Label>().unwrap();
             label.set_label(&text(&obj.borrow::<SongRef>()));
+            show_kept(&a, item);
         });
         let c = gtk::ColumnViewColumn::new(Some(title), Some(factory));
         c.set_expand(expand);
@@ -278,7 +399,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
     }
     // The cover thumbnail with the title, as the Mac's table shows it.
     let factory = gtk::SignalListItemFactory::new();
-    let m = menu_on.clone();
+    let (m, a) = (menu_on.clone(), app.clone());
     factory.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let b = gtk::Box::builder().spacing(10).build();
@@ -287,8 +408,13 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
         let frame = gtk::Frame::builder().child(&pic).css_classes(["cover"]).build();
         b.append(&frame);
         b.append(&gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build());
+        let kept = gtk::Image::builder().icon_name("folder-download-symbolic").pixel_size(12).build();
+        kept.add_css_class("dim-label");
+        kept.set_tooltip_text(Some("Downloaded"));
+        b.append(&kept);
         m(b.upcast_ref(), item);
         item.set_child(Some(&b));
+        follow_kept(&a, item);
     });
     let a = app.clone();
     factory.connect_bind(move |_, item| {
@@ -298,7 +424,10 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
         let b = item.child().and_downcast::<gtk::Box>().unwrap();
         let pic = b.first_child().and_downcast::<gtk::Frame>().unwrap().child().and_downcast::<gtk::Picture>().unwrap();
         set_cover(&a, &pic, Some(&song), 28, None);
-        b.last_child().and_downcast::<gtk::Label>().unwrap().set_label(&song.title);
+        // By place from the cover: a menu opened on the cell is a child of it too, after these.
+        let label = pic.parent().unwrap().next_sibling().and_downcast::<gtk::Label>().unwrap();
+        label.set_label(&song.title);
+        show_kept(&a, item);
     });
     let title = gtk::ColumnViewColumn::new(Some("Title"), Some(factory));
     title.set_expand(true);
@@ -312,7 +441,6 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
     // New thumbnails: rows showing placeholders are bound again.
     rebind_on_thumbs(app, &store);
 
-    let list: Rc<Vec<SongRef>> = Rc::new(songs.to_vec());
     let (a, l, p) = (app.clone(), list.clone(), play.clone());
     view.connect_activate(move |_, pos| {
         let pb = a.playback();
@@ -321,12 +449,6 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
             Play::Queue(id) => pb.play_queue_at(id, l[pos as usize].id),
         }
     });
-    let selected = {
-        let (sel, list) = (sel.clone(), list.clone());
-        move || -> Vec<SongRef> {
-            (0..list.len() as u32).filter(|&i| sel.is_selected(i)).map(|i| list[i as usize].clone()).collect()
-        }
-    };
     let group = gio::SimpleActionGroup::new();
     let action = |name: &str, f: Box<dyn Fn(Vec<SongRef>)>| {
         let a = gio::SimpleAction::new(name, None);
@@ -338,6 +460,24 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) ->
     action("play-next", Box::new(move |s| a.playback().play_next(&s)));
     let a = app.clone();
     action("add-to-queue", Box::new(move |s| a.playback().add_to_queue(&s)));
+    let a = app.clone();
+    action(
+        "download",
+        Box::new(move |songs| {
+            for s in songs {
+                a.downloads().pin(dl::SONG, &s.id.to_string(), &s.title);
+            }
+        }),
+    );
+    let (a, v) = (app.clone(), view.downgrade());
+    action(
+        "unpin",
+        Box::new(move |songs| {
+            let (Some(s), Some(v)) = (songs.first(), v.upgrade()) else { return };
+            let (d, key) = (a.downloads().clone(), dl::key(dl::SONG, &s.id.to_string()));
+            confirm_unpin(v.upcast_ref(), &s.title, move || d.unpin(&key));
+        }),
+    );
     if let Play::Queue(id) = play {
         let a = app.clone();
         action("remove", Box::new(move |s| a.playback().remove_from(&id, &s.iter().map(|s| s.id).collect())));

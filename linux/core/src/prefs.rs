@@ -30,6 +30,20 @@ pub struct Values {
     pub open_listen: String,
     /// What each queue was played from, logged with its listens: `album:<id>` and the like.
     pub sources: std::collections::HashMap<String, String>,
+    /// This computer's limits, in GB, 0 for none, and downloading on a
+    /// metered network (plan 012): None until set, for the phone's defaults.
+    pub cache_limit_gb: Option<u64>,
+    pub download_limit_gb: Option<u64>,
+    pub download_on_metered: Option<bool>,
+}
+
+impl Values {
+    pub fn cache_limit(&self) -> u64 {
+        self.cache_limit_gb.unwrap_or(3) * crate::downloads::GB
+    }
+    pub fn download_limit(&self) -> u64 {
+        self.download_limit_gb.unwrap_or(10) * crate::downloads::GB
+    }
 }
 
 pub struct Prefs {
@@ -63,9 +77,17 @@ impl Prefs {
         }
     }
 
-    /// Forgets the account's cursors and state; the server address stays.
+    /// Forgets the account's cursors and state; the server address and this computer's limits stay.
     pub fn forget_account(&self) {
-        self.update(|v| *v = Values { server: std::mem::take(&mut v.server), ..Default::default() });
+        self.update(|v| {
+            *v = Values {
+                server: std::mem::take(&mut v.server),
+                cache_limit_gb: v.cache_limit_gb,
+                download_limit_gb: v.download_limit_gb,
+                download_on_metered: v.download_on_metered,
+                ..Default::default()
+            }
+        });
     }
 
     /// The sign-in token, in a file only this user can read, as the phone

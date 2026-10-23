@@ -12,15 +12,14 @@ use dhun_core::catalog::SongRef;
 use dhun_core::model::{NowPlaying, QueueRow};
 use dhun_core::queue::{self, END_MARGIN_MS, MAX_QUEUES, RESTART_WINDOW, Upcoming, distinct};
 use dhun_core::store::{self, Listen};
-use dhun_core::stream::Part;
 use dhun_core::synced;
 use dhun_core::time::{now_ms, parse};
 use gtk::glib;
+use gtk::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 type Notice = Box<dyn Fn(&str)>;
@@ -82,19 +81,19 @@ pub struct Playback {
     app: Rc<App>,
     engine: Engine,
     st: RefCell<St>,
-    /// The parts being fetched, by song, for "waiting for the network".
-    parts: Arc<Mutex<HashMap<i64, Weak<Part>>>>,
+    me: std::rc::Weak<Playback>,
+    /// A look at what the song cache fetches is due.
+    cache_due: Cell<bool>,
     /// A note for the user (a queue removed to make room), shown briefly.
     pub notices: RefCell<Vec<Notice>>,
 }
 
 impl Playback {
     pub fn new(app: &Rc<App>) -> Rc<Playback> {
-        let parts: Arc<Mutex<HashMap<i64, Weak<Part>>>> = Arc::default();
-        // Leftovers of a run that ended without cleaning up.
+        // Where earlier builds of this first version kept the songs arriving.
         let _ = std::fs::remove_dir_all(app.dir.join("stream"));
-        let (api, dir, p) = (app.api.clone(), app.dir.join("stream"), parts.clone());
-        let open = Box::new(move |s: &SongRef| open_source(&api, &dir, &p, s));
+        let cache = app.cache.clone();
+        let open = Box::new(move |s: &SongRef| cache.open(s).map(|part| Source { part, format: s.format.clone() }));
         let pb = Rc::new_cyclic(|weak: &std::rc::Weak<Playback>| {
             let w = weak.clone();
             let engine = Engine::new(open, move |e| {
@@ -112,7 +111,8 @@ impl Playback {
                     dismissed: prefs.handoff_dismissed,
                     ..Default::default()
                 }),
-                parts,
+                me: weak.clone(),
+                cache_due: Cell::new(false),
                 notices: RefCell::new(vec![]),
             }
         });
@@ -743,8 +743,9 @@ impl Playback {
         }
         self.publish_upcoming();
         self.open_listen(s, ms);
-        match open_source(&self.app.api, &self.app.dir.join("stream"), &self.parts, s) {
-            Some(src) => self.engine.play(s.id, src, ms, paused),
+        self.tell_cache_long();
+        match self.app.cache.open(s) {
+            Some(part) => self.engine.play(s.id, Source { part, format: s.format.clone() }, ms, paused),
             None => return self.song_failed(s.id),
         }
         self.set_playing(!paused);
@@ -891,6 +892,60 @@ impl Playback {
         let c = self.app.catalog();
         let songs = st.items.iter().filter_map(|i| c.by_id.get(i).map(|s| (*i, s.clone()))).collect();
         self.engine.set_upcoming(up, songs);
+        drop(st);
+        self.poke_cache();
+    }
+
+    /// The song playing and the `ahead` after it in play order, each once.
+    fn upcoming(&self, ahead: usize) -> Vec<SongRef> {
+        let Some(i) = self.current_index() else { return vec![] };
+        let wrap = self.repeat_mode() == "queue";
+        let mut out = vec![i];
+        let mut at = i;
+        while out.len() <= ahead {
+            match self.next_index(at, wrap) {
+                Some(n) if !out.contains(&n) => {
+                    out.push(n);
+                    at = n;
+                }
+                _ => break,
+            }
+        }
+        let (c, st) = (self.app.catalog(), self.st.borrow());
+        out.iter().filter_map(|&i| c.by_id.get(&st.items[i]).cloned()).collect()
+    }
+
+    /// Which files the cache keeps as a window, and how wide (plan 037), as the settings are now.
+    fn tell_cache_long(&self) {
+        let settings = self.app.settings.borrow();
+        self.app.cache.set_long(synced::MIN_MINUTES.get(&settings), synced::CACHE_AHEAD.get(&settings));
+    }
+
+    /// Looks again, soon, at what the song cache fetches: the song or the
+    /// queue changed, play started or stopped, a fetch ended. While playing,
+    /// the next songs are fetched ahead; while stopped, only the current one.
+    fn poke_cache(&self) {
+        if self.cache_due.replace(true) {
+            return;
+        }
+        let me = self.me.clone();
+        glib::idle_add_local_once(move || {
+            let Some(p) = me.upgrade() else { return };
+            p.cache_due.set(false);
+            let ahead = match (p.is_playing(), gtk::gio::NetworkMonitor::default().is_network_metered()) {
+                (false, _) => 0,
+                (true, true) => dhun_core::cache::AHEAD_METERED,
+                (true, false) => dhun_core::cache::AHEAD,
+            };
+            let plan = p.upcoming(ahead);
+            let cache = &p.app.cache;
+            p.tell_cache_long();
+            cache.run(&plan, p.app.prefs.get().cache_limit(), &p.app.catalog().by_id);
+            // Online every song plays: what the cache holds shows only offline.
+            if p.app.offline.get() {
+                p.app.changed(Change::Playable);
+            }
+        });
     }
 
     // Following the engine.
@@ -925,6 +980,9 @@ impl Playback {
     }
 
     fn tick(self: &Rc<Self>) {
+        if self.app.cache.take_ended() {
+            self.poke_cache();
+        }
         if self.current().is_none() {
             return;
         }
@@ -937,7 +995,7 @@ impl Playback {
             }
         }
         let song = self.current().map_or(0, |s| s.id);
-        let failing = self.parts.lock().unwrap().get(&song).and_then(Weak::upgrade).is_some_and(|p| p.failing());
+        let failing = self.app.cache.failing(song);
         let playing = self.is_playing();
         let was = self.st.borrow().waiting;
         self.st.borrow_mut().waiting = playing && failing;
@@ -1050,6 +1108,9 @@ impl Playback {
             }
             changed
         };
+        if changed {
+            self.poke_cache();
+        }
         let (Some(q), Some(s)) = (self.active(), self.current()) else { return };
         if !changed {
             return;
@@ -1216,21 +1277,6 @@ impl Playback {
         self.save_listen();
         self.engine.stop();
     }
-}
-
-/// The song's bytes, fetched as they are read (plan 019); the song cache
-/// and Downloads join with step 3 of plan 039.
-fn open_source(
-    api: &Arc<dhun_core::api::Api>,
-    dir: &std::path::Path,
-    parts: &Mutex<HashMap<i64, Weak<Part>>>,
-    s: &SongRef,
-) -> Option<Source> {
-    let part = Part::fetch(api.clone(), dir, s.id, s.size.max(0) as u64).ok()?;
-    let mut map = parts.lock().unwrap();
-    map.retain(|_, w| w.strong_count() > 0);
-    map.insert(s.id, Arc::downgrade(&part));
-    Some(Source { part, format: s.format.clone() })
 }
 
 fn started(o: &mut Open) {

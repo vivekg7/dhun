@@ -119,6 +119,7 @@ dependencies = [
 name = "dhun-core"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

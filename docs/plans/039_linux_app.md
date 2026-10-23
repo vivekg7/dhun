@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 to 2 done (2026-10-23): it plays; 0.16.3 installed on the owner's desktop (2026-10-23), not released
+**Status:** `IN PROGRESS` — steps 0 to 3 done (2026-10-23): it plays, and offline; 0.16.3 installed on the owner's desktop (2026-10-23), not released
 **Started:** 2026-10-23
 
 ## Problem
@@ -281,7 +281,8 @@ override:
   for the first sync and its TLS off because the NAS is reached over plain
   HTTP, on worker threads so no async runtime joins; `serde` and
   `serde_json`; `unicode-normalization` for search's NFKD folding, which
-  the standard library lacks. D-Bus, the network monitor and file paths
+  the standard library lacks; `libc` for punching holes behind a long
+  file's window (step 3). D-Bus, the network monitor and file paths
   come from GIO, so `zbus`, `dirs` and the like stay out. Thumbnails'
   base64 is twenty lines of our own. `Cargo.lock` is committed.
 - **No HTTPS yet.** An `https://` server (the NAS behind `tailscale serve`,
@@ -330,7 +331,8 @@ check`. `scripts/check-settings.sh` learns the Linux app's copy of the
   sets the window's size. Run on GTK's headless Broadway display
   (`gtk4-broadwayd`, in the SDK), nothing appears on the desktop: how an
   agent checks a change to the window. `DHUN_DATA` keeps a build under
-  test apart from the installed app's library and sign-in, as on the Mac.
+  test apart from the installed app's library and sign-in, as on the Mac,
+  and runs it beside the installed app rather than handing it over.
 - **The speed targets apply.** The app logs `catalogue:` and `search`
   timings under the GLib log domain `Dhun`, as the other apps do, and
   `performance-baseline.md` gets a Linux section at 30,000 and 100,000
@@ -379,7 +381,8 @@ moves with it.
    and a listen are ops, and without them they would never reach the
    server.
 3. **Offline.** The song cache with prefetch, then Downloads and pins with
-   promotion by rename. Ported tests: downloads.
+   promotion by rename. Ported tests: downloads. **Done
+   (2026-10-23)**; see [How step 3 went](#how-step-3-went-2026-10-23).
 4. **The rest of the phone.** Playlist editing (013), Favorites, Listen
    Later and the automatic views (010), podcasts and audiobooks (031),
    bookmarks (033), lyrics (015), speed and pitch (016), the sleep timer
@@ -515,6 +518,65 @@ signed in as the test account against the NAS:
   dialog's button focused. Both wait for step 4's queue editing.
 - Playback through the speakers was first heard by the owner on
   2026-10-23, after the sidebar fix; every check here was silent.
+
+## How step 3 went (2026-10-23)
+
+**Built:** in `linux/core`, the song cache (`cache`), which keeps every
+song played and fetches the next ten of the queue while playing, two on a
+metered network, within 3 GB; `Part` grown to keep a whole song under its
+own name, to open a downloaded or cached file, to notice a song gone from
+the server, and to be a long file's window (037); and Downloads' pins
+turned into songs, and one song fetched into Downloads, carried on from
+where a broken try stopped. In `linux/app`, Downloads run one song at a
+time, a cached song moving there by rename; a Download button on the
+pages of an album, folder, artist, genre, playlist, book and show; Download
+and Remove Download in the song menu; a Downloads page with each download,
+its progress and the songs kept; a mark on a downloaded song; and, when
+the server cannot be reached, songs that are not on this computer dimmed.
+
+**Checked**, signed in as the test account against the NAS, silent:
+
+- An album played: the song playing and the three after it were kept
+  whole in the cache, byte for byte the server's file.
+- That album's folder and one other song were downloaded: the four cached
+  songs moved from the cache into Downloads and were not fetched again;
+  the other was fetched. The Downloads page showed both and the songs.
+- With the server unreachable, a downloaded song and a cached song
+  played; songs on neither were dimmed, and one played waits for the
+  network as before.
+- A 60-minute episode (44 MB) was kept as a window: 24 MB, its first 30
+  minutes, and no more. Sought to 45 minutes, the window moved there and
+  what it had fetched from the start went back to the disk: 15 MB in all.
+- The 27 unit tests, with the window following its reader and forgetting
+  what is far behind, and the pins (three ported from the Mac).
+
+**Changed while building:**
+
+- **The cache is shared, not the main thread's.** GStreamer opens the next
+  song on its own thread for a gapless start, so the cache answers it
+  under a lock. A fetch that ends sets a flag that `Playback`'s tick reads,
+  where the Mac's fetch calls back into its main actor.
+- **Behind a window, a hole is punched, not the file rolled** (037 rolled
+  it, since Android cannot punch). Linux file systems give the blocks back
+  in place, so nothing is copied and no reader has to reopen. `libc`
+  joins the dependencies for that one call; it was already built, through
+  GLib.
+- **A cell follows what it shows.** Rows on screen are not bound again
+  when only the songs kept here change, so each cell of a song list
+  listens for that itself, and the user's selection is kept.
+- **A build under test (`DHUN_DATA`) runs beside the installed app.** As
+  a second launch of the same app it handed itself to the owner's running
+  copy and quit. The test hook gained `play:<song id>`.
+
+**Not done:**
+
+- The limits (3 GB of cache, 10 GB of downloads, none on a metered
+  network) are fixed until step 4's Settings, which also show the space
+  used.
+- The server counts as unreachable only once a sync has failed; a song
+  that cannot be fetched does not say so sooner, as the Mac's fetcher
+  does.
+- Lyrics are not kept with downloads; they come with step 4.
 
 ## Open questions
 

@@ -3,7 +3,7 @@
 //! phone's Room database and the Mac's (plan 024). Lists of song IDs are
 //! kept as comma-separated text: they are only ever read and written whole.
 
-use crate::model::{Bookmark, Chapter, Mark, PlayStat, Playlist, QueueRow, Resume, Song};
+use crate::model::{Bookmark, Chapter, Download, Mark, Pin, PlayStat, Playlist, QueueRow, Resume, Song};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -418,6 +418,45 @@ impl Db {
         let mut st = self.sql.prepare("SELECT key FROM outbox ORDER BY seq")?;
         let rows = st.query_map([], |r| r.get(0))?;
         rows.collect()
+    }
+
+    // Downloads (plan 012).
+
+    pub fn pins(&self) -> Result<Vec<Pin>> {
+        let mut st = self.sql.prepare("SELECT key, kind, ref, name, at FROM pin ORDER BY at DESC")?;
+        let rows = st.query_map([], |r| {
+            Ok(Pin { key: r.get(0)?, kind: r.get(1)?, r#ref: r.get(2)?, name: r.get(3)?, at: r.get(4)? })
+        })?;
+        rows.collect()
+    }
+
+    pub fn put_pin(&self, p: &Pin) -> Result<()> {
+        self.sql
+            .execute("INSERT OR REPLACE INTO pin VALUES (?,?,?,?,?)", params![p.key, p.kind, p.r#ref, p.name, p.at])?;
+        Ok(())
+    }
+
+    pub fn delete_pin(&self, key: &str) -> Result<()> {
+        self.sql.execute("DELETE FROM pin WHERE key = ?", [key])?;
+        Ok(())
+    }
+
+    pub fn downloads(&self) -> Result<HashMap<i64, Download>> {
+        let mut st = self.sql.prepare("SELECT song, path, size, at FROM download")?;
+        let rows = st.query_map([], |r| {
+            Ok((r.get(0)?, Download { song: r.get(0)?, path: r.get(1)?, size: r.get(2)?, at: r.get(3)? }))
+        })?;
+        rows.collect()
+    }
+
+    pub fn put_download(&self, d: &Download) -> Result<()> {
+        self.sql.execute("INSERT OR REPLACE INTO download VALUES (?,?,?,?)", params![d.song, d.path, d.size, d.at])?;
+        Ok(())
+    }
+
+    pub fn delete_download(&self, song: i64) -> Result<()> {
+        self.sql.execute("DELETE FROM download WHERE song = ?", [song])?;
+        Ok(())
     }
 
     pub fn move_pin(&self, old: &str, key: &str, r#ref: &str) -> Result<()> {
