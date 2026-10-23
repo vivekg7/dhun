@@ -2,7 +2,7 @@
 //! sidebar section shows and the pages opened from it.
 
 use crate::app::{App, Change};
-use crate::widgets::{self, Columns, cover, header, row, songs_page, summary, summary_of};
+use crate::widgets::{self, Columns, Play, cover, header, row, songs_page, summary, summary_of};
 use adw::prelude::*;
 use dhun_core::catalog::{self, Album, Group, Shelf, SongRef};
 use dhun_core::search::Query;
@@ -27,6 +27,8 @@ pub enum Route {
     Shelf(String),
     Playlist(i64),
     Search,
+    Queues,
+    Queue(String),
 }
 
 /// The content pane's page stack. It keeps the routes, so a new catalogue
@@ -76,8 +78,11 @@ impl Nav {
         let weak = Rc::downgrade(&nav);
         app.listen(move |c| {
             let Some(n) = weak.upgrade() else { return false };
+            let routes = n.routes.borrow().clone();
+            let shows = |f: fn(&Route) -> bool| routes.iter().any(f);
             if c == Change::Catalog
-                || (c == Change::Playlists && n.routes.borrow().iter().any(|r| matches!(r, Route::Playlist(_))))
+                || (c == Change::Playlists && shows(|r| matches!(r, Route::Playlist(_))))
+                || (c == Change::Queues && shows(|r| matches!(r, Route::Queues | Route::Queue(_))))
             {
                 n.rebuild();
             }
@@ -86,10 +91,11 @@ impl Nav {
         nav
     }
 
-    /// A sidebar section: its page alone.
+    /// A sidebar section: its page alone. The sidebar follows, however it was opened.
     pub fn open(self: &Rc<Self>, r: Route) {
         *self.routes.borrow_mut() = vec![r.clone()];
         self.view.replace(&[self.build(&r)]);
+        self.app.changed(Change::Section);
     }
 
     pub fn push(self: &Rc<Self>, r: Route) {
@@ -154,14 +160,18 @@ impl Nav {
                 Some(p) => {
                     let songs = c.songs_of(&p.songs);
                     let top = header(app, songs.first(), &p.name, &summary(&songs));
-                    (
-                        p.name.clone(),
-                        songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true }).upcast(),
-                    )
+                    let play = Play::List { name: p.name.clone(), source: format!("playlist:{}", p.id) };
+                    let cols = Columns { track: false, album: true };
+                    (p.name.clone(), songs_page(app, Some(top.upcast()), songs, cols, play).upcast())
                 }
                 None => ("Playlist".into(), empty(app)),
             },
             Route::Search => ("Search".into(), crate::search::page(self)),
+            Route::Queues => ("Queues".into(), queues_page(self)),
+            Route::Queue(id) => match app.queues.borrow().iter().find(|q| &q.id == id).cloned() {
+                Some(q) => (q.name.clone(), queue_page(self, &q)),
+                None => ("Queue".into(), empty(app)),
+            },
         };
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&adw::HeaderBar::new());
@@ -276,7 +286,8 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
 fn album_page(app: &Rc<App>, a: &Album) -> gtk::Widget {
     let year = if a.year > 0 { format!(" · {}", a.year) } else { String::new() };
     let top = header(app, a.songs.first(), &a.name, &format!("{}{year} · {}", a.artist, summary(&a.songs)));
-    songs_page(app, Some(top.upcast()), a.songs.clone(), Columns { track: true, album: false }).upcast()
+    let play = Play::List { name: a.name.clone(), source: format!("album:{}", a.id) };
+    songs_page(app, Some(top.upcast()), a.songs.clone(), Columns { track: true, album: false }, play).upcast()
 }
 
 /// Artists or genres: a filtered list, each opening its songs.
@@ -365,7 +376,9 @@ fn group_page(nav: &Rc<Nav>, g: &Group, artist: bool) -> gtk::Widget {
         }
         top.append(&gtk::ScrolledWindow::builder().child(&strip).vscrollbar_policy(gtk::PolicyType::Never).build());
     }
-    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true }).upcast()
+    let play =
+        Play::List { name: g.name.clone(), source: format!("{}:{}", if artist { "artist" } else { "genre" }, g.name) };
+    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true }, play).upcast()
 }
 
 /// The real NAS folder tree: subfolders, then the folder's own songs.
@@ -415,7 +428,8 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
         if !f.children.is_empty() {
             b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
-        b.append(&songs_page(app, None, f.songs.clone(), Columns { track: false, album: true }));
+        let play = Play::List { name: f.name().to_string(), source: format!("folder:{}", f.path) };
+        b.append(&songs_page(app, None, f.songs.clone(), Columns { track: false, album: true }, play));
     }
     b.upcast()
 }
@@ -445,5 +459,90 @@ fn shelf_page(app: &Rc<App>, s: &Shelf) -> gtk::Widget {
     let what = if s.author.is_empty() { summary(&s.items) } else { format!("{} · {}", s.author, summary(&s.items)) };
     let top = header(app, s.items.first(), &s.title, &what);
     let songs: Vec<SongRef> = s.items.clone();
-    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: false }).upcast()
+    // A book plays whole from the file picked, its resume point doing the rest (plan 031).
+    let source = format!("{}:{}", if s.is_book() { "book" } else { "show" }, s.title);
+    let play = Play::List { name: s.title.clone(), source };
+    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: false }, play).upcast()
+}
+
+/// The queues in the user's order, numbered from 1 as in Musicolet (plan 020).
+fn queues_page(nav: &Rc<Nav>) -> gtk::Widget {
+    let app = &nav.app;
+    let pb = app.playback();
+    let queues = pb.ordered();
+    if queues.is_empty() {
+        let s = adw::StatusPage::builder().title("No queues").icon_name("view-list-symbolic").build();
+        s.set_description(Some("Play an album, a playlist or any list of songs, and it becomes a queue."));
+        return s.upcast();
+    }
+    let active = pb.active_id();
+    let (a, n) = (app.clone(), nav.clone());
+    let numbered: Vec<(usize, dhun_core::model::QueueRow)> = queues.into_iter().enumerate().collect();
+    let view = widgets::list(
+        app,
+        &numbered,
+        move |(i, q)| {
+            let songs = a.catalog().songs_of(&q.songs);
+            let mark = if q.id == active { " · playing" } else { "" };
+            let r = row(
+                &cover(&a, songs.first(), 40),
+                &format!("{}. {}", i + 1, q.name),
+                &format!("{}{mark}", summary(&songs)),
+            );
+            r.upcast()
+        },
+        move |(_, q)| n.push(Route::Queue(q.id.clone())),
+    );
+    widgets::scrolled(&view).upcast()
+}
+
+/// One queue: its songs, played from the one picked; renamed or removed from its header.
+fn queue_page(nav: &Rc<Nav>, q: &dhun_core::model::QueueRow) -> gtk::Widget {
+    let app = &nav.app;
+    let songs = app.catalog().songs_of(&q.songs);
+    let top = header(app, songs.first(), &q.name, &summary(&songs));
+    let buttons = gtk::Box::builder().spacing(8).valign(gtk::Align::Center).build();
+    let play = gtk::Button::builder().label("Play").css_classes(["pill", "suggested-action"]).build();
+    let rename = gtk::Button::builder()
+        .icon_name("document-edit-symbolic")
+        .tooltip_text("Rename")
+        .css_classes(["circular"])
+        .build();
+    let delete = gtk::Button::builder()
+        .icon_name("user-trash-symbolic")
+        .tooltip_text("Remove the queue")
+        .css_classes(["circular"])
+        .build();
+    buttons.append(&play);
+    buttons.append(&rename);
+    buttons.append(&delete);
+    top.append(&buttons);
+    let (a, id) = (app.clone(), q.id.clone());
+    play.connect_clicked(move |_| {
+        let pb = a.playback();
+        if pb.active_id() == id { pb.play() } else { pb.switch_to(&id) }
+    });
+    let (a, id, n) = (app.clone(), q.id.clone(), nav.clone());
+    delete.connect_clicked(move |_| {
+        a.playback().delete(&id);
+        n.open(Route::Queues);
+    });
+    let (a, id, name) = (app.clone(), q.id.clone(), q.name.clone());
+    rename.connect_clicked(move |b| {
+        let entry = gtk::Entry::builder().text(&name).activates_default(true).build();
+        let dialog = adw::AlertDialog::builder().heading("Rename Queue").extra_child(&entry).build();
+        dialog.add_responses(&[("cancel", "Cancel"), ("rename", "Rename")]);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        let (a, id) = (a.clone(), id.clone());
+        dialog.connect_response(Some("rename"), move |_, _| {
+            let name = entry.text().trim().to_string();
+            if !name.is_empty() {
+                a.playback().rename(&id, &name);
+            }
+        });
+        dialog.present(Some(b));
+    });
+    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true }, Play::Queue(q.id.clone()))
+        .upcast()
 }

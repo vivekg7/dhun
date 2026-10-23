@@ -1,0 +1,373 @@
+//! The Now playing bar along the window's foot, the hand-off and resume
+//! offers above it, and the panel with the playing queue, as on the Mac
+//! (plans 017, 020, 024).
+
+use crate::app::{App, Change};
+use crate::widgets::{self, clock, cover, row};
+use adw::prelude::*;
+use std::cell::Cell;
+use std::rc::Rc;
+
+/// The bar and the offers over it.
+pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
+    let outer = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    outer.append(&handoff(app));
+    outer.append(&resume_offer(app));
+    let b = gtk::Box::builder().spacing(12).margin_start(12).margin_end(12).margin_top(8).margin_bottom(8).build();
+    let art = adw::Bin::new();
+    let title =
+        gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).css_classes(["heading"]).build();
+    let artist = gtk::Label::builder()
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["caption", "dim-label"])
+        .build();
+    let text = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .width_request(160)
+        .build();
+    text.append(&title);
+    text.append(&artist);
+    let button = |icon: &str, tip: &str| {
+        gtk::Button::builder()
+            .icon_name(icon)
+            .tooltip_text(tip)
+            .css_classes(["flat", "circular"])
+            .valign(gtk::Align::Center)
+            .build()
+    };
+    let prev = button("media-skip-backward-symbolic", "Previous (Ctrl+←)");
+    let play = gtk::Button::builder()
+        .icon_name("media-playback-start-symbolic")
+        .tooltip_text("Play (Space)")
+        .css_classes(["circular", "suggested-action"])
+        .valign(gtk::Align::Center)
+        .build();
+    let next = button("media-skip-forward-symbolic", "Next (Ctrl+→)");
+    let pos = gtk::Label::builder().css_classes(["caption", "numeric", "dim-label"]).width_chars(7).xalign(1.0).build();
+    let scale = gtk::Scale::builder().hexpand(true).draw_value(false).valign(gtk::Align::Center).build();
+    scale.set_range(0.0, 1.0);
+    let dur = gtk::Label::builder().css_classes(["caption", "numeric", "dim-label"]).width_chars(7).xalign(0.0).build();
+    let shuffle = gtk::ToggleButton::builder()
+        .icon_name("media-playlist-shuffle-symbolic")
+        .tooltip_text("Shuffle")
+        .css_classes(["flat", "circular"])
+        .valign(gtk::Align::Center)
+        .build();
+    let repeat = button("media-playlist-repeat-symbolic", "Repeat: off");
+    let queue = gtk::ToggleButton::builder()
+        .icon_name("view-list-symbolic")
+        .tooltip_text("The playing queue")
+        .css_classes(["flat", "circular"])
+        .valign(gtk::Align::Center)
+        .build();
+    queue.bind_property("active", panel, "show-sidebar").bidirectional().sync_create().build();
+    let waiting = gtk::Label::builder()
+        .label("Waiting for the network…")
+        .css_classes(["caption", "warning"])
+        .visible(false)
+        .build();
+    for w in
+        [art.upcast_ref::<gtk::Widget>(), text.upcast_ref(), prev.upcast_ref(), play.upcast_ref(), next.upcast_ref()]
+    {
+        b.append(w);
+    }
+    for w in [pos.upcast_ref::<gtk::Widget>(), scale.upcast_ref(), dur.upcast_ref(), waiting.upcast_ref()] {
+        b.append(w);
+    }
+    for w in [shuffle.upcast_ref::<gtk::Widget>(), repeat.upcast_ref(), queue.upcast_ref()] {
+        b.append(w);
+    }
+    outer.append(&b);
+
+    let pb = app.playback().clone();
+    let p = pb.clone();
+    prev.connect_clicked(move |_| p.previous(true));
+    let p = pb.clone();
+    play.connect_clicked(move |_| p.toggle());
+    let p = pb.clone();
+    next.connect_clicked(move |_| p.next(true));
+    let p = pb.clone();
+    repeat.connect_clicked(move |_| p.cycle_repeat());
+    // Set from the player, the scale's moves are not the user's.
+    let quiet = Rc::new(Cell::new(false));
+    let (p, q) = (pb.clone(), quiet.clone());
+    shuffle.connect_toggled(move |t| {
+        if !q.get() && t.is_active() != p.shuffle() {
+            p.toggle_shuffle();
+        }
+    });
+    let p = pb.clone();
+    scale.connect_change_value(move |_, _, v| {
+        p.seek((v * 1000.0) as i64);
+        gtk::glib::Propagation::Proceed
+    });
+
+    let update_position = {
+        let (pb, scale, pos, dur, quiet) = (pb.clone(), scale.clone(), pos.clone(), dur.clone(), quiet.clone());
+        move || {
+            let d = pb.duration_ms();
+            quiet.set(true);
+            scale.set_range(0.0, (d.max(1) as f64) / 1000.0);
+            scale.set_value(pb.position_ms() as f64 / 1000.0);
+            quiet.set(false);
+            pos.set_label(&clock(pb.position_ms()));
+            dur.set_label(&if d > 0 { clock(d) } else { String::new() });
+        }
+    };
+    let update = {
+        let (app, pb, b, art, title, artist, play, shuffle, repeat, waiting, quiet, up) = (
+            app.clone(),
+            pb.clone(),
+            b.clone(),
+            art,
+            title,
+            artist,
+            play.clone(),
+            shuffle,
+            repeat,
+            waiting,
+            quiet,
+            update_position.clone(),
+        );
+        move || {
+            let cur = pb.current();
+            b.set_sensitive(cur.is_some());
+            art.set_child(Some(&cover(&app, cur.as_ref(), 48)));
+            title.set_label(cur.as_ref().map_or("Nothing playing", |s| s.title.as_str()));
+            artist.set_label(cur.as_ref().map_or("", |s| s.display_artist()));
+            let playing = pb.is_playing();
+            play.set_icon_name(if playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" });
+            play.set_tooltip_text(Some(if playing { "Pause (Space)" } else { "Play (Space)" }));
+            quiet.set(true);
+            shuffle.set_active(pb.shuffle());
+            quiet.set(false);
+            let mode = pb.repeat_mode();
+            repeat.set_icon_name(if mode == "song" {
+                "media-playlist-repeat-song-symbolic"
+            } else {
+                "media-playlist-repeat-symbolic"
+            });
+            repeat.set_tooltip_text(Some(match mode.as_str() {
+                "queue" => "Repeat: the queue",
+                "song" => "Repeat: this song",
+                _ => "Repeat: off",
+            }));
+            if mode == "off" {
+                repeat.remove_css_class("accent")
+            } else {
+                repeat.add_css_class("accent")
+            }
+            waiting.set_visible(pb.waiting());
+            up();
+        }
+    };
+    update();
+    app.listen(move |c| {
+        match c {
+            Change::Playback | Change::Queues | Change::Thumbs => update(),
+            Change::Position => update_position(),
+            _ => {}
+        }
+        true
+    });
+    outer
+}
+
+/// "Continue from Pixel": what another device played last (plan 017).
+fn handoff(app: &Rc<App>) -> gtk::Revealer {
+    let label = gtk::Label::builder().xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
+    let go = gtk::Button::builder().label("Continue").css_classes(["pill", "suggested-action"]).build();
+    let close = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .css_classes(["flat", "circular"])
+        .tooltip_text("Dismiss")
+        .build();
+    let b = gtk::Box::builder().spacing(12).margin_start(12).margin_end(12).margin_top(6).margin_bottom(6).build();
+    b.append(&gtk::Image::from_icon_name("phone-symbolic"));
+    b.append(&label);
+    b.append(&go);
+    b.append(&close);
+    let r = gtk::Revealer::builder().child(&b).css_classes(["toolbar"]).build();
+    let pb = app.playback().clone();
+    let p = pb.clone();
+    go.connect_clicked(move |_| {
+        if let Some(np) = p.handoff() {
+            p.continue_from(&np);
+        }
+    });
+    let p = pb.clone();
+    close.connect_clicked(move |_| {
+        if let Some(np) = p.handoff() {
+            p.dismiss_handoff(&np);
+        }
+    });
+    let update = {
+        let (app, r) = (app.clone(), r.clone());
+        move || match pb.handoff() {
+            Some(np) => {
+                let song = app.catalog().by_id.get(&np.song).map(|s| s.title.clone()).unwrap_or_default();
+                let device = if np.device_name.is_empty() { "another device".into() } else { np.device_name.clone() };
+                label.set_label(&format!("Continue from {device}: “{song}” at {}", clock(pb.place_of(&np))));
+                r.set_reveal_child(true);
+            }
+            None => r.set_reveal_child(false),
+        }
+    };
+    update();
+    app.listen(move |c| {
+        if matches!(c, Change::Handoff | Change::Playback | Change::Queues | Change::Catalog) {
+            update();
+        }
+        true
+    });
+    r
+}
+
+/// "Resume at 12:34?" for a long file, when its place is asked about rather than gone back to (plan 009).
+fn resume_offer(app: &Rc<App>) -> gtk::Revealer {
+    let label = gtk::Label::builder().xalign(0.0).hexpand(true).build();
+    let yes = gtk::Button::builder().label("Resume").css_classes(["pill", "suggested-action"]).build();
+    let no = gtk::Button::builder().label("From Here").css_classes(["pill"]).build();
+    let b = gtk::Box::builder().spacing(12).margin_start(12).margin_end(12).margin_top(6).margin_bottom(6).build();
+    b.append(&label);
+    b.append(&no);
+    b.append(&yes);
+    let r = gtk::Revealer::builder().child(&b).build();
+    let pb = app.playback().clone();
+    let p = pb.clone();
+    yes.connect_clicked(move |_| p.answer_resume(true));
+    let p = pb.clone();
+    no.connect_clicked(move |_| p.answer_resume(false));
+    let rr = r.clone();
+    app.listen(move |c| {
+        if c == Change::Playback {
+            match pb.offer_resume() {
+                Some((s, ms)) => {
+                    label.set_label(&format!("Resume “{}” at {}?", s.title, clock(ms)));
+                    rr.set_reveal_child(true);
+                }
+                None => rr.set_reveal_child(false),
+            }
+        }
+        true
+    });
+    r
+}
+
+/// The playing queue, beside the page: its songs, the playing one marked.
+pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
+    let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).width_request(300).build();
+    let head = gtk::Box::builder().spacing(6).margin_start(12).margin_end(6).margin_top(10).margin_bottom(6).build();
+    let name = gtk::Label::builder()
+        .xalign(0.0)
+        .hexpand(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["heading"])
+        .build();
+    head.append(&name);
+    head.append(&picker(app));
+    b.append(&head);
+    let holder = adw::Bin::builder().vexpand(true).build();
+    b.append(&holder);
+    let pb = app.playback().clone();
+    let update = {
+        let (app, holder) = (app.clone(), holder.clone());
+        move || {
+            let q = pb.active();
+            name.set_label(&q.as_ref().map_or("No queue".to_string(), |q| q.name.clone()));
+            let songs = app.catalog().songs_of(&pb.items());
+            let current = pb.current().map(|s| s.id);
+            let left: i64 = current
+                .and_then(|c| songs.iter().position(|s| s.id == c))
+                .map_or(0, |i| songs[i..].iter().map(|s| s.duration_ms).sum::<i64>() - pb.position_ms());
+            let (a, p) = (app.clone(), pb.clone());
+            let list = widgets::list(
+                &app,
+                &songs.iter().cloned().enumerate().collect::<Vec<_>>(),
+                move |(_, s)| {
+                    let r = row(&cover(&a, Some(s), 32), &s.title, s.display_artist());
+                    if Some(s.id) == current {
+                        r.add_css_class("accent");
+                        r.append(&gtk::Image::from_icon_name("audio-volume-high-symbolic"));
+                    }
+                    r.upcast()
+                },
+                move |(i, _)| p.play_at(*i),
+            );
+            let scroll = widgets::scrolled(&list);
+            let col = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+            let what = format!("{} · {} left", widgets::count(songs.len()), clock(left.max(0)));
+            col.append(
+                &gtk::Label::builder()
+                    .label(what)
+                    .xalign(0.0)
+                    .margin_start(12)
+                    .margin_bottom(6)
+                    .css_classes(["caption", "dim-label"])
+                    .build(),
+            );
+            col.append(&scroll);
+            holder.set_child(Some(&col));
+        }
+    };
+    update();
+    app.listen(move |c| {
+        if matches!(c, Change::Playback | Change::Queues | Change::Catalog) {
+            update();
+        }
+        true
+    });
+    b
+}
+
+/// The queues, to switch between: numbered from 1 in the user's order, as in Musicolet (plan 020).
+pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
+    let list =
+        gtk::ListBox::builder().css_classes(["navigation-sidebar"]).selection_mode(gtk::SelectionMode::None).build();
+    let pop = gtk::Popover::builder()
+        .child(
+            &gtk::ScrolledWindow::builder()
+                .child(&list)
+                .propagate_natural_height(true)
+                .max_content_height(420)
+                .min_content_width(260)
+                .build(),
+        )
+        .build();
+    let button = gtk::MenuButton::builder()
+        .icon_name("view-more-symbolic")
+        .tooltip_text("Switch queue")
+        .popover(&pop)
+        .css_classes(["flat"])
+        .build();
+    let pb = app.playback().clone();
+    let ids: Rc<std::cell::RefCell<Vec<String>>> = Rc::default();
+    let (p, i, popover) = (pb.clone(), ids.clone(), pop.clone());
+    list.connect_row_activated(move |_, r| {
+        if let Some(id) = i.borrow().get(r.index() as usize).cloned() {
+            popover.popdown();
+            p.switch_to(&id);
+        }
+    });
+    pop.connect_show(move |_| {
+        list.remove_all();
+        let active = pb.active_id();
+        let mut v = ids.borrow_mut();
+        v.clear();
+        for (n, q) in pb.ordered().into_iter().enumerate() {
+            let l = gtk::Label::builder()
+                .label(format!("{}. {}", n + 1, q.name))
+                .xalign(0.0)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            if q.id == active {
+                l.add_css_class("accent");
+            }
+            list.append(&l);
+            v.push(q.id);
+        }
+    });
+    button
+}

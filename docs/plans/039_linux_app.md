@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 and 1 done (2026-10-23): the library browses, nothing plays yet; not released
+**Status:** `IN PROGRESS` — steps 0 to 2 done (2026-10-23): it plays; 0.16.3 built, not yet released or installed
 **Started:** 2026-10-23
 
 ## Problem
@@ -299,8 +299,8 @@ override:
   generator); this Flatpak is built on the owner's machine and handed out
   in GitHub releases, so a generator and a second file to keep in step with
   `Cargo.lock` buy nothing (changed in step 1). Sandbox permissions grow
-  with the steps: network, IPC, Wayland with X11 as a fallback and the GPU
-  now; PulseAudio (PipeWire answers it) with playing; the MPRIS name, the
+  with the steps: network, IPC, Wayland with X11 as a fallback, the GPU,
+  PulseAudio (PipeWire answers it) and the MPRIS name now; the
   StatusNotifierItem watcher and logind's sleep signal with what uses them.
   No file system access: Open With hands files in through the document
   portal.
@@ -370,11 +370,13 @@ moves with it.
    [How step 1 went](#how-step-1-went-2026-10-23).
 2. **Playing.** The player under `Playback`: the 20 queues, the queue panel
    and picker, listens, resume points (009), hand-off (017), MPRIS, pause
-   on an output change. **First release**, the first install.
-3. **Offline.** The outbox and the push/pull loop with back-off; a revoked
-   token keeps unsent edits. The song cache with prefetch, then Downloads
-   and pins with promotion by rename. Ported tests: queue order, downloads,
-   the waiting reader.
+   on an output change. **First release**, the first install. **Done
+   (2026-10-23)**; see [How step 2 went](#how-step-2-went-2026-10-23). The
+   outbox and the push/pull loop came here from step 3: a queue made here
+   and a listen are ops, and without them they would never reach the
+   server.
+3. **Offline.** The song cache with prefetch, then Downloads and pins with
+   promotion by rename. Ported tests: downloads.
 4. **The rest of the phone.** Playlist editing (013), Favorites, Listen
    Later and the automatic views (010), podcasts and audiobooks (031),
    bookmarks (033), lyrics (015), speed and pitch (016), the sleep timer
@@ -445,6 +447,64 @@ The Mac takes 723–809 ms to build the same catalogue
 has no GTK `-dev` packages; CI builds and tests against Ubuntu 24.04's.
 The sidebar has no Queues, lists or Downloads yet: they come with what
 fills them, in steps 2 to 4.
+
+## How step 2 went (2026-10-23)
+
+**Built:** in `linux/core`, the queue, mark, resume, bookmark, setting and
+play-count tables; the outbox and the ops each change records (the Mac's
+`Store`); the whole sync round, push, pull and apply, with the play
+counts; the synced settings' defaults, which `scripts/check-settings.sh`
+now compares with the other apps'; the queues' order and play order,
+rewinding and chapters as plain functions; and `Part`, a song's bytes
+arriving in a file. In `linux/app`, the engine (`playbin3`, our source
+element, the four findings of the spike), `Playback` (the Mac's, less the
+sleep timer, speed and pitch, and chapters, which come with step 4),
+MPRIS, the Now playing bar, the queue panel and picker, the Queues pages,
+the hand-off and resume offers, and Play Next and Add to Queue on every
+song list. Space plays and pauses, Ctrl+← and Ctrl+→ skip.
+
+**Checked**, on Broadway with `fakesink sync=true` (in time, silent),
+signed in as the test account against the NAS:
+
+- An album played, and a seek near the end of its first song went on to
+  the second by itself, gaplessly.
+- A song heard from 1:40 to its end (3:34) was counted by the server once,
+  at the time it was heard.
+- The test account's 18 queues arrived, and the one made here reached the
+  server.
+- MPRIS, asked from the desktop's session bus: the title, artist, album,
+  length and cover file; PlayPause from the bus played.
+- An audiobook sought to an hour in and the app quit: the queue's place
+  and a resume point were kept at 1:00:03.5, sent with the next start, and
+  the app came back paused there.
+- Another device's playback, reported through the sync API, was offered
+  ("Continue from Phone test: “Mast Magan” at 1:01"), and Continue took
+  its queue and song and played from there.
+- The 21 unit tests, with the outbox's replacing ops, the queues' order,
+  what plays next, rewinding, chapters and the waiting reader.
+
+**Changed while building:**
+
+- **A change announced while another is being told reaches everyone.**
+  The first version took the listeners out while it called them, so a page
+  opened from the catalogue's listener, or a queue restored there, told no
+  one; the sidebar showed the wrong section.
+- **Each song is fetched as it plays**, into a file that goes when nothing
+  reads it any more. The cache that keeps them, and prefetches the next,
+  is step 3's.
+
+**Not done:**
+
+- Unplugging headphones from a jack is not noticed: PipeWire changes the
+  port, not the device, and GStreamer says nothing. A Bluetooth device
+  leaving, or the output moving to another device, pauses.
+- Closing the window quits, saving the place, until step 5 keeps the
+  music playing.
+- A queue's page is built again when the queues change, once a song as it
+  plays, and loses its scroll; and Space plays or pauses even with a
+  dialog's button focused. Both wait for step 4's queue editing.
+- Playback through the speakers has not been heard by a person: every
+  check here was silent. That is the first thing to try with 0.16.3.
 
 ## Open questions
 

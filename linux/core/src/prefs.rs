@@ -21,6 +21,15 @@ pub struct Values {
     pub library_format: i64,
     pub sync_version: i64,
     pub device_id: i64,
+    /// The queue playing when the app last stopped.
+    pub active_queue: String,
+    /// When this device last reported its playback, and the hand-off last dismissed (plan 017).
+    pub state_at: i64,
+    pub handoff_dismissed: String,
+    /// The listen still open, saved every few seconds, so a crash loses none (plan 008).
+    pub open_listen: String,
+    /// What each queue was played from, logged with its listens: `album:<id>` and the like.
+    pub sources: std::collections::HashMap<String, String>,
 }
 
 pub struct Prefs {

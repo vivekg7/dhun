@@ -25,6 +25,12 @@ struct Hit {
     route: Option<Route>,
 }
 
+#[derive(Clone)]
+enum Action {
+    Open(Route),
+    Play(String, Rc<Vec<SongRef>>, usize),
+}
+
 struct Found {
     kind: &'static str,
     hits: Vec<Hit>,
@@ -154,8 +160,8 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let list =
         gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
     let expanded: Rc<RefCell<HashSet<&'static str>>> = Rc::default();
-    // What each row opens, by its index in the list.
-    let routes: Rc<RefCell<Vec<Option<Route>>>> = Rc::default();
+    // What each row does, by its index in the list.
+    let routes: Rc<RefCell<Vec<Option<Action>>>> = Rc::default();
     let fill: Rc<dyn Fn()> = {
         let (nav, list, expanded, routes) = (Rc::downgrade(nav), list.downgrade(), expanded.clone(), routes.clone());
         Rc::new(move || {
@@ -183,7 +189,10 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                 routes.push(None);
                 let all = expanded.borrow().contains(f.kind);
                 let total = f.hits.len();
-                for h in f.hits.into_iter().take(if all { usize::MAX } else { SHOWN }) {
+                // A song found plays the songs found, from it, as a queue named after the search.
+                let found: Rc<Vec<SongRef>> =
+                    Rc::new(f.hits.iter().filter(|h| h.route.is_none()).filter_map(|h| h.song.clone()).collect());
+                for (i, h) in f.hits.into_iter().take(if all { usize::MAX } else { SHOWN }).enumerate() {
                     let image = match (&h.song, h.icon) {
                         (_, Some(icon)) => {
                             gtk::Image::builder().icon_name(icon).pixel_size(24).width_request(36).build().upcast()
@@ -191,7 +200,10 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                         (song, None) => cover(&nav.app, song.as_ref(), 36),
                     };
                     list.append(&gtk::ListBoxRow::builder().child(&row(&image, &h.title, &h.detail)).build());
-                    routes.push(h.route);
+                    routes.push(match h.route {
+                        Some(r) => Some(Action::Open(r)),
+                        None => Some(Action::Play(text.to_string(), found.clone(), i)),
+                    });
                 }
                 if total > SHOWN && !all {
                     let more = gtk::Button::builder()
@@ -212,9 +224,12 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     };
     let n = Rc::downgrade(nav);
     list.connect_row_activated(move |_, r| {
-        let route = routes.borrow().get(r.index() as usize).cloned().flatten();
-        if let (Some(n), Some(route)) = (n.upgrade(), route) {
-            n.push(route);
+        let action = routes.borrow().get(r.index() as usize).cloned().flatten();
+        let Some(n) = n.upgrade() else { return };
+        match action {
+            Some(Action::Open(route)) => n.push(route),
+            Some(Action::Play(name, songs, i)) => n.app.playback().play_list(&name, "search", &songs, i),
+            None => {}
         }
     });
     nav.set_search_fill(fill.clone());

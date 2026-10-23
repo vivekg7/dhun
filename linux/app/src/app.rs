@@ -8,9 +8,10 @@ use dhun_core::api::Api;
 use dhun_core::catalog::{Catalog, SongRef};
 use dhun_core::covers::{self, Files};
 use dhun_core::db::Db;
-use dhun_core::model::Playlist;
+use dhun_core::model::{NowPlaying, Playlist, QueueRow};
 use dhun_core::prefs::Prefs;
 use dhun_core::sync;
+use dhun_core::synced::Settings;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -28,18 +29,34 @@ pub enum Change {
     Thumbs,
     Status,
     Account,
+    /// The queues, or the synced settings, changed.
+    Queues,
+    /// The song, play or pause, the queue's songs.
+    Playback,
+    /// The place in the song, four times a second while playing.
+    Position,
+    /// Another device's playback, for hand-off.
+    Handoff,
+    /// Another sidebar section is showing.
+    Section,
 }
 
-type Listener = Box<dyn Fn(Change) -> bool>;
+type Listener = Rc<dyn Fn(Change) -> bool>;
 type CoverWaiter = Box<dyn FnOnce(&gdk::Texture)>;
 
 pub struct App {
+    /// The app's folder: the database, covers, songs arriving.
+    pub dir: PathBuf,
     pub prefs: Arc<Prefs>,
     pub api: Arc<Api>,
     pub db: Arc<Mutex<Db>>,
     pub files: Arc<Files>,
     pub catalog: RefCell<Arc<Catalog>>,
     pub playlists: RefCell<Vec<Playlist>>,
+    pub queues: RefCell<Vec<QueueRow>>,
+    pub settings: RefCell<Settings>,
+    pub now_playing: RefCell<Option<NowPlaying>>,
+    pub playback: std::cell::OnceCell<Rc<crate::playback::Playback>>,
     pub syncing: Cell<bool>,
     /// The server could not be reached on the last try.
     pub offline: Cell<bool>,
@@ -75,12 +92,17 @@ impl App {
         let prefs = Arc::new(Prefs::open(&dir));
         let db = Db::open(&dir.join("dhun.db")).expect("the app's database");
         Rc::new(App {
+            dir: dir.clone(),
             api: Arc::new(Api::new(prefs.clone())),
             prefs,
             db: Arc::new(Mutex::new(db)),
             files: Arc::new(Files::new(dir.join("covers"))),
             catalog: RefCell::new(Arc::new(Catalog::empty())),
             playlists: RefCell::new(vec![]),
+            queues: RefCell::new(vec![]),
+            settings: RefCell::new(Settings::new()),
+            now_playing: RefCell::new(None),
+            playback: std::cell::OnceCell::new(),
             syncing: Cell::new(false),
             offline: Cell::new(false),
             sync_error: RefCell::new(None),
@@ -101,17 +123,17 @@ impl App {
     /// Calls `f` on every change while it returns true: a view's listener
     /// returns false once the view is gone.
     pub fn listen(&self, f: impl Fn(Change) -> bool + 'static) {
-        self.listeners.borrow_mut().push(Box::new(f));
+        self.listeners.borrow_mut().push(Rc::new(f));
     }
 
+    /// Tells every listener. A listener may announce a change of its own,
+    /// which reaches them all too: they are called from a copy of the list.
     pub fn changed(&self, c: Change) {
-        // Taken out while they run, so a listener may add another.
-        let fs = std::mem::take(&mut *self.listeners.borrow_mut());
-        let kept: Vec<_> = fs.into_iter().filter(|f| f(c)).collect();
-        let mut l = self.listeners.borrow_mut();
-        let added = std::mem::take(&mut *l);
-        *l = kept;
-        l.extend(added);
+        let all = self.listeners.borrow().clone();
+        let done: Vec<Listener> = all.into_iter().filter(|f| !f(c)).collect();
+        if !done.is_empty() {
+            self.listeners.borrow_mut().retain(|f| !done.iter().any(|d| Rc::ptr_eq(d, f)));
+        }
     }
 
     pub fn catalog(&self) -> Arc<Catalog> {
@@ -144,6 +166,30 @@ impl App {
             glib::g_info!("Dhun", "search indexes: {:?}", t.elapsed());
         })
         .await;
+    }
+
+    pub fn playback(&self) -> &Rc<crate::playback::Playback> {
+        self.playback.get().expect("playback is made at start")
+    }
+
+    pub fn reload_queues(&self) {
+        let db = self.db.lock().unwrap();
+        *self.queues.borrow_mut() = db.queues().unwrap_or_default();
+        *self.settings.borrow_mut() = db.settings().unwrap_or_default();
+        drop(db);
+        self.changed(Change::Queues);
+    }
+
+    /// A change to the user's synced data, made through `dhun_core::store`:
+    /// in the working copy at once, in the outbox for the next sync. An
+    /// edit the outbox could not take is said where sync errors show.
+    pub fn store(self: &Rc<Self>, f: impl FnOnce(&mut Db) -> dhun_core::db::Result<()>) {
+        let r = f(&mut self.db.lock().unwrap());
+        if let Err(e) = r {
+            *self.sync_error.borrow_mut() = Some(format!("A change could not be kept for sending: {e}"));
+            self.changed(Change::Status);
+        }
+        self.sync_soon(Duration::from_secs(2));
     }
 
     pub fn reload_playlists(&self) {
@@ -203,7 +249,7 @@ impl App {
 
     async fn round(self: &Rc<Self>) -> bool {
         let (api, db) = (self.api.clone(), self.db.clone());
-        let pulled = gio::spawn_blocking(move || sync::pull_library(&api, &db)).await;
+        let pulled = gio::spawn_blocking(move || sync::round(&api, &db)).await;
         let pulled = match pulled {
             Ok(Ok(p)) => p,
             Ok(Err(e)) => {
@@ -221,8 +267,18 @@ impl App {
         };
         self.offline.set(false);
         *self.sync_error.borrow_mut() = None;
-        if pulled.playlists {
+        if pulled.playlists || pulled.refused {
             self.reload_playlists();
+        }
+        if pulled.state {
+            self.reload_queues();
+            if let Some(p) = self.playback.get() {
+                p.queues_synced();
+            }
+        }
+        if let Some(np) = pulled.now_playing {
+            *self.now_playing.borrow_mut() = Some(np);
+            self.changed(Change::Handoff);
         }
         if pulled.songs > 0 || self.catalog.borrow().by_id.is_empty() {
             self.reload_songs().await;
@@ -313,6 +369,30 @@ impl App {
         });
     }
 
+    /// What the user's devices played last, asked directly, because after a
+    /// restart the sync cursor is already past it (plan 017). Also learns
+    /// this device's id, which an older sign-in may not have kept.
+    pub async fn check_handoff(self: &Rc<Self>) {
+        let api = self.api.clone();
+        let known = self.prefs.get().device_id != 0;
+        let got = gio::spawn_blocking(move || {
+            let me = if known { None } else { api.me().ok() };
+            (me, api.now_playing().ok().flatten())
+        })
+        .await;
+        let Ok((me, np)) = got else { return };
+        if let Some(me) = me {
+            self.prefs.update(|p| {
+                p.device_id = me.device_id.unwrap_or(0);
+                p.admin = me.user.as_ref().is_some_and(|u| u.admin);
+            });
+        }
+        if np.is_some() {
+            *self.now_playing.borrow_mut() = np;
+            self.changed(Change::Handoff);
+        }
+    }
+
     /// Signs in and starts the first sync. Another account's data, its
     /// unsent edits included, is cleared first, as on the phone.
     pub async fn sign_in(self: &Rc<Self>, server: String, user: String, password: String) -> Result<(), String> {
@@ -342,6 +422,8 @@ impl App {
         });
         self.changed(Change::Account);
         self.sync_soon(Duration::ZERO);
+        let a = self.clone();
+        glib::spawn_future_local(async move { a.check_handoff().await });
         Ok(())
     }
 
@@ -355,6 +437,12 @@ impl App {
         self.prefs.forget_account();
         *self.catalog.borrow_mut() = Arc::new(Catalog::empty());
         self.playlists.borrow_mut().clear();
+        self.queues.borrow_mut().clear();
+        self.settings.borrow_mut().clear();
+        self.now_playing.borrow_mut().take();
+        if let Some(p) = self.playback.get() {
+            p.reset();
+        }
         self.changed(Change::Account);
     }
 }

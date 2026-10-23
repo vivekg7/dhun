@@ -188,18 +188,61 @@ pub struct Columns {
     pub album: bool,
 }
 
+/// What activating a song in a list does.
+#[derive(Clone)]
+pub enum Play {
+    /// Plays the list as a queue named after it (AGENTS.md: never into the current queue).
+    List { name: String, source: String },
+    /// The list is queue `id`: plays it from that song.
+    Queue(String),
+}
+
 /// Songs in a `GtkColumnView`: title, artist, album, time. Rows are built
-/// only for what is on screen.
-pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns) -> gtk::ColumnView {
+/// only for what is on screen. Activating a row plays; its menu queues.
+pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play) -> gtk::ColumnView {
     let mut store = gio::ListStore::new::<glib::BoxedAnyObject>();
     store.extend(songs.iter().map(|s| glib::BoxedAnyObject::new(s.clone())));
-    let view = gtk::ColumnView::new(Some(gtk::MultiSelection::new(Some(store.clone()))));
+    let sel = gtk::MultiSelection::new(Some(store.clone()));
+    let view = gtk::ColumnView::new(Some(sel.clone()));
     view.set_show_column_separators(false);
     view.set_reorderable(false);
     view.add_css_class("data-table");
+    let menu = gio::Menu::new();
+    menu.append(Some("Play Next"), Some("songs.play-next"));
+    menu.append(Some("Add to Queue"), Some("songs.add-to-queue"));
+    if matches!(play, Play::Queue(_)) {
+        menu.append(Some("Remove from Queue"), Some("songs.remove"));
+    }
+    // A right-click selects the row under it, unless it is in the selection already, and opens the menu.
+    let menu_on = {
+        let (sel, menu) = (sel.clone(), menu.clone());
+        move |cell: &gtk::Widget, item: &gtk::ListItem| {
+            let g = gtk::GestureClick::builder().button(3).build();
+            let (sel, menu, item, cell2) = (sel.clone(), menu.clone(), item.downgrade(), cell.downgrade());
+            g.connect_pressed(move |_, _, x, y| {
+                let (Some(item), Some(cell)) = (item.upgrade(), cell2.upgrade()) else { return };
+                let pos = item.position();
+                if !sel.is_selected(pos) {
+                    sel.select_item(pos, true);
+                }
+                let pop = gtk::PopoverMenu::from_model(Some(&menu));
+                pop.set_parent(&cell);
+                pop.set_has_arrow(false);
+                pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                pop.connect_closed(|p| {
+                    let p = p.clone();
+                    glib::idle_add_local_once(move || p.unparent());
+                });
+                pop.popup();
+            });
+            cell.add_controller(g);
+        }
+    };
     let column = |title: &str, expand: bool, text: Box<dyn Fn(&SongRef) -> String>, dim: bool, numeric: bool| {
         let factory = gtk::SignalListItemFactory::new();
+        let menu_on = menu_on.clone();
         factory.connect_setup(move |_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             let label = gtk::Label::builder()
                 .xalign(if numeric { 1.0 } else { 0.0 })
                 .ellipsize(gtk::pango::EllipsizeMode::End)
@@ -210,7 +253,8 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns) -> gtk::Column
             if numeric {
                 label.add_css_class("numeric");
             }
-            item.downcast_ref::<gtk::ListItem>().unwrap().set_child(Some(&label));
+            menu_on(label.upcast_ref(), item);
+            item.set_child(Some(&label));
         });
         factory.connect_bind(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
@@ -234,14 +278,17 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns) -> gtk::Column
     }
     // The cover thumbnail with the title, as the Mac's table shows it.
     let factory = gtk::SignalListItemFactory::new();
-    factory.connect_setup(|_, item| {
+    let m = menu_on.clone();
+    factory.connect_setup(move |_, item| {
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let b = gtk::Box::builder().spacing(10).build();
         let pic =
             gtk::Picture::builder().content_fit(gtk::ContentFit::Cover).width_request(28).height_request(28).build();
         let frame = gtk::Frame::builder().child(&pic).css_classes(["cover"]).build();
         b.append(&frame);
         b.append(&gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build());
-        item.downcast_ref::<gtk::ListItem>().unwrap().set_child(Some(&b));
+        m(b.upcast_ref(), item);
+        item.set_child(Some(&b));
     });
     let a = app.clone();
     factory.connect_bind(move |_, item| {
@@ -264,18 +311,50 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns) -> gtk::Column
     view.append_column(&column("Time", false, Box::new(|s| clock(s.duration_ms)), true, true));
     // New thumbnails: rows showing placeholders are bound again.
     rebind_on_thumbs(app, &store);
+
+    let list: Rc<Vec<SongRef>> = Rc::new(songs.to_vec());
+    let (a, l, p) = (app.clone(), list.clone(), play.clone());
+    view.connect_activate(move |_, pos| {
+        let pb = a.playback();
+        match &p {
+            Play::List { name, source } => pb.play_list(name, source, &l, pos as usize),
+            Play::Queue(id) => pb.play_queue_at(id, l[pos as usize].id),
+        }
+    });
+    let selected = {
+        let (sel, list) = (sel.clone(), list.clone());
+        move || -> Vec<SongRef> {
+            (0..list.len() as u32).filter(|&i| sel.is_selected(i)).map(|i| list[i as usize].clone()).collect()
+        }
+    };
+    let group = gio::SimpleActionGroup::new();
+    let action = |name: &str, f: Box<dyn Fn(Vec<SongRef>)>| {
+        let a = gio::SimpleAction::new(name, None);
+        let selected = selected.clone();
+        a.connect_activate(move |_, _| f(selected()));
+        group.add_action(&a);
+    };
+    let a = app.clone();
+    action("play-next", Box::new(move |s| a.playback().play_next(&s)));
+    let a = app.clone();
+    action("add-to-queue", Box::new(move |s| a.playback().add_to_queue(&s)));
+    if let Play::Queue(id) = play {
+        let a = app.clone();
+        action("remove", Box::new(move |s| a.playback().remove_from(&id, &s.iter().map(|s| s.id).collect())));
+    }
+    view.insert_action_group("songs", Some(&group));
     view
 }
 
 /// A song list that filters itself when it is long (plan 011), as search does (plan 029).
-pub fn songs_page(app: &Rc<App>, top: Option<gtk::Widget>, songs: Vec<SongRef>, cols: Columns) -> gtk::Box {
+pub fn songs_page(app: &Rc<App>, top: Option<gtk::Widget>, songs: Vec<SongRef>, cols: Columns, play: Play) -> gtk::Box {
     let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     if let Some(top) = top {
         b.append(&top);
     }
     let holder = adw::Bin::new();
     holder.set_vexpand(true);
-    holder.set_child(Some(&scrolled(&song_list(app, &songs, cols))));
+    holder.set_child(Some(&scrolled(&song_list(app, &songs, cols, play.clone()))));
     if songs.len() > FILTER_OVER {
         let entry = gtk::SearchEntry::builder()
             .placeholder_text("Filter songs")
@@ -286,7 +365,7 @@ pub fn songs_page(app: &Rc<App>, top: Option<gtk::Widget>, songs: Vec<SongRef>, 
         let (app, h) = (app.clone(), holder.clone());
         entry.connect_search_changed(move |e| {
             let shown = app.catalog().filter(&songs, &e.text());
-            h.set_child(Some(&scrolled(&song_list(&app, &shown, cols))));
+            h.set_child(Some(&scrolled(&song_list(&app, &shown, cols, play.clone()))));
         });
         b.append(&entry);
     }

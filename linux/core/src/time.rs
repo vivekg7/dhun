@@ -43,6 +43,26 @@ fn try_parse(s: &str) -> Option<i64> {
     Some(((days * 24 + h) * 60 + mi) * 60_000 + sec * 1000 + ms - offset)
 }
 
+/// Epoch milliseconds as `2026-10-12T10:00:00.500Z`, as the server reads them.
+pub fn format(ms: i64) -> String {
+    let (days, rest) = (ms.div_euclid(86_400_000), ms.rem_euclid(86_400_000));
+    let (y, m, d) = civil_from_days(days);
+    let s = rest / 1000;
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z", s / 3600, s / 60 % 60, s % 60, rest % 1000)
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
 /// Days since 1970-01-01 (Howard Hinnant's algorithm).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
@@ -63,5 +83,9 @@ mod tests {
         assert_eq!(super::parse("2026-10-12T15:30:00+05:30"), 1_791_799_200_000);
         assert_eq!(super::parse(""), 0);
         assert_eq!(super::parse("yesterday"), 0);
+        for ms in [0, 1_791_799_200_500, 951_782_400_000] {
+            assert_eq!(super::parse(&super::format(ms)), ms);
+        }
+        assert_eq!(super::format(1_791_799_200_500), "2026-10-12T10:00:00.500Z");
     }
 }

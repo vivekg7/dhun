@@ -2,7 +2,7 @@
 //! Mac's are (plan 006). Blocking: the app calls it from worker threads, so
 //! no async runtime joins (plan 039).
 
-use crate::model::{Chapter, Song, User};
+use crate::model::{Chapter, NowPlaying, Song, User};
 use crate::prefs::Prefs;
 use crate::time;
 use serde::Deserialize;
@@ -43,7 +43,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Api {
     pub prefs: Arc<Prefs>,
     agent: ureq::Agent,
+    /// For songs' bytes: each request has a bounded window and a deadline,
+    /// so a stalled connection is given up and asked again (plan 019).
+    stream: ureq::Agent,
 }
+
+/// What one request for a song's bytes asks for at most.
+pub const RANGE_WINDOW: u64 = 2 << 20;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,6 +168,90 @@ pub struct Me {
     pub device_id: Option<i64>,
 }
 
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct QueueDto {
+    pub id: String,
+    pub deleted: Option<bool>,
+    pub name: Option<String>,
+    pub songs: Option<Vec<i64>>,
+    pub current_song: Option<i64>,
+    pub position_ms: Option<i64>,
+    pub shuffle: Option<bool>,
+    pub repeat: Option<String>,
+    pub used_at: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct ListItemDto {
+    pub song: i64,
+    pub deleted: Option<bool>,
+    pub at: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ResumeDto {
+    pub song: i64,
+    pub deleted: Option<bool>,
+    pub position_ms: Option<i64>,
+    pub at: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BookmarkDto {
+    pub id: String,
+    pub deleted: Option<bool>,
+    pub song: Option<i64>,
+    pub position_ms: Option<i64>,
+    pub note: Option<String>,
+    pub at: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct OpResult {
+    pub id: String,
+    pub status: String,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SyncState {
+    pub version: Option<i64>,
+    pub queues: Option<Vec<QueueDto>>,
+    pub favorites: Option<Vec<ListItemDto>>,
+    pub listen_later: Option<Vec<ListItemDto>>,
+    pub resume: Option<Vec<ResumeDto>>,
+    pub played: Option<Vec<ListItemDto>>,
+    pub bookmarks: Option<Vec<BookmarkDto>>,
+    pub settings: Option<HashMap<String, serde_json::Value>>,
+    pub now_playing: Option<NowPlaying>,
+    pub results: Option<Vec<OpResult>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlayDto {
+    pub song: i64,
+    pub count: Option<i64>,
+    pub last_played_at: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Plays {
+    plays: Option<Vec<PlayDto>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct NowPlayingBody {
+    now_playing: Option<NowPlaying>,
+}
+
 #[derive(Deserialize)]
 struct ErrorBody {
     message: Option<String>,
@@ -181,7 +271,14 @@ impl Api {
             .http_status_as_error(false)
             .build()
             .into();
-        Api { prefs, agent }
+        let stream = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_recv_response(Some(Duration::from_secs(15)))
+            .timeout_recv_body(Some(Duration::from_secs(20)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        Api { prefs, agent, stream }
     }
 
     pub fn server(&self) -> String {
@@ -190,6 +287,23 @@ impl Api {
 
     pub fn stream_url(&self, song: i64) -> String {
         format!("{}/api/v1/stream/{song}", self.server())
+    }
+
+    /// The bytes of a stream from `from`, at most `RANGE_WINDOW` of them.
+    pub fn range(&self, url: &str, from: u64) -> Result<impl std::io::Read + 'static> {
+        let token = self.prefs.token();
+        let resp = self
+            .stream
+            .get(url)
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Range", format!("bytes={from}-{}", from + RANGE_WINDOW - 1))
+            .call()
+            .map_err(|e| Error::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if status != 206 && !(status == 200 && from == 0) {
+            return Err(Error::Http { code: status, message: format!("HTTP {status}") });
+        }
+        Ok(resp.into_body().into_reader())
     }
 
     pub fn login(&self, server: &str, user: &str, password: &str, device: &str) -> Result<Login> {
@@ -210,6 +324,22 @@ impl Api {
     /// Podcasts and audiobooks too (`kinds=all`): without it the server sends music only, for apps that predate them.
     pub fn library(&self, since: i64) -> Result<Library> {
         self.call("GET", &format!("/api/v1/library?since={since}&kinds=all"), None, true)
+    }
+
+    /// Pushes ops and pulls what changed since the cursor (plan 006).
+    pub fn sync(&self, since: i64, ops: Vec<serde_json::Value>) -> Result<SyncState> {
+        self.call("POST", "/api/v1/sync", Some(serde_json::json!({ "since": since, "ops": ops })), true)
+    }
+
+    /// Every song this user played, with its count.
+    pub fn plays(&self) -> Result<Vec<PlayDto>> {
+        let r: Plays = self.call("GET", "/api/v1/plays", None, true)?;
+        Ok(r.plays.unwrap_or_default())
+    }
+
+    pub fn now_playing(&self) -> Result<Option<NowPlaying>> {
+        let r: NowPlayingBody = self.call("GET", "/api/v1/now-playing", None, true)?;
+        Ok(r.now_playing)
     }
 
     /// Thumbnails by art key, base64 JPEG.

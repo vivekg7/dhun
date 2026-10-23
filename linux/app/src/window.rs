@@ -20,7 +20,16 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
     let nav = Nav::new(app);
     let split = main_view(app, &nav);
-    stack.add_named(&split, Some("main"));
+    // The playing queue beside the page, and Now playing along the foot (plan 024's layout).
+    let panel = adw::OverlaySplitView::builder()
+        .sidebar_position(gtk::PackType::End)
+        .show_sidebar(false)
+        .content(&split)
+        .sidebar(&crate::nowplaying::queue_panel(app))
+        .build();
+    let main = adw::ToolbarView::builder().content(&panel).build();
+    main.add_bottom_bar(&crate::nowplaying::bar(app, &panel));
+    stack.add_named(&main, Some("main"));
     stack.add_named(&sign_in(app), Some("sign-in"));
     let show = {
         let (stack, app) = (stack.clone(), app.clone());
@@ -33,7 +42,16 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
         }
         true
     });
-    window.set_content(Some(&stack));
+    // Notes for the user, as a queue removed to make room.
+    let toasts = adw::ToastOverlay::new();
+    toasts.set_child(Some(&stack));
+    let t = toasts.downgrade();
+    app.playback().notices.borrow_mut().push(Box::new(move |text| {
+        if let Some(t) = t.upgrade() {
+            t.add_toast(adw::Toast::new(text));
+        }
+    }));
+    window.set_content(Some(&toasts));
     // One pane at a time below this width, as on a phone.
     let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 640sp").unwrap());
     narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
@@ -48,6 +66,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     });
     window.add_action(&find);
     gapp.set_accels_for_action("win.find", &["<Control>f"]);
+    keys(&window, app);
     // Syncs on becoming active, as on the phone and the Mac.
     let a = app.clone();
     window.connect_is_active_notify(move |w| {
@@ -57,16 +76,24 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     });
     nav.open(Route::Albums);
     if let Ok(spec) = std::env::var("DHUN_OPEN") {
-        open_when_loaded(app, &nav, &split, spec);
+        open_when_loaded(app, &nav, &split, &panel, spec);
     }
     window
 }
 
 /// For screenshots under test (`DHUN_SCREENSHOT`): pages to open once the
 /// library has loaded, as `artists,artist:Name`, `album:Name`,
-/// `folder:Path`, `books`, `search:words`, or `sidebar` for a narrow window.
-fn open_when_loaded(app: &Rc<App>, nav: &Rc<Nav>, split: &adw::NavigationSplitView, spec: String) {
-    let (a, n, s) = (app.clone(), nav.clone(), split.clone());
+/// `folder:Path`, `books`, `search:words`, `play-album:Name`,
+/// `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue, or `sidebar` for a
+/// narrow window.
+fn open_when_loaded(
+    app: &Rc<App>,
+    nav: &Rc<Nav>,
+    split: &adw::NavigationSplitView,
+    panel: &adw::OverlaySplitView,
+    spec: String,
+) {
+    let (a, n, s, p) = (app.clone(), nav.clone(), split.clone(), panel.clone());
     app.listen(move |c| {
         if c != Change::Catalog {
             return true;
@@ -74,6 +101,7 @@ fn open_when_loaded(app: &Rc<App>, nav: &Rc<Nav>, split: &adw::NavigationSplitVi
         for (i, step) in spec.split(',').enumerate() {
             let (what, arg) = step.split_once(':').unwrap_or((step, ""));
             let route = match what {
+                "queues" => Route::Queues,
                 "artists" => Route::Artists,
                 "genres" => Route::Genres,
                 "folders" => Route::Folder(String::new()),
@@ -93,6 +121,39 @@ fn open_when_loaded(app: &Rc<App>, nav: &Rc<Nav>, split: &adw::NavigationSplitVi
                     n.search.set_text(arg);
                     continue;
                 }
+                "continue-later" => {
+                    // Takes the hand-off offered, once the sync has brought it.
+                    let a = a.clone();
+                    glib::timeout_add_seconds_local_once(4, move || {
+                        if let Some(np) = a.playback().handoff() {
+                            a.playback().continue_from(&np);
+                        }
+                    });
+                    continue;
+                }
+                "seek-later" => {
+                    // A seek three seconds on, once the song has opened.
+                    let (a, ms) = (a.clone(), arg.parse().unwrap_or(0));
+                    glib::timeout_add_seconds_local_once(3, move || a.playback().seek(ms));
+                    continue;
+                }
+                "switch" => {
+                    let id = a.queues.borrow().iter().find(|q| q.name == arg).map(|q| q.id.clone());
+                    if let Some(id) = id {
+                        a.playback().switch_to(&id);
+                    }
+                    continue;
+                }
+                "play-album" => {
+                    if let Some(x) = a.catalog().albums.iter().find(|x| x.name == arg) {
+                        a.playback().play_list(&x.name, &format!("album:{}", x.id), &x.songs, 0);
+                    }
+                    continue;
+                }
+                "panel" => {
+                    p.set_show_sidebar(true);
+                    continue;
+                }
                 "sidebar" => {
                     s.set_show_content(false);
                     continue;
@@ -103,6 +164,29 @@ fn open_when_loaded(app: &Rc<App>, nav: &Rc<Nav>, split: &adw::NavigationSplitVi
         }
         false
     });
+}
+
+/// Space plays or pauses, Ctrl+← and Ctrl+→ go to the previous and next
+/// song, as on the Mac: caught before the focused list or button, except
+/// while typing, where Space is a space.
+fn keys(window: &adw::ApplicationWindow, app: &Rc<App>) {
+    let c = gtk::EventControllerKey::new();
+    c.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let (a, w) = (app.clone(), window.downgrade());
+    c.connect_key_pressed(move |_, key, _, mods| {
+        let typing =
+            w.upgrade().and_then(|w| gtk::prelude::GtkWindowExt::focus(&w)).is_some_and(|f| f.is::<gtk::Text>());
+        let ctrl = mods.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+        let pb = a.playback();
+        match key {
+            gtk::gdk::Key::space if !typing && !ctrl => pb.toggle(),
+            gtk::gdk::Key::Left if ctrl && !typing => pb.previous(true),
+            gtk::gdk::Key::Right if ctrl && !typing => pb.next(true),
+            _ => return glib::Propagation::Proceed,
+        }
+        glib::Propagation::Stop
+    });
+    window.add_controller(c);
 }
 
 fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
@@ -148,6 +232,7 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
                 }
                 list.append(&row);
             };
+            item("view-list-symbolic", "Queues", Some(Route::Queues));
             item("", "Library", None);
             item("folder-symbolic", "Folders", Some(Route::Folder(String::new())));
             item("media-optical-symbolic", "Albums", Some(Route::Albums));
@@ -176,7 +261,7 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
     fill();
     let refill = fill.clone();
     app.listen(move |c| {
-        if matches!(c, Change::Catalog | Change::Playlists | Change::Account) {
+        if matches!(c, Change::Catalog | Change::Playlists | Change::Account | Change::Section) {
             refill();
         }
         true

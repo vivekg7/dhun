@@ -99,3 +99,68 @@ pub struct User {
     pub name: String,
     pub admin: bool,
 }
+
+/// A queue (plan 020): a temporary list being played, never a playlist.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct QueueRow {
+    pub id: String,
+    pub name: String,
+    pub songs: Vec<i64>,
+    pub current_song: i64,
+    pub position_ms: i64,
+    pub shuffle: bool,
+    /// off, queue or song.
+    pub repeat_mode: String,
+    pub used_at: i64,
+}
+
+/// One entry of Favorites (`fav`), Listen Later (`later`) or the played
+/// marks (`played`); `at` decides between two edits.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Mark {
+    pub kind: String,
+    pub song: i64,
+    pub at: i64,
+    pub deleted: bool,
+}
+
+/// Where a long file was left (plan 009).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Resume {
+    pub song: i64,
+    pub position_ms: i64,
+    pub at: i64,
+    pub deleted: bool,
+}
+
+/// A place marked in a long file, with an optional note (plan 033). A
+/// deleted one is kept, so an older copy from the server never brings it back.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Bookmark {
+    pub id: String,
+    pub song: i64,
+    pub position_ms: i64,
+    pub note: String,
+    pub at: i64,
+    pub deleted: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PlayStat {
+    pub song: i64,
+    pub count: i64,
+    pub last_played_at: i64,
+}
+
+/// What a device of the user's plays, for hand-off (plan 017).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NowPlaying {
+    pub device_id: i64,
+    pub device_name: String,
+    pub queue: String,
+    pub song: i64,
+    pub position_ms: i64,
+    pub playing: bool,
+    pub at: String,
+}

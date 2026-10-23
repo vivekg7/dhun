@@ -2,7 +2,11 @@
 //! the window; the logic is in `dhun-core`.
 
 mod app;
+mod engine;
+mod mpris;
+mod nowplaying;
 mod pages;
+mod playback;
 mod search;
 mod widgets;
 mod window;
@@ -17,6 +21,7 @@ use std::time::Duration;
 const ID: &str = "io.github.vivekg7.dhun";
 
 fn main() -> glib::ExitCode {
+    gstreamer::init().expect("GStreamer");
     let gapp = adw::Application::builder().application_id(ID).build();
     gapp.connect_startup(|_| {
         let css = gtk::CssProvider::new();
@@ -59,6 +64,11 @@ fn data_dir() -> PathBuf {
 
 fn start(gapp: &adw::Application) -> Rc<App> {
     let app = App::new(data_dir());
+    let _ = app.playback.set(playback::Playback::new(&app));
+    mpris::start(gapp, &app);
+    // On quitting: the open listen and the place are kept, as on pause.
+    let a = app.clone();
+    gapp.connect_shutdown(move |_| a.playback().quitting());
     let action = |name: &str, f: Box<dyn Fn()>| {
         let a = gio::SimpleAction::new(name, None);
         a.connect_activate(move |_, _| f());
@@ -84,8 +94,10 @@ fn start(gapp: &adw::Application) -> Rc<App> {
         app.reload_playlists();
         let a = app.clone();
         glib::spawn_future_local(async move {
+            a.reload_queues();
             a.reload_songs().await;
             a.sync_soon(Duration::ZERO);
+            a.check_handoff().await;
         });
     }
     // Back online: fetch what piled up meanwhile.

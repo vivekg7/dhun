@@ -30,7 +30,9 @@ daily use on the owner's Mac. The web client
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
 online-only, on a computer or a phone. A Linux app (`linux/`,
 [plan 039](docs/plans/039_linux_app.md)) is being built in Rust and GTK:
-it signs in and browses the library, and plays nothing yet. The APK is in the
+it browses the library and plays it, with the queues, listens, resume
+points, hand-off and the desktop's media controls; 0.16.3 is built but not
+yet released. The APK is in the
 [0.16.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.2),
 the Mac app in the
 [0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1)

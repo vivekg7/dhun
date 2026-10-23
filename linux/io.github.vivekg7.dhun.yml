@@ -14,6 +14,8 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  - --socket=pulseaudio
+  - --own-name=org.mpris.MediaPlayer2.dhun
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:
