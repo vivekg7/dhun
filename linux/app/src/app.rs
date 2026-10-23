@@ -324,8 +324,10 @@ impl App {
         let name = format!("{}.{size}", covers::key(&s));
         {
             let mut c = self.covers.borrow_mut();
-            if let Some(t) = c.kept.get(&name) {
-                done(t);
+            // Given after the borrow ends: `done` may ask for a cover itself.
+            if let Some(t) = c.kept.get(&name).cloned() {
+                drop(c);
+                done(&t);
                 return;
             }
             if let Some(w) = c.waiting.get_mut(&name) {

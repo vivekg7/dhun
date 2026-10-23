@@ -84,8 +84,8 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
 /// For screenshots under test (`DHUN_SCREENSHOT`): pages to open once the
 /// library has loaded, as `artists,artist:Name`, `album:Name`,
 /// `folder:Path`, `books`, `search:words`, `play-album:Name`,
-/// `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue, or `sidebar` for a
-/// narrow window.
+/// `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
+/// `sidebar` for a narrow window, or a click two seconds on: `activate:N` on a song row, `nav:N` on a sidebar row.
 fn open_when_loaded(
     app: &Rc<App>,
     nav: &Rc<Nav>,
@@ -137,6 +137,26 @@ fn open_when_loaded(
                     glib::timeout_add_seconds_local_once(3, move || a.playback().seek(ms));
                     continue;
                 }
+                "activate" => {
+                    // A click on row N of the list on screen, once the page is built.
+                    let (s, row) = (s.clone(), arg.parse::<u32>().unwrap_or(0));
+                    glib::timeout_add_seconds_local_once(2, move || {
+                        if let Some(v) = shown::<gtk::ColumnView>(s.upcast_ref()) {
+                            v.emit_by_name::<()>("activate", &[&row]);
+                        }
+                    });
+                    continue;
+                }
+                "nav" => {
+                    // A click on row N of the sidebar, which refills itself as it opens the page.
+                    let (s, row) = (s.clone(), arg.parse::<i32>().unwrap_or(0));
+                    glib::timeout_add_seconds_local_once(2, move || {
+                        if let Some(r) = shown::<gtk::ListBox>(s.upcast_ref()).and_then(|l| l.row_at_index(row)) {
+                            r.activate();
+                        }
+                    });
+                    continue;
+                }
                 "switch" => {
                     let id = a.queues.borrow().iter().find(|q| q.name == arg).map(|q| q.id.clone());
                     if let Some(id) = id {
@@ -164,6 +184,24 @@ fn open_when_loaded(
         }
         false
     });
+}
+
+/// The first `T` on screen under `w`, for the `activate` and `nav` test steps.
+fn shown<T: IsA<gtk::Widget>>(w: &gtk::Widget) -> Option<T> {
+    if !w.is_mapped() {
+        return None;
+    }
+    if let Some(v) = w.downcast_ref::<T>() {
+        return Some(v.clone());
+    }
+    let mut c = w.first_child();
+    while let Some(x) = c {
+        if let Some(v) = shown(&x) {
+            return Some(v);
+        }
+        c = x.next_sibling();
+    }
+    None
 }
 
 /// Space plays or pauses, Ctrl+← and Ctrl+→ go to the previous and next
@@ -268,7 +306,9 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
     });
     let (n, s) = (nav.clone(), split.clone());
     list.connect_row_activated(move |_, row| {
-        if let Some(route) = routes.borrow().get(row.index() as usize).cloned().flatten() {
+        // Taken out first: opening refills the sidebar, which needs `routes` mutably.
+        let route = routes.borrow().get(row.index() as usize).cloned().flatten();
+        if let Some(route) = route {
             n.search.set_text("");
             n.open(route);
             s.set_show_content(true);

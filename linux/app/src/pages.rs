@@ -156,22 +156,29 @@ impl Nav {
                 Some(s) => (s.title.clone(), shelf_page(app, s)),
                 None => ("Shelf".into(), empty(app)),
             },
-            Route::Playlist(id) => match app.playlists.borrow().iter().find(|p| p.id == *id) {
-                Some(p) => {
-                    let songs = c.songs_of(&p.songs);
-                    let top = header(app, songs.first(), &p.name, &summary(&songs));
-                    let play = Play::List { name: p.name.clone(), source: format!("playlist:{}", p.id) };
-                    let cols = Columns { track: false, album: true };
-                    (p.name.clone(), songs_page(app, Some(top.upcast()), songs, cols, play).upcast())
+            Route::Playlist(id) => {
+                // Looked up first, so the page is built with nothing borrowed.
+                let found = app.playlists.borrow().iter().find(|p| p.id == *id).cloned();
+                match found {
+                    Some(p) => {
+                        let songs = c.songs_of(&p.songs);
+                        let top = header(app, songs.first(), &p.name, &summary(&songs));
+                        let play = Play::List { name: p.name.clone(), source: format!("playlist:{}", p.id) };
+                        let cols = Columns { track: false, album: true };
+                        (p.name.clone(), songs_page(app, Some(top.upcast()), songs, cols, play).upcast())
+                    }
+                    None => ("Playlist".into(), empty(app)),
                 }
-                None => ("Playlist".into(), empty(app)),
-            },
+            }
             Route::Search => ("Search".into(), crate::search::page(self)),
             Route::Queues => ("Queues".into(), queues_page(self)),
-            Route::Queue(id) => match app.queues.borrow().iter().find(|q| &q.id == id).cloned() {
-                Some(q) => (q.name.clone(), queue_page(self, &q)),
-                None => ("Queue".into(), empty(app)),
-            },
+            Route::Queue(id) => {
+                let found = app.queues.borrow().iter().find(|q| &q.id == id).cloned();
+                match found {
+                    Some(q) => (q.name.clone(), queue_page(self, &q)),
+                    None => ("Queue".into(), empty(app)),
+                }
+            }
         };
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&adw::HeaderBar::new());

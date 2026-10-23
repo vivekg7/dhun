@@ -346,7 +346,8 @@ pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
     let ids: Rc<std::cell::RefCell<Vec<String>>> = Rc::default();
     let (p, i, popover) = (pb.clone(), ids.clone(), pop.clone());
     list.connect_row_activated(move |_, r| {
-        if let Some(id) = i.borrow().get(r.index() as usize).cloned() {
+        let id = i.borrow().get(r.index() as usize).cloned();
+        if let Some(id) = id {
             popover.popdown();
             p.switch_to(&id);
         }

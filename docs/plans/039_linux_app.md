@@ -306,7 +306,10 @@ override:
   portal.
 - **Versioning.** Linux joins the shared sequence (README, Versions). Its
   version lives in `linux/app/Cargo.toml`. Its first release takes the next
-  free patch number, for Linux alone.
+  free patch number, for Linux alone. Until then the builds installed to
+  try it keep 0.16.3, fixes and all (owner, 2026-10-23): the others reached
+  0.16 by being stable, and a version bumped per iteration of a first build
+  would say nothing.
 - **Releases.** `make linux` builds the Flatpak and archives it in `local/`
   as `dhun-linux-v<version>.flatpak` with its `.sha256`, under the same
   naming rules as `make apk` and `make mac`. A GitHub release carries it;
@@ -489,6 +492,13 @@ signed in as the test account against the NAS:
   The first version took the listeners out while it called them, so a page
   opened from the catalogue's listener, or a queue restored there, told no
   one; the sidebar showed the wrong section.
+- **No borrow is held across a call that can announce a change.** 0.16.3
+  as first installed aborted on any click in the sidebar: the click held
+  the sidebar's routes while opening the page, and the page's `Section`
+  change refilled the sidebar, which borrowed them again. A panic in a GTK
+  signal cannot unwind. The test hook opened pages directly, so it never
+  saw it; its `nav:N` and `activate:N` steps now click a sidebar row and a
+  song row as a mouse does.
 - **Each song is fetched as it plays**, into a file that goes when nothing
   reads it any more. The cache that keeps them, and prefetches the next,
   is step 3's.
@@ -503,8 +513,8 @@ signed in as the test account against the NAS:
 - A queue's page is built again when the queues change, once a song as it
   plays, and loses its scroll; and Space plays or pauses even with a
   dialog's button focused. Both wait for step 4's queue editing.
-- Playback through the speakers has not been heard by a person: every
-  check here was silent. That is the first thing to try with 0.16.3.
+- Playback through the speakers was first heard by the owner on
+  2026-10-23, after the sidebar fix; every check here was silent.
 
 ## Open questions
 
