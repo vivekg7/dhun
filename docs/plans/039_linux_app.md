@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `ACCEPTED` — Rust, GTK4 and Flatpak chosen (owner, 2026-10-23); no code yet
+**Status:** `IN PROGRESS` — the playback spike is done (2026-10-23); step 1 next
 **Started:** 2026-10-23
 
 ## Problem
@@ -105,24 +105,16 @@ song **while it is still arriving** in the cache
 ([019](019_networking_and_caching.md)), and every format the server
 indexes, including the library's **WebM Opus** files saved as `.opus` (024).
 
-- **A. GStreamer**, `playbin3` fed by an `appsrc` in random-access mode.
+- **A. GStreamer**, `playbin3` fed by a source element of our own.
   Chosen. GStreamer is in the GNOME runtime and on every desktop, and it
   plays MP3, AAC/M4A, FLAC, Ogg Opus and WebM Opus (`matroskademux`) as
-  they are. Our `appsrc` reads from a download, a cache file or a cache
-  file still arriving, and its `seek-data` signal is the Mac's read
+  they are. Our source reads from a download, a cache file or a cache file
+  still arriving, and its `fill(offset, length)` is the Mac's read
   callback: a read past what has arrived waits for it and tells the fetcher
   where it waits. So, as on the Mac, one path serves all four sources.
   `about-to-finish` queues the next song for gapless playback, and
-  `scaletempo` changes the speed while keeping the pitch.
-  - **Pitch alone** needs GStreamer's `pitch` element, which lives in
-    gst-plugins-bad and links libsoundtouch. Ubuntu's packages include it;
-    the GNOME runtime may not. If it does not, the Flatpak manifest builds
-    libsoundtouch and that one plugin as modules of its own, a few hundred
-    kilobytes. The spike settles which.
-  - **Gapless trimming** (the LAME header in MP3, iTunes' `iTunSMPB` and
-    edit lists in M4A, Opus pre-skip) is left to GStreamer's parsers. The
-    spike measures each format with the Mac spike's split-tone test before
-    anything is built on it.
+  `scaletempo` changes the speed while keeping the pitch. What the spike
+  showed, and the four things the app must do because of it, are below.
 - **B. libmpv.** Rejected. mpv plays gapless and has a good time-stretcher,
   but it brings FFmpeg, which the GNOME runtime does not ship. The Flatpak
   would carry tens of megabytes of codecs that GStreamer already provides.
@@ -130,6 +122,80 @@ indexes, including the library's **WebM Opus** files saved as `.opus` (024).
   Rejected. Symphonia has no Opus decoder, and we would own the resampler,
   the time-stretcher and the gapless joins: thousands of lines that
   GStreamer has already debugged.
+
+### What the spike showed (2026-10-23)
+
+A throwaway player in the GNOME 51 SDK (GStreamer 1.28.6, Rust 1.98),
+reading the Mac spike's kind of test files and real songs from the NAS
+through the test account. Each test file is a tone whose pitch glides,
+cut at a sample no codec frame lines up with, each half encoded on its
+own; the two halves are played back to back and cross-correlated with
+the uncut tone.
+
+| Test                                                          | Result                                                                                    |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Gapless: FLAC, Ogg Opus, WebM Opus                            | **Exact**: no slip at the join, length exact                                              |
+| Gapless: AAC in M4A, index at either end                      | **One sample** off at the join (23 µs), three extra in all. Inaudible; the Mac is exact   |
+| Gapless: MP3 written by FFmpeg (`Lavc` in the tag)            | **Not trimmed**: 25 ms of delay play at the start and 28 ms of padding at the join        |
+| Gapless: the same MP3 with the tag saying `LAME`              | **Exact**                                                                                 |
+| Speed, `scaletempo`, 0.5× to 2×                               | Exact length, pitch kept (440 Hz stays 440 Hz)                                            |
+| Pitch and speed, `pitch` (built, below)                       | Exact: +6 semitones gives 622.4 Hz for 622.3, 1.5× at −2 gives 6.667 s at 392.1 Hz        |
+| Gapless with `pitch` in the chain, even at no shift           | **Broken**: 45 ms lost between FLAC halves, 3 s between AAC halves                        |
+| Gapless with `scaletempo` in the chain                        | Exact, as without it                                                                      |
+| Speed after a gapless switch                                  | **Resets to 1×** for the next song, unless set again (below)                              |
+| M4A, index at the end, arriving at 200 KB/s                   | First sound in 1.3 s (the Mac: 1.5 s); a seek to 2:30 or 8:00 lands exactly in 0.6 s      |
+| 30 MB WebM arriving at 64 KB/s                                | First sound in 3.3 s; a seek to 5:00, 15:00 or 25:00 lands exactly in 2–3 s               |
+| Nine real songs from the NAS, all five containers, over Wi-Fi | First sound in 0.12–0.31 s; each decodes to within 25 ms of the length the server reports |
+
+The 64 KB/s figures are mostly the test's own 64 KB fetch unit, a second
+each at that rate; the real fetcher streams.
+
+**The library behind those numbers** (the test account, 2026-10-23): 32,434
+songs, of which 30,704 are AAC in MP4, 860 Ogg Opus, 813 MP3, 49 WebM Opus
+and 8 FLAC. Of eight AAC songs sampled, six had FFmpeg's edit list (as the
+test files) and two had no gapless information at all, which no player can
+trim. Of twelve MP3s, one had a `LAME` tag, four an FFmpeg (`Lavc`) tag
+with real delay and padding, two an FFmpeg tag of zeros, and five no tag.
+
+**What the app must do because of it:**
+
+1. **Its own source element, not `appsrc`.** The spike began with an
+   `appsrc` in random-access mode, fed from a thread. A buffer from before
+   a seek could land after it, and qtdemux then read an atom from the
+   wrong offset ("atom has bogus size"). A `BaseSrc` subclass, registered
+   for a `dhun://` URI, is asked for an exact offset and length, and its
+   `unlock` wakes a read waiting for the network when a seek or stop
+   flushes: the Mac engine's interruptible read, in about 120 lines.
+2. **Tell GStreamer the container.** Type detection probes the middle of
+   the file for MP3, which for a file still arriving costs a jump there and
+   back: 2.6 s instead of 1.3 s for the first sound of the M4A above. The
+   server already reports each song's container, so the app sets
+   `force-caps` on the `typefind` element (`element-setup`). Open With,
+   which has no server row, leaves detection on.
+3. **Rename FFmpeg's MP3 tag for the parser.** GStreamer's `mpegaudioparse`
+   reads the encoder delay and padding only from a tag that starts `LAME`
+   (`gstmpegaudioparse.c`); FFmpeg writes the same layout under `Lavc` or
+   `Lavf`. Our source rewrites those four bytes in the first frame as it
+   serves it, which GStreamer then trims exactly. A one-line fix upstream
+   would make this unnecessary; it is worth proposing.
+4. **Speed on every song's segment, and `pitch` only while pitch is
+   shifted.** A pad probe on the filter sets the rate on each song's
+   segment event, so speed holds across a gapless switch without a seek
+   (2× came out exactly half the length). The `pitch` element breaks
+   gapless joins, so the filter is `scaletempo` alone, and `pitch` is put
+   in only while a song's pitch is off zero; such a song may lose a few
+   milliseconds at its join, which this plan accepts.
+
+**Pitch in the Flatpak.** The GNOME runtime has no `pitch` element; Ubuntu's
+GStreamer has it. The Flatpak manifest builds libSoundTouch 2.3.3 (LGPL,
+143 KB) and only the soundtouch plugin from gst-plugins-bad 1.28.6
+(196 KB), both inside the SDK in under a minute (spike, 2026-10-23).
+libSoundTouch 2.3.3 needs `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` with the
+SDK's CMake.
+
+**Not yet measured:** the native build against Ubuntu 24.04's GStreamer
+1.24, whose parsers may differ; it is checked in step 1. Playback through
+a real audio device: the spike decoded into memory, as fast as it could.
 
 ### Packaging
 
@@ -259,7 +325,7 @@ moves with it.
    extension and flatpak-builder as user Flatpaks, so the desktop needs no
    system development packages. Then a throwaway player that plays each
    format from a file, from a still-arriving file fed slowly, and from the
-   stream, through `appsrc`. It measures:
+   stream. It measures:
    - gapless joins with the Mac spike's split-tone test, for MP3, AAC (index
      at either end), FLAC, Ogg Opus and WebM Opus;
    - speed with `scaletempo`, and pitch alone with `pitch` (and whether the
@@ -270,7 +336,10 @@ moves with it.
 
    **Can fail:** a format GStreamer does not trim exactly. Then that format
    gets a trimming step of our own, as the Mac's WebM reader trims Opus
-   pre-skip. The results are written into this plan before step 1.
+   pre-skip. **Done (2026-10-23)**; the results are under
+   [What the spike showed](#what-the-spike-showed-2026-10-23). MP3 needed
+   such a step, the tag renamed. The spike stays out of the repository:
+   the source element and the fetcher are written again in step 1.
 
 1. **Skeleton.** The workspace, `make linux`, `make linux-install`, the
    Makefile targets and CI. Sign-in, the token file, the schema, the library
@@ -296,5 +365,5 @@ moves with it.
 
 ## Open questions
 
-None for the owner. Whether the Flatpak builds its own `pitch` plugin is
-for the spike to answer.
+None for the owner. The spike settled the Flatpak's `pitch` plugin: it
+builds its own.
