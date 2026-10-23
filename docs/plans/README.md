@@ -84,6 +84,7 @@ wrong.
 
 | Plan                                                                                                  | Status                                                                                                                                                  |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [039 — The Linux app, at the Android app's level](039_linux_app.md)                                   | `ACCEPTED` — Rust, GTK4 and Flatpak chosen (owner, 2026-10-23); no code yet                                                                             |
 | [038 — Voice search, "play it on Dhun", and shortcuts on the icon](038_voice_search_and_assistant.md) | `RELEASED` — in the 0.16.2 GitHub release (2026-10-21); Android only; not yet installed                                                                 |
 | [037 — A window, not the whole file, for long files in the cache](037_long_file_cache_window.md)      | `RELEASED` — in the 0.16.1 GitHub release (2026-10-21); 0.16.1 on the owner's phone and Mac; the server stays at `server-v0.16.0`                       |
 | [036 — Meeting the speed targets at 100,000 songs](036_fast_at_100k.md)                               | `RELEASED` — in the 0.16.0 GitHub release (2026-10-20); 0.16.0 on the owner's phone and Mac; server and web in `server-v0.16.0` on the NAS (2026-10-20) |

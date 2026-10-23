@@ -16,11 +16,11 @@ file holds the part no program can decide.
 A lightweight, fast, self-hosted player for one family's audio archive
 (music, podcasts and audiobooks): a Go backend on a Synology NAS, and
 native clients. The **Android** client is primary and has to be complete;
-the **macOS** and **web** clients match it as far as each platform allows
-(plans [024](docs/plans/024_macos_app.md) and [030](docs/plans/030_web_client.md)),
-and **Linux** is optional. The bar
-for the Android client is **Musicolet**, which the owner has used daily for
-ten years. Its full feature list is in
+the **macOS**, **Linux** and **web** clients match it as far as each
+platform allows (plans [024](docs/plans/024_macos_app.md),
+[039](docs/plans/039_linux_app.md) and [030](docs/plans/030_web_client.md)).
+The bar for the Android client is **Musicolet**, which the owner has used
+daily for ten years. Its full feature list is in
 [`docs/research/musicolet-feature-inventory.md`](docs/research/musicolet-feature-inventory.md).
 For podcasts and audiobooks the bar is **Audiobookshelf**.
 Open source under GPL-3.0.
@@ -65,9 +65,9 @@ Open source under GPL-3.0.
 
 - **Native and lightweight.** No Flutter, React Native, Electron or other
   bundled engines. Use the platform toolkit (Compose and Media3 on Android,
-  SwiftUI on macOS). **Minimise dependencies**: the standard library or twenty
-  lines of our own beats a package, and any package we do add must be
-  actively maintained.
+  SwiftUI on macOS, GTK4 and GStreamer on Linux). **Minimise
+  dependencies**: the standard library or twenty lines of our own beats a
+  package, and any package we do add must be actively maintained.
 - **Keep implementations compact.** Delete wrappers that only forward, layers
   that only rename, and abstractions with one caller. Add a seam when the
   second consumer arrives, not before. Keep the comment that explains _why_.

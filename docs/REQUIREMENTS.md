@@ -130,7 +130,7 @@ anything undecided is under [Open questions](#open-questions).
 | Android 12 and newer | **Full feature set, no compromise.** Primary target.                                                                                     |
 | macOS 26 and newer   | **The Android app's features, offline too**, in Mac form ([plan 024](plans/024_macos_app.md)).                                           |
 | Web                  | **The other apps' features, online-only**, on a computer or a phone ([plan 030](plans/030_web_client.md)); served by the backend itself. |
-| Linux                | Optional.                                                                                                                                |
+| Linux                | **The Android app's features, offline too**, in a GTK window ([plan 039](plans/039_linux_app.md)); a Flatpak or a native install.        |
 
 - **Native code, not Flutter.** The goal is a lightweight build with no bundled
   rendering engine. With LLM agents writing most of the code, separate native
@@ -458,6 +458,16 @@ until then). Plus a menu bar control and a floating mini window, and
 Open With from Finder. No Mac-local library: the Mac plays NAS songs. A
 plan for an Android feature also says what the Mac does —
 [plan 024](plans/024_macos_app.md).
+
+**Linux** — everything the Android app has, offline included, as far as
+Linux allows; a feature the Mac lacks is built here if Linux can do it
+(owner, 2026-10-23). A sidebar window that narrows to the phone's tabs, a
+tray icon, a mini window, the desktop's media controls (MPRIS), and Open
+With from the file manager. No local library: it plays NAS songs. Closing
+the window keeps the music playing. Voice search and the assistant are
+left out, for want of either on Linux. A Flatpak, or a native install. A
+plan for an Android feature also says what Linux does —
+[plan 039](plans/039_linux_app.md).
 
 **Web** — what the Android and Mac apps have, as far as a browser allows
 (owner, 2026-10-10; it was "minimal" until then):
