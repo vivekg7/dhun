@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 to 5 done (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.16.3 installed on the owner's desktop (2026-10-23), not released
+**Status:** `MERGED` — every step done and measured (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.16.3 installed on the owner's desktop, not yet in a GitHub release
 **Started:** 2026-10-23
 
 ## Problem
@@ -406,7 +406,8 @@ moves with it.
    launcher's three shortcuts, the Background portal. **Done
    (2026-10-24)**; see [How step 5 went](#how-step-5-went-2026-10-24).
 6. **Measure and release.** The Linux section of `performance-baseline.md`;
-   REQUIREMENTS, README and this plan's status brought up to date.
+   REQUIREMENTS, README and this plan's status brought up to date. **Measured
+   (2026-10-24)**; see [How step 6 went](#how-step-6-went-2026-10-24).
 
 ## How step 1 went (2026-10-23)
 
@@ -716,6 +717,30 @@ window, never the mini window or a file's.
   COSMIC Files are for the owner to try.
 - The shortcuts' names in the launcher's right-click menu are the
   `.desktop` file's; whether COSMIC's dock shows `Actions` is untried.
+
+## How step 6 went (2026-10-24)
+
+**Measured** through the installed Flatpak, at today's 31,239 songs and
+at 100,000 made from them; the numbers are in
+[performance-baseline.md](../research/performance-baseline.md#2026-10-24-the-linux-app-with-every-feature-plan-039-step-6).
+Keystrokes are within 50 ms at both sizes. The library is drawn 1.0–1.2 s
+after launch today, just over the 1 s target, and 1.9 s at 100,000 songs;
+the catalogue is built off the main thread, and what is left is the views
+made again on it and GTK's first layout of them.
+
+**Fixed while measuring:**
+
+- The queue panel made all its rows again on every play, pause and song
+  change; with "All songs" as the queue that was 75 ms each, 250 ms at
+  100,000. Now only another queue or other songs remake them.
+- A list drawn before the thumbnails arrived kept its placeholders: GTK
+  does not bind a row again for the same item object. A placeholder cover
+  now waits for the thumbnails itself, and `rebind_on_thumbs` is gone.
+
+**Left for later**, in the baseline: Next and Previous hold the main
+thread 80–185 ms while playbin3 goes to READY; an untraced 0.2–0.3 s
+pause during the first sync; 70 MB more memory than step 1, mostly
+decoded thumbnails; the native build unmeasured.
 
 ## Open questions
 

@@ -210,3 +210,63 @@ songs, which supports profiling the Mac's `sortKey` and groupings, as the
 section above suggests. Memory is the number to watch: GTK's GPU renderer
 alone is 126 MB, and decoded covers add up to 32 MB. Not yet measured: the
 same at 100,000 songs, and the native build.
+
+## 2026-10-24, the Linux app with every feature (plan 039, step 6)
+
+The same desktop and test account, now 31,239 songs, with steps 2 to 5 in:
+the queue panel, playback, the cache, the tray. The release binary ran
+inside the installed Flatpak's own sandbox, on a data folder of its own
+(`DHUN_DATA`), three launches each. For 100,000 songs the test account's
+songs were copied with new ids, and " (2)", " (3)" added to the titles
+and albums, so the albums grow too, then opened offline. Times are from
+the launch; "drawn" is when the main thread is next free after the
+catalogue, measured by a 20 ms GLib timer that logs any longer gap. Run
+in the bare GNOME SDK instead, GTK's GPU renderer held the first frame
+for about a second that the installed app does not spend, so measure
+through the installed app.
+
+| What                                            | 31,239 songs         | 100,000 songs        |
+| ----------------------------------------------- | -------------------- | -------------------- |
+| Window shown                                    | 0.37–0.42 s          | 0.41–0.42 s          |
+| Songs read from SQLite / catalogue built        | 155–180 / 150–160 ms | 425–440 / 495–505 ms |
+| Library drawn, the albums grid and the queue    | 1.0–1.2 s            | 1.85–1.87 s          |
+| Search indexes ready                            | 1.35–1.45 s          | 2.46–2.50 s          |
+| One keystroke, "t" to "tum hi ho", "arjit sing" | 6–17 ms              | 17–37 ms             |
+| Memory, signed out / library drawn / playing    | 95 / 352 / 362 MB    | — / 427 / — MB       |
+| The library's own memory, without GTK           | 72 MB                | 201 MB               |
+| The Flatpak, as a bundle / installed            | 1.4 MB / 4.6 MB      |                      |
+
+**Against the targets:** a keystroke is well under 50 ms at both sizes. At
+today's size the library is drawn in 1.0–1.2 s, just over the 1 s
+target; at 100,000 songs it is well over (1.9 s, search at 2.5 s).
+The Mac builds the same catalogue about five times slower, so this is
+not the platform furthest behind.
+
+**Where the time goes at 31,000 songs**, after the catalogue is built off
+the main thread: 250–290 ms of views made again on the main thread (the
+page 130 ms, the queue panel 80 ms, 560 thumbnails decoded at about
+0.18 ms each, since GTK binds up to 200 rows of a list before it knows
+their height), then 110–170 ms of GTK's first layout of them. The read
+from SQLite is about 5 µs a row and the catalogue build another 5;
+both grow with the library, the views do not.
+
+**Found and fixed while measuring:**
+
+- The queue panel made all its rows again on every play, pause and next
+  song, and three times at start: 75 ms at 31,000 songs with "All songs"
+  as the queue, about 250 ms at 100,000. Now only a new queue or new
+  songs make them again; the playing mark moves by replacing two rows.
+- Thumbnails that arrived after a list was drawn never showed in it: the
+  list was told its rows had changed, but GTK keeps a row whose item is
+  the same object. A cover drawn as a placeholder now waits for the
+  thumbnails itself.
+
+**Not fixed, for the next change:**
+
+- Next and Previous hold the main thread for 80–185 ms, while playbin3
+  goes to READY (`engine.rs`); GStreamer's `call_async` would move it off.
+- About 1.4 s after launch, online, the main thread stops for 210–290 ms
+  while the first sync runs; not yet traced.
+- Memory rose by 70 MB since step 1, most of it decoded 128 px
+  thumbnails (64 KB each) for the rows GTK binds up front.
+- The native build is not measured.

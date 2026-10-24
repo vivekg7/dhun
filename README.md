@@ -28,11 +28,11 @@ control, a floating mini player and Open With from Finder; 0.16.1 is in
 daily use on the owner's Mac. The web client
 (`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
 server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone. A Linux app (`linux/`,
-[plan 039](docs/plans/039_linux_app.md)) is being built in Rust and GTK:
-it browses the library and plays it, with the queues, listens, resume
-points, hand-off and the desktop's media controls; 0.16.3 is installed on the
-owner's desktop, not yet released. The APK is in the
+online-only, on a computer or a phone. The Linux app (`linux/`,
+[plan 039](docs/plans/039_linux_app.md)) is built to the Android app's
+level in Rust and GTK, offline included, with a tray icon, a mini window,
+the desktop's media controls and Open With from the file manager; 0.16.3
+is installed on the owner's desktop, not yet released. The APK is in the
 [0.16.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.2),
 the Mac app in the
 [0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1)
