@@ -879,6 +879,25 @@ fn add_to_playlist(app: &Rc<App>, p: &Playlist, songs: &[SongRef]) {
     app.playback().notice(&text);
 }
 
+/// Play and Shuffle on a page's header, which play `songs` as a new queue;
+/// only when there is something to play, as on the phone.
+pub fn play_buttons(app: &Rc<App>, top: &impl IsA<gtk::Widget>, name: &str, source: &str, songs: &[SongRef]) {
+    let Some(row) = buttons(top).filter(|_| !songs.is_empty()) else { return };
+    let all = gtk::Button::builder().label("Play").css_classes(["pill", "suggested-action"]).build();
+    let shuffle = gtk::Button::builder()
+        .icon_name("media-playlist-shuffle-symbolic")
+        .tooltip_text("Shuffle")
+        .css_classes(["circular"])
+        .valign(gtk::Align::Center)
+        .build();
+    let (a, n, src, list) = (app.clone(), name.to_string(), source.to_string(), songs.to_vec());
+    all.connect_clicked(move |_| a.playback().play_list(&n, &src, &list, 0));
+    let (a, n, src, list) = (app.clone(), name.to_string(), source.to_string(), songs.to_vec());
+    shuffle.connect_clicked(move |_| a.playback().play_list(&n, &src, &dhun_core::queue::sorted(0, &list), 0));
+    row.prepend(&shuffle);
+    row.prepend(&all);
+}
+
 /// A song list that filters itself when it is long (plan 011), as search does (plan 029).
 pub fn songs_page(
     app: &Rc<App>,
@@ -890,21 +909,8 @@ pub fn songs_page(
 ) -> gtk::Box {
     let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     if let Some(top) = top {
-        // Only when there is something to play, as on the phone.
-        if let (Play::List { name, source }, Some(row), false) = (&play, buttons(&top), songs.is_empty()) {
-            let all = gtk::Button::builder().label("Play").css_classes(["pill", "suggested-action"]).build();
-            let shuffle = gtk::Button::builder()
-                .icon_name("media-playlist-shuffle-symbolic")
-                .tooltip_text("Shuffle")
-                .css_classes(["circular"])
-                .valign(gtk::Align::Center)
-                .build();
-            let (a, n, src, list) = (app.clone(), name.clone(), source.clone(), songs.clone());
-            all.connect_clicked(move |_| a.playback().play_list(&n, &src, &list, 0));
-            let (a, n, src, list) = (app.clone(), name.clone(), source.clone(), songs.clone());
-            shuffle.connect_clicked(move |_| a.playback().play_list(&n, &src, &dhun_core::queue::sorted(0, &list), 0));
-            row.prepend(&shuffle);
-            row.prepend(&all);
+        if let Play::List { name, source } = &play {
+            play_buttons(app, &top, name, source, &songs);
         }
         b.append(&top);
     }

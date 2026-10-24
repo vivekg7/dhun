@@ -487,7 +487,9 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
             _ => format!("{n} folders · "),
         };
         let what = format!("{folders}{}", summary_of(f.song_count, f.duration_ms));
-        b.append(&header(app, None, f.name(), &what, Some((dl::FOLDER, f.path.clone()))));
+        let top = header(app, None, f.name(), &what, Some((dl::FOLDER, f.path.clone())));
+        widgets::play_buttons(app, &top, f.name(), &format!("folder:{}", f.path), &c.all_songs(&f.path));
+        b.append(&top);
     }
     if !f.children.is_empty() {
         let n = nav.clone();
@@ -819,6 +821,7 @@ fn playlist_page(nav: &Rc<Nav>, p: &Playlist) -> gtk::Widget {
     let gone = gio::Menu::new();
     gone.append(Some("Delete Playlist…"), Some("playlist.delete"));
     edit.append_section(None, &gone);
+    widgets::play_buttons(app, &top, &p.name, &format!("playlist:{}", p.id), &songs);
     widgets::buttons(&top).unwrap().append(
         &gtk::MenuButton::builder()
             .icon_name("document-edit-symbolic")
