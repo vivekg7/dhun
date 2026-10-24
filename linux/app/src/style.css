@@ -2,7 +2,7 @@
 frame.cover {
   border: none;
   border-radius: 6px;
-  background: alpha(@accent_bg_color, 0.15);
+  background: color-mix(in srgb, var(--accent-bg-color) 15%, transparent);
 }
 gridview.album-grid > child {
   padding: 8px;

@@ -742,6 +742,29 @@ thread 80–185 ms while playbin3 goes to READY; an untraced 0.2–0.3 s
 pause during the first sync; 70 MB more memory than step 1, mostly
 decoded thumbnails; the native build unmeasured.
 
+## A pass over every feature (2026-10-24)
+
+Every page, list, popover and Settings page was drawn signed in as the test
+account. Play, pause, next, previous, seek, the position and the launcher's
+shortcuts were driven over MPRIS. Themes were checked on the owner's
+desktop, where COSMIC sets a system accent. The Android app was read
+alongside, for what Linux lacks.
+
+**Fixed:**
+
+- **The accent and the Black theme did nothing.** Since libadwaita 1.6 the
+  stylesheet paints with CSS variables (`--accent-bg-color`), so the
+  `@define-color` overrides changed nothing on screen and the system's accent
+  showed instead. They now set the variables.
+
+**Still missing against the phone:** recent searches and the empty field's
+help; the choice to keep downloads on signing out; the "downloaded" mark on
+albums, folders and playlists; the thin resume bar under songs in ordinary
+lists; a queue's search that scrolls to a match rather than filtering; the
+song menu and dragging in the playing-queue panel; renaming and removing
+from the queue picker; the artist link under the title on the bar; Play and
+Shuffle on Downloads, which also leaves out downloaded episodes.
+
 ## Open questions
 
 None for the owner. The spike settled the Flatpak's `pitch` plugin: it

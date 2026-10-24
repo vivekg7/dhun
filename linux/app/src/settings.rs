@@ -54,7 +54,9 @@ fn lerp(a: u32, b: u32, f: f64) -> String {
     hex(mix(16) << 16 | mix(8) << 8 | mix(0))
 }
 
-/// The theme and accent of this computer, put on the window.
+/// The theme and accent of this computer, put on the window. libadwaita
+/// paints with CSS variables since 1.6, so these set the variables;
+/// `@define-color` would change nothing on screen.
 pub fn apply_theme(app: &App) {
     let p = app.prefs.get();
     let sm = adw::StyleManager::default();
@@ -67,23 +69,19 @@ pub fn apply_theme(app: &App) {
     });
     let (_, light, dark) = PALETTES[p.palette.min(PALETTES.len() - 1)];
     let mut css = if sm.is_dark() {
-        format!(
-            "@define-color accent_bg_color {0};\n@define-color accent_color {0};\n@define-color accent_fg_color #1a1410;\n",
-            hex(dark)
-        )
+        format!(":root {{ --accent-bg-color: {0}; --accent-color: {0}; --accent-fg-color: #1a1410; }}\n", hex(dark))
     } else {
         // Accent-coloured text a little darker than the accent, so it reads on white.
         format!(
-            "@define-color accent_bg_color {};\n@define-color accent_color {};\n@define-color accent_fg_color #ffffff;\n",
+            ":root {{ --accent-bg-color: {}; --accent-color: {}; --accent-fg-color: #ffffff; }}\n",
             hex(light),
             lerp(light, 0x1d1b19, 0.25)
         )
     };
     if p.theme == "black" {
-        css += "@define-color window_bg_color #000000;\n@define-color view_bg_color #000000;\n\
-                @define-color headerbar_bg_color #000000;\n@define-color sidebar_bg_color #0a0a0a;\n\
-                @define-color secondary_sidebar_bg_color #0a0a0a;\n@define-color card_bg_color #111111;\n\
-                @define-color dialog_bg_color #111111;\n@define-color popover_bg_color #111111;\n";
+        css += ":root { --window-bg-color: #000000; --view-bg-color: #000000; --headerbar-bg-color: #000000; \
+                --sidebar-bg-color: #0a0a0a; --secondary-sidebar-bg-color: #0a0a0a; --card-bg-color: #111111; \
+                --dialog-bg-color: #111111; --popover-bg-color: #111111; }\n";
     }
     for (i, (_, light, dark)) in PALETTES.iter().enumerate() {
         css += &format!(
