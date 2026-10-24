@@ -21,7 +21,9 @@ pub enum Event {
     Started(i64),
     /// Everything scheduled has played.
     Ended,
-    Failed(i64, String),
+    /// A song could not be played; true when the fault is the sound
+    /// output's (no PulseAudio, a device that refused), not the song's.
+    Failed(i64, String, bool),
     /// The output went away (headphones, a Bluetooth device): the player stopped.
     OutputChanged,
 }
@@ -154,7 +156,11 @@ impl Engine {
                     gst::MessageView::Eos(_) => on_event(Event::Ended),
                     gst::MessageView::Error(e) => {
                         let song = s.decoding.load(Ordering::SeqCst) as i64;
-                        on_event(Event::Failed(song, e.error().to_string()));
+                        // A sink itself, not playbin, which is a bin holding one.
+                        let output = e.src().and_then(|o| o.downcast_ref::<gst::Element>()).is_some_and(|el| {
+                            el.element_flags().contains(gst::ElementFlags::SINK) && !el.is::<gst::Bin>()
+                        });
+                        on_event(Event::Failed(song, e.error().to_string(), output));
                     }
                     gst::MessageView::Element(e)
                         if e.structure().is_some_and(|s| s.name() == "dhun-output-changed") =>

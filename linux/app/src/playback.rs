@@ -70,6 +70,9 @@ struct St {
     ended: bool,
     needs_restart: bool,
     failures: usize,
+    /// The song whose failure was dealt with: a pipeline tells one failure
+    /// several times, and each after the first is not another.
+    failed: Option<i64>,
     open: Option<Open>,
     ticks: u64,
     /// A seek or a new song was just asked for: the engine's place is not
@@ -938,6 +941,7 @@ impl Playback {
         {
             let mut st = self.st.borrow_mut();
             st.current = Some(s.clone());
+            st.failed = None;
             st.position_ms = ms;
             st.decoded_ms = 0;
             st.ended = false;
@@ -951,7 +955,7 @@ impl Playback {
         self.engine.set_tempo(s.id, t.speed, t.semitones, false);
         match self.app.cache.open(s) {
             Some(part) => self.engine.play(s.id, Source { part, format: s.format.clone() }, ms, paused),
-            None => return self.song_failed(s.id),
+            None => return self.song_failed(s.id, paused),
         }
         self.set_playing(!paused);
         // A new song, or the same one opened again: any pause before was another place's.
@@ -1176,9 +1180,13 @@ impl Playback {
                 glib::g_info!("Dhun", "end of the queue");
                 self.reached_end()
             }
-            Event::Failed(song, why) => {
+            Event::Failed(song, why, output) => {
                 glib::g_warning!("Dhun", "song {song} failed: {why}");
-                self.song_failed(song);
+                if output && self.is_playing() {
+                    self.notice("Stopped: the sound output is not working");
+                }
+                // With no sound output every song would fail in turn; paused, nothing moves on.
+                self.song_failed(song, output || !self.is_playing());
             }
             Event::OutputChanged => {
                 // Headphones out, or another output: pause, as the phone does
@@ -1297,7 +1305,15 @@ impl Playback {
 
     /// A song that cannot be opened or read is passed over, as the phone does;
     /// a queue of them is not tried forever.
-    fn song_failed(self: &Rc<Self>, song: i64) {
+    /// `stop` stays on the song rather than passing over it.
+    fn song_failed(self: &Rc<Self>, song: i64, stop: bool) {
+        if self.st.borrow_mut().failed.replace(song) == Some(song) {
+            return;
+        }
+        if stop {
+            self.set_playing(false);
+            return self.changed();
+        }
         let failures = {
             let mut st = self.st.borrow_mut();
             st.failures += 1;

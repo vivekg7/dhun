@@ -761,6 +761,13 @@ alongside, for what Linux lacks.
   now ask for less room, and two breakpoints keep everything inside: below
   960sp the times go; below 800sp the window shows one pane and the bar
   becomes the phone's mini bar (the song, Previous, Play, Next, the queue).
+- **With no sound output the queue ran away.** With no output (no
+  PulseAudio, a device that refuses), every song failed in turn and was
+  passed over, about 30 a second, the queue's place moving and synced as it
+  went; a queue restored paused did it at launch. An output's failure now
+  stops where it is, with a note. A song that fails while paused stays put,
+  and one failure told several times counts once. Only a song's own
+  failure, while playing, moves on, as on the phone.
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on
