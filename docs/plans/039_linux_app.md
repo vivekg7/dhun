@@ -775,6 +775,7 @@ alongside, for what Linux lacks.
   and on the user's own playlists.
 - **Search results had no song menu**; songs, episodes and lyrics hits now
   have the phone's.
+- A smaller song-cache limit now trims the cache at once.
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on

@@ -389,7 +389,11 @@ fn storage(app: &Rc<App>) -> adw::PreferencesPage {
         sizes.iter().map(|&g| marked(if g == 0 { "Off".into() } else { format!("{g} GB") }, g == 3)).collect();
     let at = sizes.iter().position(|&g| g == p.cache_limit_gb.unwrap_or(3)).unwrap_or(1);
     let a = app.clone();
-    cache.add(&choice("Storage limit", &labels, at, move |i| a.prefs.update(|p| p.cache_limit_gb = Some(sizes[i]))));
+    // A smaller limit trims the cache now, as the phone's does.
+    cache.add(&choice("Storage limit", &labels, at, move |i| {
+        a.prefs.update(|p| p.cache_limit_gb = Some(sizes[i]));
+        a.playback().poke_cache();
+    }));
     page.add(&cache);
 
     let a = app.clone();
@@ -400,6 +404,7 @@ fn storage(app: &Rc<App>) -> adw::PreferencesPage {
             p.download_on_metered = None;
         });
         a.downloads().poke();
+        a.playback().poke_cache();
     }));
     page
 }

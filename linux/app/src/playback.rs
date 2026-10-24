@@ -1140,7 +1140,7 @@ impl Playback {
     /// Looks again, soon, at what the song cache fetches: the song or the
     /// queue changed, play started or stopped, a fetch ended. While playing,
     /// the next songs are fetched ahead; while stopped, only the current one.
-    fn poke_cache(&self) {
+    pub fn poke_cache(&self) {
         if self.cache_due.replace(true) {
             return;
         }
