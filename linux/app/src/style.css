@@ -19,3 +19,11 @@ progressbar.resume > trough > progress {
 progressbar.resume > trough {
   min-width: 0;
 }
+/* The links under the song's title on the Now playing bar: its own colour, underlined on hover. */
+label.song-facts link {
+  color: inherit;
+  text-decoration-line: none;
+}
+label.song-facts link:hover {
+  text-decoration-line: underline;
+}

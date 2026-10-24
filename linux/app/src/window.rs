@@ -103,6 +103,17 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
         });
         window.add_action(&go);
     }
+    // An artist by name: the links under the song's title on the bar.
+    let open = gio::SimpleAction::new("open-artist", Some(glib::VariantTy::STRING));
+    let (n, s) = (nav.clone(), split.clone());
+    open.connect_activate(move |_, v| {
+        let Some(name) = v.and_then(|v| v.get::<String>()).filter(|n| !n.is_empty()) else { return };
+        n.search.set_text("");
+        n.open(Route::Artists);
+        n.push(Route::Artist(name));
+        s.set_show_content(true);
+    });
+    window.add_action(&open);
     keys(&window, app);
     // Syncs on becoming active, as on the phone and the Mac.
     let a = app.clone();

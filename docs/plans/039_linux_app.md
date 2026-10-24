@@ -826,10 +826,15 @@ alongside, for what Linux lacks.
   queue has ✎ and ✕, each asking first, and Remove All Other Queues… keeps
   only the one playing. The dialogs open from the picker's button, the
   picker closing first.
+- **The line under the title on the bar is links**, as on the phone: each
+  of the song's artists opens their own page, the album its own, and an
+  episode's show or a book's title the show's or book's. They take the
+  line's colour and are underlined under the pointer. The line is set
+  again only when its text changes: set four times a second with the
+  position, a link could lose a click between the press and the release.
 
-**Still missing against the phone:** the artist link under the title on
-the bar; Play and Shuffle on Downloads, which also leaves out downloaded
-episodes.
+**Still missing against the phone:** Play and Shuffle on Downloads,
+which also leaves out downloaded episodes.
 
 ## Open questions
 

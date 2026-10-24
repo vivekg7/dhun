@@ -38,8 +38,23 @@ pub fn bar(
         .xalign(0.0)
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .max_width_chars(40)
-        .css_classes(["caption", "dim-label"])
+        .use_markup(true)
+        .css_classes(["caption", "dim-label", "song-facts"])
         .build();
+    // Each artist opens their page, the album its own, an episode's show or
+    // a book's title the show's or the book's, as on the phone.
+    let p = app.playback().clone();
+    artist.connect_activate_link(move |l, uri| {
+        let Some(s) = p.current() else { return gtk::glib::Propagation::Stop };
+        let _ = match uri.strip_prefix("artist:").and_then(|i| i.parse::<usize>().ok()) {
+            Some(i) => {
+                let name = artists_of(&s).get(i).cloned().unwrap_or_default();
+                l.activate_action("win.open-artist", Some(&name.to_variant()))
+            }
+            None => l.activate_action("win.go-album", Some(&s.id.to_variant())),
+        };
+        gtk::glib::Propagation::Stop
+    });
     let text = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .valign(gtk::Align::Center)
@@ -258,7 +273,13 @@ pub fn bar(
     // and from what; the sleep timer.
     let line = {
         let (app, pb) = (app.clone(), pb.clone());
-        Rc::new(move || artist.set_label(&subtitle(&app, &pb)))
+        // Only when it changes: set again under the pointer, a link loses the click.
+        Rc::new(move || {
+            let text = subtitle(&app, &pb);
+            if artist.label() != text {
+                artist.set_label(&text);
+            }
+        })
     };
     let update = {
         let marks = marks.clone();
@@ -338,29 +359,44 @@ pub fn bar(
     outer
 }
 
-/// "Chapter 3 of 20 · Name · Author · Book", "Artist · Album · Sleep in 12 min".
+/// A song's artists, each its own page, as the Artists list keeps them apart.
+fn artists_of(s: &SongRef) -> Vec<String> {
+    if s.artists.is_empty() { vec![s.display_artist().to_string()] } else { s.artists.clone() }
+}
+
+/// "Chapter 3 of 20 · Name · Author · Book", "Artist · Album · Sleep in 12
+/// min", as markup: the artists, the album, and the show or book are links.
 fn subtitle(app: &App, pb: &crate::playback::Playback) -> String {
     let Some(s) = pb.current() else { return String::new() };
+    let text = |t: &str| gtk::glib::markup_escape_text(t).to_string();
+    let link = |to: &str, t: &str| {
+        if t.is_empty() { String::new() } else { format!("<a href=\"{to}\">{}</a>", text(t)) }
+    };
     if pb.waiting() {
-        return "Waiting for the network…".into();
+        return text("Waiting for the network…");
     }
     let marks = app.marks.borrow().bookmarks.iter().filter(|b| b.song == s.id).count();
-    let mut parts = vec![crate::controls::chapter_label(&s, pb.position_ms()).unwrap_or_else(|| match marks {
+    let mut parts = vec![text(&crate::controls::chapter_label(&s, pb.position_ms()).unwrap_or_else(|| match marks {
         0 => String::new(),
         1 => "1 bookmark".into(),
         n => format!("{n} bookmarks"),
-    })];
+    }))];
     match s.kind.as_str() {
-        dhun_core::model::PODCAST => parts.extend([s.group_title.clone(), s.day()]),
+        dhun_core::model::PODCAST => parts.extend([link("shelf", &s.group_title), text(&s.day())]),
         // A book of one file is often titled as the book: not twice.
         dhun_core::model::AUDIOBOOK => parts.extend([
-            if s.group_title == s.title { String::new() } else { s.group_title.clone() },
-            if s.artist.is_empty() { s.album_artist.clone() } else { s.artist.clone() },
+            if s.group_title == s.title { String::new() } else { link("shelf", &s.group_title) },
+            text(if s.artist.is_empty() { &s.album_artist } else { &s.artist }),
         ]),
-        _ => parts.extend([s.display_artist().to_string(), s.album.clone()]),
+        _ => {
+            let artists: Vec<String> =
+                artists_of(&s).iter().enumerate().map(|(i, a)| link(&format!("artist:{i}"), a)).collect();
+            let album = app.catalog().album_of.contains_key(&s.id);
+            parts.extend([artists.join(", "), if album { link("album", &s.album) } else { text(&s.album) }]);
+        }
     }
     if let Some(l) = pb.sleep_label() {
-        parts.push(format!("Sleep {l}"));
+        parts.push(text(&format!("Sleep {l}")));
     }
     parts.retain(|p| !p.is_empty());
     parts.join(" · ")
