@@ -975,6 +975,136 @@ pub fn play_buttons(app: &Rc<App>, top: &impl IsA<gtk::Widget>, name: &str, sour
     row.prepend(&all);
 }
 
+/// A queue's find field: it finds rather than filters, as Musicolet's queue
+/// search and the Mac's do (plan 032). The matches show under it with their
+/// number in the queue; ↑ and ↓ move through them, Return or a click picks
+/// one, and the queue scrolls to that song and selects it. The queue stays
+/// whole, so a song can be dragged with its neighbours in view.
+fn find_in_queue(app: &Rc<App>, view: &gtk::ColumnView, songs: Vec<SongRef>) -> gtk::Box {
+    let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    let entry = gtk::SearchEntry::builder()
+        .placeholder_text("Find in queue")
+        .margin_start(18)
+        .margin_end(18)
+        .margin_bottom(6)
+        .build();
+    let matches = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
+    let shown = gtk::ScrolledWindow::builder()
+        .child(&matches)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(200)
+        .margin_start(12)
+        .margin_end(12)
+        .visible(false)
+        .build();
+    b.append(&entry);
+    b.append(&shown);
+    // The places in the queue of the matches listed.
+    let found: Rc<std::cell::RefCell<Vec<u32>>> = Rc::default();
+    let pick = {
+        let (view, entry, found) = (view.downgrade(), entry.downgrade(), found.clone());
+        move |j: usize| {
+            let (Some(view), Some(entry)) = (view.upgrade(), entry.upgrade()) else { return };
+            let Some(&at) = found.borrow().get(j) else { return };
+            // Clearing the field lists the matches again, of nothing.
+            entry.set_text("");
+            // In the middle, as the Mac's: the rows are of one height. Then
+            // selected and focused where it is.
+            if let Some(adj) = view.vadjustment() {
+                let n = view.model().map_or(1, |m| m.n_items()).max(1) as f64;
+                let row = adj.upper() / n;
+                adj.set_value(at as f64 * row - (adj.page_size() - row) / 2.0);
+            }
+            let still = gtk::ScrollInfo::new();
+            still.set_enable_vertical(false);
+            view.scroll_to(at, None, gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT, Some(still));
+        }
+    };
+    let (app, m, sh, f) = (app.clone(), matches.downgrade(), shown.downgrade(), found.clone());
+    entry.connect_search_changed(move |e| {
+        let (Some(m), Some(sh)) = (m.upgrade(), sh.upgrade()) else { return };
+        m.remove_all();
+        let text = e.text();
+        sh.set_visible(!text.is_empty());
+        let hits: std::collections::HashSet<i64> = app.catalog().filter(&songs, &text).iter().map(|s| s.id).collect();
+        // A song in the queue twice is found at both places. A hundred is plenty to pick from.
+        let at: Vec<u32> =
+            (0..songs.len()).filter(|&i| hits.contains(&songs[i].id)).take(100).map(|i| i as u32).collect();
+        if at.is_empty() && !text.is_empty() {
+            let none = gtk::Label::builder()
+                .label(format!("Nothing matches “{text}”"))
+                .css_classes(["dim-label"])
+                .margin_top(6)
+                .margin_bottom(6)
+                .build();
+            m.append(&gtk::ListBoxRow::builder().child(&none).activatable(false).selectable(false).build());
+        }
+        for &i in &at {
+            let s = &songs[i as usize];
+            let r = gtk::Box::builder().spacing(8).build();
+            r.append(
+                &gtk::Label::builder()
+                    .label((i + 1).to_string())
+                    .width_chars(4)
+                    .xalign(1.0)
+                    .css_classes(["caption", "numeric", "dim-label"])
+                    .build(),
+            );
+            r.append(
+                &gtk::Label::builder().label(&s.title).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build(),
+            );
+            r.append(
+                &gtk::Label::builder()
+                    .label(s.display_artist())
+                    .xalign(1.0)
+                    .hexpand(true)
+                    .ellipsize(gtk::pango::EllipsizeMode::End)
+                    .css_classes(["caption", "dim-label"])
+                    .build(),
+            );
+            m.append(&r);
+        }
+        m.select_row(m.row_at_index(0).filter(|r| r.is_selectable()).as_ref());
+        *f.borrow_mut() = at;
+    });
+    let p = pick.clone();
+    matches.connect_row_activated(move |_, r| p(r.index() as usize));
+    let (m, p) = (matches.downgrade(), pick.clone());
+    entry.connect_activate(move |_| {
+        if let Some(r) = m.upgrade().and_then(|m| m.selected_row()) {
+            p(r.index() as usize);
+        }
+    });
+    // ↑ and ↓ move through the matches while the field keeps the focus.
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let (m, f, sh) = (matches.downgrade(), found, shown.downgrade());
+    keys.connect_key_pressed(move |_, key, _, _| {
+        let by = match key {
+            gtk::gdk::Key::Down => 1,
+            gtk::gdk::Key::Up => -1,
+            _ => return glib::Propagation::Proceed,
+        };
+        let (Some(m), n) = (m.upgrade(), f.borrow().len() as i32) else { return glib::Propagation::Proceed };
+        if n == 0 {
+            return glib::Propagation::Proceed;
+        }
+        let at = m.selected_row().map_or(0, |r| r.index());
+        let to = (at + by).rem_euclid(n);
+        if let Some(r) = m.row_at_index(to) {
+            m.select_row(Some(&r));
+            // Kept in sight in the list of matches; the field keeps the focus.
+            if let (Some(sh), Some(at)) = (sh.upgrade(), r.compute_bounds(&m)) {
+                sh.vadjustment().clamp_page(at.y() as f64, (at.y() + at.height()) as f64);
+            }
+        }
+        glib::Propagation::Stop
+    });
+    entry.add_controller(keys);
+    b
+}
+
 /// A song list that filters itself when it is long (plan 011), as search does (plan 029).
 pub fn songs_page(
     app: &Rc<App>,
@@ -993,8 +1123,11 @@ pub fn songs_page(
     }
     let holder = adw::Bin::new();
     holder.set_vexpand(true);
-    holder.set_child(Some(&scrolled(&song_list(app, &songs, cols.clone(), play.clone(), edit.clone()))));
-    if songs.len() > FILTER_OVER {
+    let list = song_list(app, &songs, cols.clone(), play.clone(), edit.clone());
+    holder.set_child(Some(&scrolled(&list)));
+    if songs.len() > FILTER_OVER && matches!(play, Play::Queue(_)) {
+        b.append(&find_in_queue(app, &list, songs));
+    } else if songs.len() > FILTER_OVER {
         let entry = gtk::SearchEntry::builder()
             .placeholder_text("Filter songs")
             .margin_start(18)

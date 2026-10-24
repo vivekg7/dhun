@@ -811,9 +811,15 @@ alongside, for what Linux lacks.
   episode played a moment has. The resume points are kept in memory with
   the marks, so a list reads them without asking the database at each row,
   and a pause moves the bar at once.
+- **A queue's search finds rather than filters** (032), as Musicolet's and
+  the Mac's: "Find in queue" lists the matches under it with their number
+  in the queue; ↑ and ↓ move through them, Return or a click picks one,
+  and the queue scrolls to it, in the middle, selected. The queue stays
+  whole, so a song can be dragged with its neighbours in view. GTK's
+  `scroll_to` cannot centre a row, so the list is scrolled by hand first:
+  its rows are of one height.
 
-**Still missing against the phone:** a queue's search that scrolls to a
-match rather than filtering; the song menu and dragging in the
+**Still missing against the phone:** the song menu and dragging in the
 playing-queue panel; renaming and removing from the queue picker; the
 artist link under the title on the bar; Play and Shuffle on Downloads,
 which also leaves out downloaded episodes.
