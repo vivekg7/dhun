@@ -484,7 +484,6 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
             *shown.borrow_mut() = key;
             let (a, p, cur) = (app.clone(), pb.clone(), current.clone());
             let list = widgets::list(
-                &app,
                 &songs.iter().cloned().enumerate().collect::<Vec<_>>(),
                 move |(_, s)| {
                     let r = row(&cover(&a, Some(s), 32), &s.title, s.display_artist());

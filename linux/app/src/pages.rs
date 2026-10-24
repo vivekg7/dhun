@@ -335,7 +335,6 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
     grid.set_max_columns(12);
     grid.set_single_click_activate(true);
     grid.add_css_class("album-grid");
-    widgets::rebind_on_thumbs(app, &store);
     let n = nav.clone();
     grid.connect_activate(move |g, pos| {
         let obj = g.model().and_then(|m| m.item(pos)).and_downcast::<glib::BoxedAnyObject>();
@@ -385,7 +384,6 @@ fn groups_page(nav: &Rc<Nav>, groups: &[Arc<Group>], artists: bool) -> gtk::Widg
     let make = move |list: &[Arc<Group>]| {
         let (a, n) = (a.clone(), n.clone());
         let view = widgets::list(
-            &a,
             list,
             {
                 let a = a.clone();
@@ -495,7 +493,6 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
         let n = nav.clone();
         let cat = c.clone();
         let list = widgets::list(
-            app,
             &f.children,
             move |p: &String| {
                 let child = &cat.folders[p];
@@ -544,7 +541,6 @@ fn shelves_page(nav: &Rc<Nav>, shelves: &[Arc<Shelf>]) -> gtk::Widget {
     let heard = Rc::new(app.heard());
     let (a, n) = (app.clone(), nav.clone());
     let view = widgets::list(
-        app,
         shelves,
         move |s: &Arc<Shelf>| {
             row(&cover(&a, s.cover().or(s.items.first()), 48), &s.title, &shelf_line(s, &heard)).upcast()
@@ -658,7 +654,6 @@ fn queues_page(nav: &Rc<Nav>) -> gtk::Widget {
     let (a, n) = (app.clone(), nav.clone());
     let numbered: Vec<(usize, dhun_core::model::QueueRow)> = queues.into_iter().enumerate().collect();
     let view = widgets::list(
-        app,
         &numbered,
         move |(i, q)| {
             let songs = a.catalog().songs_of(&q.songs);
@@ -1018,7 +1013,6 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
     let c = app.catalog();
     let a = app.clone();
     let list = widgets::list(
-        app,
         &pins,
         move |p| {
             let (icon, kind) = match p.kind.as_str() {

@@ -42,7 +42,22 @@ pub fn set_cover(
     };
     match app.thumbnail(song) {
         Some(t) => put(&target, &t),
-        None => placeholder(&target),
+        None => {
+            placeholder(&target);
+            // The thumbnails are still on their way: it is shown when they land.
+            let (a, s, weak, still) = (app.clone(), song.clone(), target.downgrade(), still.clone());
+            // A recycled row that moved on stops waiting at the next change.
+            app.listen(move |c| {
+                let Some(w) = weak.upgrade().filter(|_| still.as_ref().is_none_or(|f| f())) else { return false };
+                if c != Change::Thumbs {
+                    return true;
+                }
+                if let Some(t) = a.thumbnail(&s) {
+                    put(&w, &t);
+                }
+                false
+            });
+        }
     }
     let px = (size * target.scale_factor().max(1)) as u32;
     if px <= dhun_core::covers::THUMB || !song.has_art {
@@ -326,7 +341,6 @@ pub fn ask_text(
 /// A list of things in a `GtkListView`, which builds rows only for what is
 /// on screen: the artists are thousands, the songs tens of thousands.
 pub fn list<T: Clone + 'static>(
-    app: &App,
     items: &[T],
     bind: impl Fn(&T) -> gtk::Widget + 'static,
     activate: impl Fn(&T) + 'static,
@@ -342,26 +356,12 @@ pub fn list<T: Clone + 'static>(
     let view = gtk::ListView::new(Some(gtk::NoSelection::new(Some(store.clone()))), Some(factory));
     view.set_single_click_activate(true);
     view.add_css_class("navigation-sidebar");
-    rebind_on_thumbs(app, &store);
     view.connect_activate(move |_, pos| {
         if let Some(obj) = store.item(pos).and_downcast::<glib::BoxedAnyObject>() {
             activate(&obj.borrow::<T>());
         }
     });
     view
-}
-
-/// Binds every row of `store` again when thumbnails arrive, while the list lives.
-pub fn rebind_on_thumbs(app: &App, store: &gio::ListStore) {
-    let weak = store.downgrade();
-    app.listen(move |c| {
-        let Some(store) = weak.upgrade() else { return false };
-        if c == Change::Thumbs {
-            let n = store.n_items();
-            store.items_changed(0, n, n);
-        }
-        true
-    });
 }
 
 pub fn scrolled(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
@@ -550,7 +550,12 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
         let song = obj.borrow::<SongRef>().clone();
         let b = item.child().and_downcast::<gtk::Box>().unwrap();
         let pic = b.first_child().and_downcast::<gtk::Frame>().unwrap().child().and_downcast::<gtk::Picture>().unwrap();
-        set_cover(&a, &pic, Some(&song), 28, None);
+        // A recycled row may show another song when the cover arrives.
+        let weak = item.downgrade();
+        let still: Rc<dyn Fn() -> bool> = Rc::new(move || {
+            weak.upgrade().and_then(|i| i.item()).is_some_and(|o| o == obj.clone().upcast::<glib::Object>())
+        });
+        set_cover(&a, &pic, Some(&song), 28, Some(still));
         // By place from the cover: a menu opened on the cell is a child of it too, after these.
         let label = pic.parent().unwrap().next_sibling().and_downcast::<gtk::Label>().unwrap();
         label.set_label(&song.title);
@@ -578,8 +583,6 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
         view.append_column(&column("Album", true, Box::new(|s| s.album.clone()), true, false));
     }
     view.append_column(&column("Time", false, Box::new(|s| clock(s.duration_ms)), true, true));
-    // New thumbnails: rows showing placeholders are bound again.
-    rebind_on_thumbs(app, &store);
 
     let (a, l, p) = (app.clone(), list.clone(), play.clone());
     view.connect_activate(move |_, pos| {
