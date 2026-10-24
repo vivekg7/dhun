@@ -18,6 +18,8 @@ finish-args:
   - --own-name=org.mpris.MediaPlayer2.dhun
   # The tray icon registers with the panel's watcher (StatusNotifierItem).
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Sync on waking from sleep: logind's PrepareForSleep.
+  - --system-talk-name=org.freedesktop.login1
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:

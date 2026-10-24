@@ -263,6 +263,28 @@ fn start(gapp: &adw::Application) -> Rc<App> {
             a.sync_soon(Duration::from_secs(2));
         }
     });
+    // Awake again: the other devices may have played on meanwhile (logind's
+    // PrepareForSleep, false on waking).
+    let a = app.clone();
+    gio::bus_get(gio::BusType::System, None::<&gio::Cancellable>, move |bus| {
+        let Ok(bus) = bus else { return };
+        let a = a.clone();
+        let sub = bus.subscribe_to_signal(
+            Some("org.freedesktop.login1"),
+            Some("org.freedesktop.login1.Manager"),
+            Some("PrepareForSleep"),
+            Some("/org/freedesktop/login1"),
+            None,
+            gio::DBusSignalFlags::NONE,
+            move |s| {
+                if s.parameters.child_value(0).get::<bool>() == Some(false) {
+                    a.sync_soon(Duration::from_secs(5));
+                }
+            },
+        );
+        // Subscribed for the app's life.
+        std::mem::forget(sub);
+    });
     app
 }
 

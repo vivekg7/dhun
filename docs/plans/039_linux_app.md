@@ -768,6 +768,8 @@ alongside, for what Linux lacks.
   stops where it is, with a note. A song that fails while paused stays put,
   and one failure told several times counts once. Only a song's own
   failure, while playing, moves on, as on the phone.
+- **Sync on waking from sleep** (logind's `PrepareForSleep`), which the
+  Decision promised, was missing; the Flatpak now talks to `login1`.
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on
