@@ -201,6 +201,33 @@ pub struct ResumeDto {
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
+pub struct LyricsBody {
+    pub text: Option<String>,
+}
+
+/// A family member, as the admin sees them (plan 023).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Member {
+    pub id: i64,
+    pub name: String,
+    pub admin: bool,
+    pub devices: i64,
+    pub last_seen_at: String,
+}
+
+#[derive(Deserialize)]
+struct Members {
+    users: Option<Vec<Member>>,
+}
+
+#[derive(Deserialize)]
+pub struct LyricsHits {
+    pub hits: Option<Vec<crate::lyrics::Hit>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct BookmarkDto {
     pub id: String,
     pub deleted: Option<bool>,
@@ -342,6 +369,39 @@ impl Api {
         Ok(r.now_playing)
     }
 
+    /// A song's lyrics as text, LRC or plain; 404 when the server has none.
+    pub fn lyrics(&self, song: i64) -> Result<String> {
+        let r: LyricsBody = self.call("GET", &format!("/api/v1/lyrics/{song}"), None, true)?;
+        Ok(r.text.unwrap_or_default())
+    }
+
+    /// Songs whose lyrics hold the words, with the line (plan 029).
+    pub fn search_lyrics(&self, q: &str) -> Result<Vec<crate::lyrics::Hit>> {
+        let encoded: String = q
+            .bytes()
+            .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") })
+            .collect();
+        let r: LyricsHits = self.call("GET", &format!("/api/v1/search/lyrics?q={encoded}"), None, true)?;
+        Ok(r.hits.unwrap_or_default())
+    }
+
+    // Family members, for the admin (plan 023).
+
+    pub fn members(&self) -> Result<Vec<Member>> {
+        let r: Members = self.call("GET", "/api/v1/admin/users", None, true)?;
+        Ok(r.users.unwrap_or_default())
+    }
+
+    pub fn add_member(&self, name: &str, password: &str) -> Result<()> {
+        let body = serde_json::json!({ "name": name, "password": password });
+        self.call_done("POST", "/api/v1/admin/users", body)
+    }
+
+    pub fn reset_password(&self, user: i64, password: &str) -> Result<()> {
+        let body = serde_json::json!({ "password": password });
+        self.call_done("PUT", &format!("/api/v1/admin/users/{user}/password"), body)
+    }
+
     /// Thumbnails by art key, base64 JPEG.
     pub fn thumbs(&self, keys: &[String]) -> Result<HashMap<String, String>> {
         let r: Thumbs = self.call("POST", "/api/v1/thumbs", Some(serde_json::json!({ "keys": keys })), true)?;
@@ -375,7 +435,8 @@ impl Api {
             let r = self.agent.get(url);
             if token.is_empty() { r.call() } else { r.header("Authorization", &bearer).call() }
         } else {
-            let mut r = self.agent.post(url).header("Content-Type", "application/json");
+            let r = if method == "PUT" { self.agent.put(url) } else { self.agent.post(url) };
+            let mut r = r.header("Content-Type", "application/json");
             if !token.is_empty() {
                 r = r.header("Authorization", &bearer);
             }
@@ -392,6 +453,17 @@ impl Api {
             }
         }
         Ok(resp)
+    }
+
+    /// A call whose answer says only that it was done, perhaps with no body.
+    fn call_done(&self, method: &str, path: &str, body: serde_json::Value) -> Result<()> {
+        let mut resp = self.send(method, &format!("{}{path}", self.server()), Some(body), true)?;
+        let status = resp.status().as_u16();
+        if (200..300).contains(&status) {
+            return Ok(());
+        }
+        let msg = serde_json::from_reader::<_, ErrorBody>(resp.body_mut().as_reader()).ok().and_then(|b| b.message);
+        Err(Error::Http { code: status, message: msg.unwrap_or_else(|| format!("HTTP {status}")) })
     }
 
     fn call<T: DeserializeOwned>(

@@ -139,6 +139,9 @@ pub struct Resume {
     pub deleted: bool,
 }
 
+/// The longest note a bookmark keeps, in code points, as the server counts.
+pub const MAX_NOTE: usize = 1000;
+
 /// A place marked in a long file, with an optional note (plan 033). A
 /// deleted one is kept, so an older copy from the server never brings it back.
 #[derive(Clone, Debug, Default, PartialEq)]

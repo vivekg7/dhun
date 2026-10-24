@@ -35,6 +35,15 @@ pub struct Values {
     pub cache_limit_gb: Option<u64>,
     pub download_limit_gb: Option<u64>,
     pub download_on_metered: Option<bool>,
+    /// This computer's everyday speed and pitch (plan 016); 0 for unset, read as 1.
+    pub speed: f64,
+    pub semitones: i64,
+    /// The sleep timer's "Let the song finish", remembered (plan 034).
+    pub sleep_finish_song: bool,
+    /// system, light, dark, black or time (day and night by the clock); "" for the default.
+    pub theme: String,
+    /// One of the eight accents, Dull Orange first.
+    pub palette: usize,
 }
 
 impl Values {
@@ -43,6 +52,10 @@ impl Values {
     }
     pub fn download_limit(&self) -> u64 {
         self.download_limit_gb.unwrap_or(10) * crate::downloads::GB
+    }
+    pub fn everyday(&self) -> crate::tempo::Tempo {
+        let speed = if self.speed > 0.0 { self.speed } else { 1.0 };
+        crate::tempo::Tempo { speed, semitones: self.semitones }
     }
 }
 
@@ -85,6 +98,11 @@ impl Prefs {
                 cache_limit_gb: v.cache_limit_gb,
                 download_limit_gb: v.download_limit_gb,
                 download_on_metered: v.download_on_metered,
+                speed: v.speed,
+                semitones: v.semitones,
+                sleep_finish_song: v.sleep_finish_song,
+                theme: std::mem::take(&mut v.theme),
+                palette: v.palette,
                 ..Default::default()
             }
         });

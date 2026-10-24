@@ -11,12 +11,12 @@ use dhun_core::covers::{self, Files};
 use dhun_core::db::Db;
 use dhun_core::model::{Download, NowPlaying, Pin, Playlist, QueueRow};
 use dhun_core::prefs::Prefs;
-use dhun_core::sync;
 use dhun_core::synced::Settings;
+use dhun_core::{store, sync};
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -44,6 +44,29 @@ pub enum Change {
     Downloads,
     /// Which songs play without the server: a download done or gone, or the server lost or found.
     Playable,
+    /// Favorites, Listen Later, the played marks or the bookmarks.
+    Marks,
+}
+
+/// The songs in Favorites and Listen Later, newest first, and those played
+/// (plans 010, 031).
+#[derive(Default)]
+pub struct Marks {
+    pub favs: Vec<i64>,
+    pub later: Vec<i64>,
+    pub played: HashSet<i64>,
+    /// Every long file's bookmarks, by place (plan 033).
+    pub bookmarks: Vec<dhun_core::model::Bookmark>,
+}
+
+impl Marks {
+    pub fn has(&self, kind: &str, song: i64) -> bool {
+        match kind {
+            store::FAV => self.favs.contains(&song),
+            store::LATER => self.later.contains(&song),
+            _ => self.played.contains(&song),
+        }
+    }
 }
 
 type Listener = Rc<dyn Fn(Change) -> bool>;
@@ -60,6 +83,7 @@ pub struct App {
     pub playlists: RefCell<Vec<Playlist>>,
     pub queues: RefCell<Vec<QueueRow>>,
     pub settings: RefCell<Settings>,
+    pub marks: RefCell<Marks>,
     pub now_playing: RefCell<Option<NowPlaying>>,
     pub playback: std::cell::OnceCell<Rc<crate::playback::Playback>>,
     pub cache: Arc<SongCache>,
@@ -113,6 +137,7 @@ impl App {
             playlists: RefCell::new(vec![]),
             queues: RefCell::new(vec![]),
             settings: RefCell::new(Settings::new()),
+            marks: RefCell::default(),
             now_playing: RefCell::new(None),
             playback: std::cell::OnceCell::new(),
             downloads: std::cell::OnceCell::new(),
@@ -253,6 +278,35 @@ impl App {
         self.changed(Change::Playable);
     }
 
+    pub fn reload_marks(&self) {
+        let db = self.db.lock().unwrap();
+        let ids = |kind| db.marks(kind).unwrap_or_default().into_iter().map(|m| m.song);
+        let m = Marks {
+            favs: ids(store::FAV).collect(),
+            later: ids(store::LATER).collect(),
+            played: ids(store::PLAYED).collect(),
+            bookmarks: db.bookmarks().unwrap_or_default(),
+        };
+        drop(db);
+        *self.marks.borrow_mut() = m;
+        self.changed(Change::Marks);
+    }
+
+    /// What has been heard of the spoken files: played, and where each was left (plan 031).
+    pub fn heard(&self) -> dhun_core::spoken::Heard {
+        let resumes = self.db.lock().unwrap().resumes().unwrap_or_default();
+        dhun_core::spoken::Heard {
+            played: self.marks.borrow().played.clone(),
+            left: resumes.into_iter().map(|r| (r.song, r.position_ms)).collect(),
+        }
+    }
+
+    /// Puts `songs` into a list or takes them out: Favorites, Listen Later, played.
+    pub fn mark(self: &Rc<Self>, kind: &str, songs: &[i64], on: bool) {
+        self.store(|db| songs.iter().try_for_each(|&s| store::mark(db, kind, s, on)));
+        self.reload_marks();
+    }
+
     pub fn reload_playlists(&self) {
         *self.playlists.borrow_mut() = self.db.lock().unwrap().playlists().unwrap_or_default();
         self.changed(Change::Playlists);
@@ -332,6 +386,7 @@ impl App {
             self.reload_playlists();
         }
         if pulled.state {
+            self.reload_marks();
             self.reload_queues();
             if let Some(p) = self.playback.get() {
                 p.queues_synced();
@@ -441,7 +496,7 @@ impl App {
     /// this device's id, which an older sign-in may not have kept.
     pub async fn check_handoff(self: &Rc<Self>) {
         let api = self.api.clone();
-        let known = self.prefs.get().device_id != 0;
+        let known = self.prefs.get().device_id != 0 && !self.prefs.get().user.is_empty();
         let got = gio::spawn_blocking(move || {
             let me = if known { None } else { api.me().ok() };
             (me, api.now_playing().ok().flatten())
@@ -452,6 +507,9 @@ impl App {
             self.prefs.update(|p| {
                 p.device_id = me.device_id.unwrap_or(0);
                 p.admin = me.user.as_ref().is_some_and(|u| u.admin);
+                if p.user.is_empty() {
+                    p.user = me.user.as_ref().map(|u| u.name.clone()).unwrap_or_default();
+                }
             });
         }
         if np.is_some() {
@@ -508,6 +566,7 @@ impl App {
         self.playlists.borrow_mut().clear();
         self.queues.borrow_mut().clear();
         self.settings.borrow_mut().clear();
+        *self.marks.borrow_mut() = Marks::default();
         self.now_playing.borrow_mut().take();
         if let Some(p) = self.playback.get() {
             p.reset();

@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 to 3 done (2026-10-23): it plays, and offline; 0.16.3 installed on the owner's desktop (2026-10-23), not released
+**Status:** `IN PROGRESS` — steps 0 to 4 done (2026-10-24): the phone's features, Settings included; 0.16.3 installed on the owner's desktop (2026-10-23), not released
 **Started:** 2026-10-23
 
 ## Problem
@@ -387,7 +387,8 @@ moves with it.
    Later and the automatic views (010), podcasts and audiobooks (031),
    bookmarks (033), lyrics (015), speed and pitch (016), the sleep timer
    (014), settings with all four themes and the eight palettes (018, 034),
-   family members (023). Ported tests: lyrics, tempo.
+   family members (023). Ported tests: lyrics, tempo. **Done
+   (2026-10-24)**; see [How step 4 went](#how-step-4-went-2026-10-24).
 5. **Linux-only pieces.** The tray icon, the mini window, Open With, the
    launcher's three shortcuts, the Background portal.
 6. **Measure and release.** The Linux section of `performance-baseline.md`;
@@ -577,6 +578,85 @@ the server cannot be reached, songs that are not on this computer dimmed.
   that cannot be fetched does not say so sooner, as the Mac's fetcher
   does.
 - Lyrics are not kept with downloads; they come with step 4.
+
+## How step 4 went (2026-10-24)
+
+**Built:** in `linux/core`, the edits `Store` lacked (marks, bookmarks, and
+every playlist edit, a move naming its entries rather than its songs, since
+a song can be in a playlist twice), the sort orders shared by queues and
+playlists, `Tempo`, lyrics (the LRC parser, kept copies, the offline search
+of them), `Heard` for books and shows, the synced settings' choices, and
+the family-members calls. In `linux/app`: the Lists section (Favorites,
+Listen Later and the five automatic views); the phone's song menu (Play
+Next, Add to Playing Queue, Add to Queue ▸, Add to Playlist ▸, the two
+lists, Mark as Played, Download, Go to Album or Artist, and removing from
+the list shown); playlists made, renamed, sorted, deleted, and their songs
+removed or dragged into order; a queue's songs dragged, sorted, saved as a
+playlist, the queues themselves dragged into order and "Remove all other
+queues"; Play and Shuffle on every list's header; Favorite and Listen Later
+on the Now playing bar, and for a long file seek back and forward, a
+bookmark, and in Shuffle's place for a book or show its chapters, notes and
+bookmarks; speed and pitch; the sleep timer, with "Stop after this song" in
+the playing queue's menu; lyrics beside the page, following the song, kept
+with downloads, and searched; a book's and a show's page as the Mac's
+(Continue, Heard, parts or dates, played episodes hidden); and Settings:
+the five themes (system, light, dark, black, day and night by the clock)
+and the eight accents, the Playback settings that follow the user, this
+computer's limits, the account, family members for the admin, and How it
+works, which `scripts/guide.sh` now copies into `linux/app/src/guide.md`.
+
+**Checked**, signed in as the test account against the NAS, silent:
+
+- A favourite made from an album's song menu showed in Favorites; a
+  playlist made from the menu was created on the server
+  (`Playlists/test/Linux test.m3u8`), then added to, sorted, a song
+  removed, and renamed, the server's file following each.
+- A queue reversed from its Sort menu, the server's copy too.
+- 1.5× moved a song 7.5 s in 5 s, and 1× back to 5 s; −2 semitones at
+  1.25× opened the song again where it was with `pitch` in the chain and
+  went on at 1.25×. The Flatpak's build now has `pitch`
+  (`gst-inspect-1.0` in its build directory).
+- "At the end of this song" paused at the next song's start, the timer
+  done.
+- A chaptered episode showed "Chapter 5 of 24 · Perceptronium" under its
+  title, and its chapters in the panel, the one playing marked.
+- A song's synced lyrics followed it; "baarish ka bosa" found it by its
+  lyrics on the server.
+- The Settings pages, the black theme with the Teal accent, and the
+  Downloads and Account pages' figures.
+- The 33 unit tests, among them the playlist move, the tempo setting read
+  defensively, the three lyrics tests and a book carrying on from its
+  first file not played.
+
+**Changed while building:**
+
+- **A seek waiting for its song to open is dropped when another opens
+  first.** Started at once after the app restored a queue paused at 44 s,
+  the new song began at 44 s: the restored song's seek landed on it. A
+  bug since step 2, found by the speed check.
+- **Pages keep their place when built again.** The playing queue's page was
+  built again at every song; now only an edit to its name or songs builds
+  it again, and a page built again is scrolled back to where it was. Space
+  no longer plays or pauses while a dialog is open. (Both were left from
+  step 2.)
+- **The Flatpak builds libSoundTouch shared** (`BUILD_SHARED_LIBS`): its
+  default static library cannot be linked into the plugin.
+- **Return in a dialog's text field answers it** by the field's own
+  `activate`: a field inside an `AdwAlertDialog` does not reach the
+  default button.
+- **The screenshot hook draws dialogs and open popovers**, and the test
+  hook can drive a song list's menu, type into a dialog and open a menu
+  button (`select:`, `do:`, `type:`, `popup:`, `tempo:`, `sleep:`,
+  `settings:`).
+
+**Not done:**
+
+- Family members were not tried: the test account is not an admin.
+- Dragging a song or a queue was not tried by hand; the playlist move is
+  tested, the queue's is not.
+- Entries of a playlist that match no song are not shown, as the Mac shows
+  them ("Unavailable"); they are kept, and sorting keeps them at the end.
+- A book's or a show's filter still says "Filter songs".
 
 ## Open questions
 

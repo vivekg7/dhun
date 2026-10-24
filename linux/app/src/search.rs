@@ -1,13 +1,14 @@
 //! What the window's search field finds (plan 029), as the Mac's
 //! `SearchView`: artists, albums, genres, folders, playlists, books, shows,
-//! episodes and songs, the section with the best match first. Lyrics,
-//! which the server searches, join with the lyrics in step 4 of plan 039.
+//! episodes and songs, the section with the best match first; then the
+//! songs whose lyrics hold the words, which the server searches.
 
 use crate::pages::{Nav, Route};
 use crate::widgets::{self, count, cover, row};
 use adw::prelude::*;
 use dhun_core::catalog::SongRef;
 use dhun_core::search::{self, Query};
+use gtk::glib;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -143,8 +144,13 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
             route: c.shelf_of(e).map(|s| Route::Shelf(s.id.clone())),
         }
     });
+    // A favourite, or a song played often, comes first among equal matches.
+    let favs: HashSet<i64> = nav.app.marks.borrow().favs.iter().copied().collect();
+    let plays = nav.app.db.lock().unwrap().play_stats().unwrap_or_default();
     let ix = c.song_index();
-    section("Songs", ix.search(&q, |_| 0), &|i| {
+    let boost =
+        |s: &SongRef| (if favs.contains(&s.id) { 3 } else { 0 }) + plays.get(&s.id).map_or(0, |p| (p.count / 5).min(2));
+    section("Songs", ix.search(&q, boost), &|i| {
         let s = &ix.items[i];
         let detail =
             [s.display_artist(), &s.album].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
@@ -171,7 +177,8 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             routes.clear();
             let text = nav.search.text();
             let found = find(&nav, &text);
-            if found.is_empty() && !text.is_empty() {
+            // Words long enough to search lyrics wait for that answer before saying so.
+            if found.is_empty() && !text.is_empty() && Query::new(&text).lyrics.chars().count() < 3 {
                 let empty = adw::StatusPage::builder().title("No results").icon_name("edit-find-symbolic").build();
                 list.append(&empty);
                 routes.push(None);
@@ -232,7 +239,95 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             None => {}
         }
     });
-    nav.set_search_fill(fill.clone());
+    // The songs whose lyrics hold the words, after the rest: the server
+    // answers a moment after typing stops.
+    let lyrics_list =
+        gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
+    let found_in: Rc<RefCell<(String, Rc<Vec<SongRef>>)>> = Rc::default();
+    let pending: Rc<std::cell::Cell<Option<glib::SourceId>>> = Rc::default();
+    let fill_lyrics: Rc<dyn Fn()> = {
+        let (nav, l, found_in, main) =
+            (Rc::downgrade(nav), lyrics_list.downgrade(), found_in.clone(), list.downgrade());
+        Rc::new(move || {
+            let (Some(nav), Some(l)) = (nav.upgrade(), l.upgrade()) else { return };
+            l.remove_all();
+            if let Some(id) = pending.take() {
+                id.remove();
+            }
+            let text = nav.search.text().to_string();
+            let q = Query::new(&text);
+            if q.lyrics.chars().count() < 3 {
+                return;
+            }
+            let heading = |t: &str| {
+                gtk::ListBoxRow::builder()
+                    .child(
+                        &gtk::Label::builder()
+                            .label(t)
+                            .xalign(0.0)
+                            .css_classes(["heading"])
+                            .margin_top(12)
+                            .margin_start(6)
+                            .build(),
+                    )
+                    .activatable(false)
+                    .selectable(false)
+                    .build()
+            };
+            l.append(&heading("In lyrics"));
+            l.append(&heading("Searching lyrics…"));
+            let (nav2, l2, found_in, pending2, main) =
+                (nav.clone(), l.downgrade(), found_in.clone(), pending.clone(), main.clone());
+            pending.set(Some(glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                pending2.take();
+                glib::spawn_future_local(async move {
+                    let hits = crate::lyrics::search(&nav2.app, q).await;
+                    let Some(l) = l2.upgrade().filter(|_| nav2.search.text() == text) else { return };
+                    l.remove_all();
+                    let c = nav2.app.catalog();
+                    let hits: Vec<(SongRef, String)> =
+                        hits.into_iter().filter_map(|h| c.by_id.get(&h.song).map(|s| (s.clone(), h.line))).collect();
+                    if hits.is_empty() {
+                        if main.upgrade().is_some_and(|m| m.first_child().is_none()) {
+                            l.append(
+                                &adw::StatusPage::builder().title("No results").icon_name("edit-find-symbolic").build(),
+                            );
+                        }
+                        return;
+                    }
+                    l.append(&heading("In lyrics"));
+                    for (s, line) in &hits {
+                        let detail = format!("“{line}” · {}", s.display_artist());
+                        l.append(
+                            &gtk::ListBoxRow::builder()
+                                .child(&row(&cover(&nav2.app, Some(s), 36), &s.title, &detail))
+                                .build(),
+                        );
+                    }
+                    *found_in.borrow_mut() =
+                        (format!("Lyrics: {text}"), Rc::new(hits.into_iter().map(|h| h.0).collect()));
+                });
+            })));
+        })
+    };
+    let n = Rc::downgrade(nav);
+    lyrics_list.connect_row_activated(move |_, r| {
+        let Some(n) = n.upgrade() else { return };
+        let (name, songs) = found_in.borrow().clone();
+        // The heading is the first row.
+        if let Some(i) = (r.index() as usize).checked_sub(1).filter(|&i| i < songs.len()) {
+            n.app.playback().play_list(&name, "search", &songs, i);
+        }
+    });
+    let (f, fl) = (fill.clone(), fill_lyrics.clone());
+    nav.set_search_fill(Rc::new(move || {
+        f();
+        fl();
+    }));
     fill();
-    widgets::scrolled(&list).upcast()
+    fill_lyrics();
+    let both = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    both.append(&list);
+    both.append(&lyrics_list);
+    widgets::scrolled(&both).upcast()
 }

@@ -3,22 +3,26 @@
 //! this holds the active queue's play order and loads only that queue, so
 //! switching saves the outgoing queue's song and position and loads the
 //! incoming one where it was left. Every listen is logged (plan 008) and
-//! long files keep a resume point (plan 009). The sleep timer, speed and
-//! pitch, and chapters join in step 4 of plan 039.
+//! long files keep a resume point (plan 009). Speed and pitch (016) are
+//! here; the sleep timer (014) is in `sleep`.
+
+mod sleep;
+pub use sleep::Sleep;
 
 use crate::app::{App, Change};
 use crate::engine::{Engine, Event, Source};
 use dhun_core::catalog::SongRef;
 use dhun_core::model::{NowPlaying, QueueRow};
-use dhun_core::queue::{self, END_MARGIN_MS, MAX_QUEUES, RESTART_WINDOW, Upcoming, distinct};
+use dhun_core::queue::{self, END_MARGIN_MS, MAX_QUEUES, RESTART_WINDOW, Upcoming, distinct, random};
 use dhun_core::store::{self, Listen};
 use dhun_core::synced;
+use dhun_core::tempo::{self, Tempo};
 use dhun_core::time::{now_ms, parse};
 use gtk::glib;
 use gtk::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -42,6 +46,9 @@ struct Open {
     /// When the current stretch of playing began; not saved.
     #[serde(skip)]
     since: Option<Instant>,
+    /// The speed it plays at: a minute at 2× is two minutes of the song heard. Not saved.
+    #[serde(skip)]
+    speed: f64,
 }
 
 #[derive(Default)]
@@ -86,6 +93,9 @@ pub struct Playback {
     cache_due: Cell<bool>,
     /// A note for the user (a queue removed to make room), shown briefly.
     pub notices: RefCell<Vec<Notice>>,
+    /// The sleep timer (plan 014), and the clock that fades it out.
+    sleep: RefCell<Option<Sleep>>,
+    fading: RefCell<Option<glib::SourceId>>,
 }
 
 impl Playback {
@@ -114,6 +124,8 @@ impl Playback {
                 me: weak.clone(),
                 cache_due: Cell::new(false),
                 notices: RefCell::new(vec![]),
+                sleep: RefCell::default(),
+                fading: RefCell::default(),
             }
         });
         let w = Rc::downgrade(&pb);
@@ -214,7 +226,7 @@ impl Playback {
         self.app.changed(Change::Playback);
     }
 
-    fn notice(&self, text: &str) {
+    pub fn notice(&self, text: &str) {
         for f in self.notices.borrow().iter() {
             f(text);
         }
@@ -433,6 +445,109 @@ impl Playback {
 
     fn set_order(self: &Rc<Self>, ids: Vec<String>) {
         self.app.store(|db| store::setting(db, synced::QUEUE_ORDER, ids.into()));
+        self.app.reload_queues();
+    }
+
+    /// A queue of `songs` that does not start playing. The name is made
+    /// unique the way the server does it, so the two agree.
+    pub fn new_queue(self: &Rc<Self>, name: &str, songs: &[SongRef]) {
+        let taken: HashSet<String> = self.app.queues.borrow().iter().map(|q| q.name.to_lowercase()).collect();
+        let mut unique = name.to_string();
+        let mut n = 2;
+        while taken.contains(&unique.to_lowercase()) {
+            unique = format!("{name} ({n})");
+            n += 1;
+        }
+        let c = self.app.catalog();
+        let adding = distinct(songs.iter().map(|s| s.id).filter(|i| c.by_id.contains_key(i)));
+        let first = adding.first().copied().unwrap_or(0);
+        self.create(&unique, adding, first, now_ms());
+        self.app.reload_queues();
+    }
+
+    /// Drag in the queue list: queue `from` goes to `to`, counting from 0.
+    pub fn move_queue(self: &Rc<Self>, from: usize, to: usize) {
+        let mut ids: Vec<String> = self.ordered().into_iter().map(|q| q.id).collect();
+        if from >= ids.len() || to >= ids.len() || from == to {
+            return;
+        }
+        let id = ids.remove(from);
+        ids.insert(to, id);
+        self.set_order(ids);
+    }
+
+    /// Every queue but `keep` (Musicolet's "Remove all other queues").
+    pub fn delete_others(self: &Rc<Self>, keep: &str) {
+        if keep != self.active_id() {
+            self.switch_to(keep);
+        }
+        let others: Vec<String> = self.app.queues.borrow().iter().map(|q| q.id.clone()).filter(|q| q != keep).collect();
+        self.app.store(|db| others.iter().try_for_each(|q| store::delete_queue(db, q)));
+        self.set_order(vec![keep.to_string()]);
+    }
+
+    /// Adds `songs` to the end of queue `id`; songs already in it move there.
+    pub fn add_to(self: &Rc<Self>, id: &str, songs: &[SongRef]) {
+        if id == self.active_id() {
+            return self.add_to_queue(songs);
+        }
+        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let c = self.app.catalog();
+        let adding = distinct(songs.iter().map(|s| s.id).filter(|i| c.by_id.contains_key(i)));
+        if adding.is_empty() {
+            return;
+        }
+        q.songs.retain(|s| !adding.contains(s));
+        q.songs.extend(&adding);
+        if q.current_song == 0 {
+            q.current_song = q.songs[0];
+        }
+        self.app.store(|db| store::insert_into_queue(db, &q, &adding, None));
+        self.app.reload_queues();
+    }
+
+    /// A drag in queue `id`: `song` goes where `target` is, after it when
+    /// moving down and before it when moving up.
+    pub fn move_in(self: &Rc<Self>, id: &str, song: i64, target: i64) {
+        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let active = id == self.active_id();
+        let mut list = if active { self.items() } else { q.songs.clone() };
+        let (Some(from), Some(to)) = (list.iter().position(|&s| s == song), list.iter().position(|&s| s == target))
+        else {
+            return;
+        };
+        if from == to {
+            return;
+        }
+        list.remove(from);
+        list.insert(to, song);
+        if active {
+            self.st.borrow_mut().items = list.clone();
+            self.rebuild_order(true, None);
+        }
+        q.songs = list;
+        let after = if to == 0 { 0 } else { q.songs[to - 1] };
+        self.app.store(|db| store::move_in_queue(db, &q, song, after));
+        self.app.reload_queues();
+        self.changed();
+    }
+
+    /// Queue `id` in a new order of the same songs (a sort, Randomize,
+    /// Reverse). The playing song plays on.
+    pub fn reorder(self: &Rc<Self>, id: &str, order: Vec<i64>) {
+        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        if id == self.active_id() {
+            let loaded: HashSet<i64> = self.items().into_iter().collect();
+            let items: Vec<i64> = order.into_iter().filter(|s| loaded.contains(s)).collect();
+            self.st.borrow_mut().items = items.clone();
+            self.rebuild_order(true, None);
+            q.songs = items;
+        } else {
+            q.songs = order;
+        }
+        self.app.store(|db| store::replace_queue(db, &q));
+        self.app.reload_queues();
+        self.changed();
     }
 
     pub fn switch_to(self: &Rc<Self>, id: &str) {
@@ -593,6 +708,94 @@ impl Playback {
         self.changed();
     }
 
+    // Chapters (plan 031).
+
+    /// The next chapter, never the next file; nothing without chapters.
+    pub fn chapter_on(self: &Rc<Self>) {
+        let starts = self.chapter_starts();
+        if let Some(at) = queue::chapter_after(&starts, self.position_ms()) {
+            self.seek(at);
+        }
+    }
+
+    /// Back to this chapter's start, or within its first seconds to the one before.
+    pub fn chapter_back(self: &Rc<Self>) {
+        let starts = self.chapter_starts();
+        if let Some(at) = queue::chapter_before(&starts, self.position_ms(), (RESTART_WINDOW * 1000.0) as i64) {
+            self.seek(at);
+        }
+    }
+
+    fn chapter_starts(&self) -> Vec<i64> {
+        self.current().map(|s| s.chapters.iter().map(|c| c.start_ms).collect()).unwrap_or_default()
+    }
+
+    // Speed and pitch (plan 016).
+
+    /// The playing song's own speed and pitch, synced; None when it follows another.
+    pub fn song_tempo(&self) -> Option<Tempo> {
+        let s = self.current()?;
+        Tempo::of(self.app.settings.borrow().get(&tempo::song_setting(s.id)))
+    }
+
+    pub fn tempo(&self) -> Tempo {
+        self.current().map_or_else(|| self.app.prefs.get().everyday(), |s| self.tempo_of(&s))
+    }
+
+    fn tempo_of(&self, s: &SongRef) -> Tempo {
+        tempo_in(s, &self.app.settings.borrow(), self.app.prefs.get().everyday())
+    }
+
+    /// For the playing song only (synced, as its own setting), for every
+    /// episode or every book (synced) when it is one, or as this computer's
+    /// everyday one. Normal speed is stored for a collection rather than
+    /// cleared, so episodes do not fall back to the everyday speed for music.
+    pub fn set_tempo(self: &Rc<Self>, t: Tempo, only_this_song: bool) {
+        match self.current() {
+            Some(s) if only_this_song => {
+                self.app.store(|db| store::setting(db, &tempo::song_setting(s.id), t.json()));
+            }
+            Some(s) if s.spoken() => {
+                self.app.store(|db| store::setting(db, &tempo::kind_setting(&s.kind), t.json()));
+            }
+            _ => self.app.prefs.update(|p| {
+                p.speed = t.speed;
+                p.semitones = t.semitones;
+            }),
+        }
+        self.app.reload_queues();
+        self.apply_tempo();
+    }
+
+    /// The playing song follows the everyday speed and pitch again.
+    pub fn clear_song_tempo(self: &Rc<Self>) {
+        let Some(s) = self.current() else { return };
+        self.app.store(|db| store::setting(db, &tempo::song_setting(s.id), serde_json::Value::Null));
+        self.app.reload_queues();
+        self.apply_tempo();
+    }
+
+    /// The playing song at its speed and pitch. A pitch shift put in or
+    /// taken out opens it again where it is, which the listen does not see.
+    fn apply_tempo(self: &Rc<Self>) {
+        let Some(s) = self.current() else { return };
+        let t = self.tempo_of(&s);
+        if let Some(o) = self.st.borrow_mut().open.as_mut() {
+            // Time heard so far counts at the old speed.
+            count(o);
+            o.speed = t.speed;
+        }
+        if self.engine.set_tempo(s.id, t.speed, t.semitones, true) {
+            let (pos, paused) = (self.position_ms(), !self.is_playing());
+            self.st.borrow_mut().settle_until = Some(Instant::now() + Duration::from_millis(600));
+            if let Some(part) = self.app.cache.open(&s) {
+                self.engine.play(s.id, Source { part, format: s.format.clone() }, pos, paused);
+            }
+        }
+        self.publish_upcoming();
+        self.changed();
+    }
+
     // Hand-off (plan 017).
 
     /// Where a hand-off continues: the other device's place, moved on by the
@@ -744,6 +947,8 @@ impl Playback {
         self.publish_upcoming();
         self.open_listen(s, ms);
         self.tell_cache_long();
+        let t = self.tempo_of(s);
+        self.engine.set_tempo(s.id, t.speed, t.semitones, false);
         match self.app.cache.open(s) {
             Some(part) => self.engine.play(s.id, Source { part, format: s.format.clone() }, ms, paused),
             None => return self.song_failed(s.id),
@@ -782,6 +987,7 @@ impl Playback {
     }
 
     fn after_song_change(self: &Rc<Self>, s: &SongRef, start_ms: i64) {
+        self.sleep_next_song();
         let Some(mut q) = self.active() else { return };
         q.current_song = s.id;
         q.position_ms = start_ms;
@@ -888,9 +1094,15 @@ impl Playback {
     /// What the engine reads for the song after the one it decodes.
     fn publish_upcoming(&self) {
         let st = self.st.borrow();
-        let up = Upcoming { order: st.order.clone(), repeat_mode: self.repeat_mode(), pause_after: None };
+        let up = Upcoming { order: st.order.clone(), repeat_mode: self.repeat_mode(), pause_after: self.pause_after() };
         let c = self.app.catalog();
-        let songs = st.items.iter().filter_map(|i| c.by_id.get(i).map(|s| (*i, s.clone()))).collect();
+        let songs: HashMap<i64, SongRef> =
+            st.items.iter().filter_map(|i| c.by_id.get(i).map(|s| (*i, s.clone()))).collect();
+        // Each song's speed, for a gapless start at it.
+        let (settings, everyday) = (self.app.settings.borrow(), self.app.prefs.get().everyday());
+        let speeds = songs.values().map(|s| (s.id, tempo_in(s, &settings, everyday).speed));
+        self.engine.set_speeds(speeds.filter(|x| x.1 != 1.0).collect());
+        drop(settings);
         self.engine.set_upcoming(up, songs);
         drop(st);
         self.poke_cache();
@@ -1052,19 +1264,33 @@ impl Playback {
             self.seek(ms);
         }
         self.open_listen(s, start.unwrap_or(0));
+        self.apply_tempo();
         self.after_song_change(s, start.unwrap_or(0));
         self.changed();
     }
 
-    /// Everything scheduled has played: the end of the queue.
+    /// Everything scheduled has played: the end of the queue, or a sleep timer's song.
     fn reached_end(self: &Rc<Self>) {
         let s = self.current();
         let at = self.position_ms();
         self.close("finished", Some(at));
-        if let Some(s) = s.filter(|s| self.is_long(s)) {
-            self.app.store(|db| store::resume(db, s.id, None));
+        if let Some(s) = s.as_ref().filter(|s| self.is_long(s)) {
+            let id = s.id;
+            self.app.store(|db| store::resume(db, id, None));
         }
+        let by_sleep = self.pause_after().is_some();
         self.set_playing(false);
+        let wrap = self.repeat_mode() == "queue";
+        let next = self.current_index().and_then(|i| self.next_index(i, wrap));
+        let next = next.and_then(|n| self.st.borrow().items.get(n).copied());
+        if let (true, Some(next)) = (by_sleep, next.and_then(|n| self.app.catalog().by_id.get(&n).cloned())) {
+            // Paused where the song ended; Play goes on with the next one.
+            self.sleep_paused_at_end();
+            self.start(&next, 0, true);
+            self.after_song_change(&next, 0);
+            return;
+        }
+        self.sleep_paused_at_end();
         self.st.borrow_mut().ended = true;
         self.changed();
     }
@@ -1204,6 +1430,7 @@ impl Playback {
             source,
             shuffle: self.shuffle(),
             last_pos: from,
+            speed: self.tempo_of(s).speed,
             ..Default::default()
         };
         let mut st = self.st.borrow_mut();
@@ -1240,6 +1467,8 @@ impl Playback {
         }
         let m = dhun_core::model::Mark { kind: store::PLAYED.into(), song: l.song, at: l.ended_at, deleted: false };
         let _ = db.put_mark(&m);
+        drop(db);
+        self.app.reload_marks();
     }
 
     fn save_listen(&self) {
@@ -1286,12 +1515,21 @@ fn started(o: &mut Open) {
     }
 }
 
-/// Adds the time played since the last count. Speed joins with step 4; at
-/// 1× song time and the clock's are the same (plan 008).
+/// A song's own speed and pitch, else for an episode or a book's file its
+/// collection's (`speed.podcast`, `speed.audiobook`), synced, so a 39-file
+/// book is not set 39 times; else this computer's everyday one.
+fn tempo_in(s: &SongRef, settings: &synced::Settings, everyday: Tempo) -> Tempo {
+    Tempo::of(settings.get(&tempo::song_setting(s.id)))
+        .or_else(|| if s.spoken() { Tempo::of(settings.get(&tempo::kind_setting(&s.kind))) } else { None })
+        .unwrap_or(everyday)
+}
+
+/// Adds the song time played since the last count: the clock's, times the speed (plan 008).
 fn count(o: &mut Open) {
     if let Some(since) = o.since {
         let now = Instant::now();
-        o.heard_ms += now.duration_since(since).as_millis() as i64;
+        let speed = if o.speed > 0.0 { o.speed } else { 1.0 };
+        o.heard_ms += (now.duration_since(since).as_millis() as f64 * speed) as i64;
         o.since = Some(now);
     }
 }
@@ -1311,12 +1549,4 @@ fn listen(o: &Open, end: &str, to_ms: i64, ended_at: i64) -> Listen {
         shuffle: o.shuffle,
         utc_offset: offset,
     }
-}
-
-/// A number below `n`, from the clock: shuffling needs no more than that.
-fn random(n: usize) -> usize {
-    use std::hash::{BuildHasher, Hasher};
-    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(Instant::now().elapsed().as_nanos() ^ now_ms() as u128);
-    (h.finish() % n.max(1) as u64) as usize
 }

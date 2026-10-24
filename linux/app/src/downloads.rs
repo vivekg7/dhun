@@ -229,6 +229,10 @@ impl Downloads {
             st.done += 1;
             st.used = used;
         }
+        // Their lyrics too, so a downloaded song shows them offline (plan 015).
+        let kept: Vec<SongRef> = songs.iter().filter(|s| have(s.id).is_some()).cloned().collect();
+        let (api, db) = (self.app.api.clone(), self.app.db.clone());
+        let _ = gio::spawn_blocking(move || dhun_core::lyrics::keep(&api, &db, &kept)).await;
         self.update(State::Idle, &songs, used, 0);
     }
 

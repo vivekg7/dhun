@@ -21,14 +21,15 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     let nav = Nav::new(app);
     let split = main_view(app, &nav);
     // The playing queue beside the page, and Now playing along the foot (plan 024's layout).
+    let (side, pages) = crate::lyrics::side(app);
     let panel = adw::OverlaySplitView::builder()
         .sidebar_position(gtk::PackType::End)
         .show_sidebar(false)
         .content(&split)
-        .sidebar(&crate::nowplaying::queue_panel(app))
+        .sidebar(&side)
         .build();
     let main = adw::ToolbarView::builder().content(&panel).build();
-    main.add_bottom_bar(&crate::nowplaying::bar(app, &panel));
+    main.add_bottom_bar(&crate::nowplaying::bar(app, &panel, &pages));
     stack.add_named(&main, Some("main"));
     stack.add_named(&sign_in(app), Some("sign-in"));
     let show = {
@@ -66,6 +67,37 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     });
     window.add_action(&find);
     gapp.set_accels_for_action("win.find", &["<Control>f"]);
+    let settings = gio::SimpleAction::new("settings", None);
+    let (a, w) = (app.clone(), window.downgrade());
+    settings.connect_activate(move |_, _| {
+        if let Some(w) = w.upgrade() {
+            crate::settings::open(&a, &w);
+        }
+    });
+    window.add_action(&settings);
+    gapp.set_accels_for_action("win.settings", &["<Control>comma"]);
+    // A song's album, book or show, or its artist, from any song menu.
+    for (name, artist) in [("go-album", false), ("go-artist", true)] {
+        let go = gio::SimpleAction::new(name, Some(glib::VariantTy::INT64));
+        let (a, n, s) = (app.clone(), nav.clone(), split.clone());
+        go.connect_activate(move |_, v| {
+            let c = a.catalog();
+            let Some(song) = v.and_then(|v| v.get::<i64>()).and_then(|id| c.by_id.get(&id).cloned()) else { return };
+            n.search.set_text("");
+            if artist {
+                n.open(Route::Artists);
+                n.push(Route::Artist(song.artists.first().cloned().unwrap_or_else(|| song.display_artist().into())));
+            } else if let Some(shelf) = c.shelf_of(&song) {
+                n.open(if shelf.is_book() { Route::Books } else { Route::Shows });
+                n.push(Route::Shelf(shelf.id.clone()));
+            } else if let Some(album) = c.album_of.get(&song.id) {
+                n.open(Route::Albums);
+                n.push(Route::Album(album.id.clone()));
+            }
+            s.set_show_content(true);
+        });
+        window.add_action(&go);
+    }
     keys(&window, app);
     // Syncs on becoming active, as on the phone and the Mac.
     let a = app.clone();
@@ -84,7 +116,9 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
 /// For screenshots under test (`DHUN_SCREENSHOT`): pages to open once the
 /// library has loaded, as `artists,artist:Name`, `album:Name`,
 /// `folder:Path`, `books`, `search:words`, `play-album:Name`,
-/// `play:<song id>`, `switch:<queue name>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
+/// `play:<song id>`, `switch:<queue name>`, `list:N` (of `ListKind::ALL`), `playlist:Name`, `queue:Name`,
+/// `select:N` and `do:<action>[=text|#number]` for a song list's menu, `type:text` into a dialog,
+/// `tempo:<speed>/<semitones>`, `sleep:end` or `sleep:<minutes>`, `popup:<tooltip>` for a button, `settings:<page>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
 /// `sidebar` for a narrow window, or a click two seconds on: `activate:N` on a song row, `nav:N` on a sidebar row.
 fn open_when_loaded(
     app: &Rc<App>,
@@ -114,6 +148,136 @@ fn open_when_loaded(
                     Some(x) => Route::Album(x.id.clone()),
                     None => continue,
                 },
+                "list" => match crate::lists::ListKind::ALL.get(arg.parse::<usize>().unwrap_or(99)) {
+                    Some(k) => Route::List(*k),
+                    None => continue,
+                },
+                "playlist" => match a.playlists.borrow().iter().find(|x| x.name == arg) {
+                    Some(x) => Route::Playlist(x.id),
+                    None => continue,
+                },
+                "queue" => match a.queues.borrow().iter().find(|x| x.name == arg) {
+                    Some(x) => Route::Queue(x.id.clone()),
+                    None => continue,
+                },
+                "select" => {
+                    let (s, row) = (s.clone(), arg.parse::<u32>().unwrap_or(0));
+                    glib::timeout_add_seconds_local_once(2, move || {
+                        if let Some(m) = shown::<gtk::ColumnView>(s.upcast_ref()).and_then(|v| v.model()) {
+                            m.select_item(row, false);
+                        }
+                    });
+                    continue;
+                }
+                "do" => {
+                    // An action of the song list on screen, as its menu would: `songs.mark=fav:1`, `songs.add-to-playlist#7`.
+                    let (s, arg) = (s.clone(), arg.to_string());
+                    glib::timeout_add_seconds_local_once(3, move || {
+                        let target = if let Some((name, n)) = arg.split_once('#') {
+                            (name.to_string(), Some(n.parse::<i64>().unwrap_or(0).to_variant()))
+                        } else if let Some((name, t)) = arg.split_once('=') {
+                            (name.to_string(), Some(t.to_variant()))
+                        } else {
+                            (arg.clone(), None)
+                        };
+                        if let Some(v) = shown::<gtk::ColumnView>(s.upcast_ref()) {
+                            if let Err(e) = v.activate_action(&target.0, target.1.as_ref()) {
+                                eprintln!("do: {e}");
+                            }
+                        }
+                    });
+                    continue;
+                }
+                "tempo" => {
+                    // `tempo:1.5/-2` three seconds on, then how far the song moved in the four after.
+                    let (a, arg) = (a.clone(), arg.to_string());
+                    glib::timeout_add_seconds_local_once(3, move || {
+                        let (speed, semi) = arg.split_once('/').unwrap_or((&arg, "0"));
+                        let t = dhun_core::tempo::Tempo {
+                            speed: speed.parse().unwrap_or(1.0),
+                            semitones: semi.parse().unwrap_or(0),
+                        };
+                        a.playback().set_tempo(t, false);
+                        let (a, from) = (a.clone(), a.playback().position_ms());
+                        glib::timeout_add_seconds_local_once(5, move || {
+                            let at = a.playback().position_ms();
+                            glib::g_info!("Dhun", "tempo: {from} to {at} ms after 5 s");
+                        });
+                    });
+                    continue;
+                }
+                "popup" => {
+                    // Opens the menu button with this tooltip, or clicks the button, two seconds on.
+                    let (s, tip) = (s.clone(), arg.to_string());
+                    glib::timeout_add_seconds_local_once(2, move || {
+                        let Some(root) = s.root() else { return };
+                        let mut todo = vec![root.upcast::<gtk::Widget>()];
+                        while let Some(x) = todo.pop() {
+                            if x.tooltip_text().is_some_and(|t| t.starts_with(&tip)) {
+                                if let Some(m) = x.downcast_ref::<gtk::MenuButton>() {
+                                    return m.popup();
+                                }
+                                if let Some(b) = x.downcast_ref::<gtk::Button>() {
+                                    return b.emit_clicked();
+                                }
+                            }
+                            let mut c = x.first_child();
+                            while let Some(n) = c {
+                                c = n.next_sibling();
+                                todo.push(n);
+                            }
+                        }
+                    });
+                    continue;
+                }
+                "settings" => {
+                    // Settings, at the page of that title.
+                    let (a, s, page) = (a.clone(), s.clone(), arg.to_string());
+                    glib::timeout_add_seconds_local_once(2, move || {
+                        crate::settings::open(&a, &s).set_visible_page_name(&page);
+                    });
+                    continue;
+                }
+                "sleep" => {
+                    // `sleep:end` stops at the end of this song, `sleep:<minutes>` by the clock.
+                    let pb = a.playback();
+                    match arg.parse::<i64>() {
+                        Ok(m) => pb.sleep_minutes(m, false),
+                        Err(_) => pb.sleep_end_of_song(),
+                    }
+                    continue;
+                }
+                "type" => {
+                    // Text into the dialog's field, then Return, four seconds on.
+                    let (s, text) = (s.clone(), arg.to_string());
+                    glib::timeout_add_seconds_local_once(4, move || {
+                        let root = s.root().and_downcast::<gtk::Window>().and_then(|w| w.first_child());
+                        let dialog = root.and_then(|w| shown::<adw::Dialog>(&w));
+                        // Its field may not be mapped yet while the dialog opens.
+                        let field = dialog.and_then(|d| {
+                            let mut todo = vec![d.upcast::<gtk::Widget>()];
+                            while let Some(w) = todo.pop() {
+                                if let Ok(t) = w.clone().downcast::<gtk::Text>() {
+                                    return Some(t);
+                                }
+                                let mut c = w.first_child();
+                                while let Some(x) = c {
+                                    c = x.next_sibling();
+                                    todo.push(x);
+                                }
+                            }
+                            None
+                        });
+                        match field {
+                            Some(t) => {
+                                t.set_text(&text);
+                                t.emit_by_name::<()>("activate", &[]);
+                            }
+                            None => eprintln!("type: no dialog with a text field"),
+                        }
+                    });
+                    continue;
+                }
                 "shelf" => match a.catalog().shelves.values().find(|x| x.title == arg) {
                     Some(x) => Route::Shelf(x.id.clone()),
                     None => continue,
@@ -219,8 +383,9 @@ fn keys(window: &adw::ApplicationWindow, app: &Rc<App>) {
     c.set_propagation_phase(gtk::PropagationPhase::Capture);
     let (a, w) = (app.clone(), window.downgrade());
     c.connect_key_pressed(move |_, key, _, mods| {
-        let typing =
-            w.upgrade().and_then(|w| gtk::prelude::GtkWindowExt::focus(&w)).is_some_and(|f| f.is::<gtk::Text>());
+        // Typing, or a dialog open over the window: its focused button takes Space.
+        let focus = w.upgrade().and_then(|w| gtk::prelude::GtkWindowExt::focus(&w));
+        let typing = focus.is_some_and(|f| f.is::<gtk::Text>() || f.ancestor(adw::Dialog::static_type()).is_some());
         let ctrl = mods.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let pb = a.playback();
         match key {
@@ -290,6 +455,10 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
             if !c.shows.is_empty() {
                 item("audio-input-microphone-symbolic", "Podcasts", Some(Route::Shows));
             }
+            item("", "Lists", None);
+            for k in crate::lists::ListKind::ALL {
+                item(k.icon(), k.title(), Some(Route::List(k)));
+            }
             let playlists = app.playlists.borrow().clone();
             if !playlists.is_empty() {
                 item("", "Playlists", None);
@@ -326,6 +495,21 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
 
     let top = adw::HeaderBar::new();
     top.pack_end(&menu());
+    let new = gtk::Button::builder().icon_name("list-add-symbolic").tooltip_text("New Playlist").build();
+    let (a, n, s) = (app.clone(), nav.clone(), split.clone());
+    new.connect_clicked(move |b| {
+        let (a, n, s) = (a.clone(), n.clone(), s.clone());
+        crate::widgets::ask_name(b, "New Playlist", "", "Create", move |name| {
+            let mut made = None;
+            a.store(|db| dhun_core::store::create_playlist(db, &name, &[]).map(|p| made = Some(p.id)));
+            a.reload_playlists();
+            if let Some(id) = made {
+                n.open(Route::Playlist(id));
+                s.set_show_content(true);
+            }
+        });
+    });
+    top.pack_start(&new);
     let sidebar = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     let search = &nav.search;
     search.set_margin_start(8);
@@ -350,6 +534,7 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
 
 fn menu() -> gtk::MenuButton {
     let m = gio::Menu::new();
+    m.append(Some("Settings"), Some("win.settings"));
     m.append(Some("Sync Now"), Some("app.sync"));
     m.append(Some("Sign Out"), Some("app.sign-out"));
     m.append(Some("About Dhun"), Some("app.about"));

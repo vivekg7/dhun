@@ -6,7 +6,7 @@
 use crate::model::{Bookmark, Chapter, Download, Mark, Pin, PlayStat, Playlist, QueueRow, Resume, Song};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct Db {
@@ -312,6 +312,24 @@ impl Db {
         Ok(())
     }
 
+    /// Every long file's bookmarks, by place (plan 033).
+    pub fn bookmarks(&self) -> Result<Vec<Bookmark>> {
+        let mut st = self.sql.prepare(
+            "SELECT id, song, positionMs, note, at, deleted FROM bookmark WHERE deleted = 0 ORDER BY positionMs",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(Bookmark {
+                id: r.get(0)?,
+                song: r.get(1)?,
+                position_ms: r.get(2)?,
+                note: r.get(3)?,
+                at: r.get(4)?,
+                deleted: r.get(5)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     pub fn bookmark(&self, id: &str) -> Result<Option<Bookmark>> {
         self.sql
             .query_row("SELECT id, song, positionMs, note, at, deleted FROM bookmark WHERE id = ?", [id], |r| {
@@ -461,6 +479,35 @@ impl Db {
 
     pub fn move_pin(&self, old: &str, key: &str, r#ref: &str) -> Result<()> {
         self.sql.execute("UPDATE pin SET key = ?, ref = ? WHERE key = ?", params![key, r#ref, old])?;
+        Ok(())
+    }
+
+    // Lyrics.
+
+    pub fn lyrics(&self, song: i64) -> Result<Option<String>> {
+        self.sql.query_row("SELECT text FROM lyrics WHERE song = ?", [song], |r| r.get(0)).optional()
+    }
+
+    pub fn lyrics_songs(&self) -> Result<HashSet<i64>> {
+        let mut st = self.sql.prepare("SELECT song FROM lyrics")?;
+        let rows = st.query_map([], |r| r.get(0))?;
+        rows.collect()
+    }
+
+    /// Every song's kept lyrics, for searching them offline.
+    pub fn all_lyrics(&self) -> Result<Vec<(i64, String)>> {
+        let mut st = self.sql.prepare("SELECT song, text FROM lyrics")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect()
+    }
+
+    pub fn put_lyrics(&self, song: i64, text: &str) -> Result<()> {
+        self.sql.execute("INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", params![song, text, crate::time::now_ms()])?;
+        Ok(())
+    }
+
+    pub fn delete_lyrics(&self, song: i64) -> Result<()> {
+        self.sql.execute("DELETE FROM lyrics WHERE song = ?", [song])?;
         Ok(())
     }
 

@@ -5,15 +5,17 @@
 use crate::app::{App, Change};
 use crate::widgets::{self, clock, cover, row};
 use adw::prelude::*;
+use dhun_core::{store, synced};
 use std::cell::Cell;
 use std::rc::Rc;
 
 /// The bar and the offers over it.
-pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
+pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> gtk::Box {
     let outer = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     outer.append(&handoff(app));
     outer.append(&resume_offer(app));
-    let b = gtk::Box::builder().spacing(12).margin_start(12).margin_end(12).margin_top(8).margin_bottom(8).build();
+    // Close together: a long file's bar holds thirteen buttons.
+    let b = gtk::Box::builder().spacing(4).margin_start(12).margin_end(12).margin_top(8).margin_bottom(8).build();
     let art = adw::Bin::new();
     let title =
         gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).css_classes(["heading"]).build();
@@ -25,7 +27,9 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
     let text = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .valign(gtk::Align::Center)
-        .width_request(160)
+        .width_request(200)
+        .margin_start(8)
+        .margin_end(8)
         .build();
     text.append(&title);
     text.append(&artist);
@@ -56,29 +60,118 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
         .valign(gtk::Align::Center)
         .build();
     let repeat = button("media-playlist-repeat-symbolic", "Repeat: off");
-    let queue = gtk::ToggleButton::builder()
-        .icon_name("view-list-symbolic")
-        .tooltip_text("The playing queue")
-        .css_classes(["flat", "circular"])
-        .valign(gtk::Align::Center)
-        .build();
-    queue.bind_property("active", panel, "show-sidebar").bidirectional().sync_create().build();
-    let waiting = gtk::Label::builder()
-        .label("Waiting for the network…")
-        .css_classes(["caption", "warning"])
-        .visible(false)
-        .build();
-    for w in
-        [art.upcast_ref::<gtk::Widget>(), text.upcast_ref(), prev.upcast_ref(), play.upcast_ref(), next.upcast_ref()]
-    {
+    // The panel beside the page, on the playing queue or the lyrics: a click
+    // shows that page, or hides the panel when it already shows it.
+    let side = |icon: &str, tip: &str, page: &'static str| {
+        let b = gtk::ToggleButton::builder()
+            .icon_name(icon)
+            .tooltip_text(tip)
+            .css_classes(["flat", "circular"])
+            .valign(gtk::Align::Center)
+            .build();
+        let (pl, pg) = (panel.clone(), pages.clone());
+        b.connect_clicked(move |_| {
+            let showing = pl.shows_sidebar() && pg.visible_child_name().as_deref() == Some(page);
+            pg.set_visible_child_name(page);
+            pl.set_show_sidebar(!showing);
+        });
+        let sync = {
+            let (b, panel, pages) = (b.downgrade(), panel.downgrade(), pages.downgrade());
+            move || {
+                let (Some(b), Some(panel), Some(pages)) = (b.upgrade(), panel.upgrade(), pages.upgrade()) else {
+                    return;
+                };
+                b.set_active(panel.shows_sidebar() && pages.visible_child_name().as_deref() == Some(page));
+            }
+        };
+        let s = sync.clone();
+        panel.connect_show_sidebar_notify(move |_| s());
+        pages.connect_visible_child_name_notify(move |_| sync());
+        b
+    };
+    let queue = side("view-list-symbolic", "The playing queue", "queue");
+    let lyrics = side("media-view-subtitles-symbolic", "Lyrics", "lyrics");
+    // A long file steps back and on within itself (plan 009).
+    let back = button("media-seek-backward-symbolic", "Back");
+    let on = button("media-seek-forward-symbolic", "Forward");
+    // A book is heard in order: in Shuffle's place, its chapters and notes (plan 031).
+    let details = crate::controls::details_button(app);
+    for w in [
+        art.upcast_ref::<gtk::Widget>(),
+        text.upcast_ref(),
+        details.upcast_ref(),
+        shuffle.upcast_ref(),
+        prev.upcast_ref(),
+        back.upcast_ref(),
+        play.upcast_ref(),
+        on.upcast_ref(),
+        next.upcast_ref(),
+        repeat.upcast_ref(),
+    ] {
         b.append(w);
     }
-    for w in [pos.upcast_ref::<gtk::Widget>(), scale.upcast_ref(), dur.upcast_ref(), waiting.upcast_ref()] {
+    for w in [pos.upcast_ref::<gtk::Widget>(), scale.upcast_ref(), dur.upcast_ref()] {
         b.append(w);
     }
-    for w in [shuffle.upcast_ref::<gtk::Widget>(), repeat.upcast_ref(), queue.upcast_ref()] {
+    // Favorites and Listen Later for the song playing, as the phone's Now playing has.
+    let fav = button("non-starred-symbolic", "Add to Favorites");
+    let later = button("alarm-symbolic", "Listen Later");
+    let mark = button("bookmark-new-symbolic", "Add a Bookmark");
+    let a = app.clone();
+    mark.connect_clicked(move |_| crate::controls::add_bookmark(&a));
+    for w in [
+        fav.upcast_ref::<gtk::Widget>(),
+        later.upcast_ref(),
+        mark.upcast_ref(),
+        crate::controls::speed_button(app).upcast_ref(),
+        crate::controls::sleep_button(app).upcast_ref(),
+        lyrics.upcast_ref(),
+        queue.upcast_ref(),
+    ] {
         b.append(w);
     }
+    // A chapter back or on, from the right-click menu of Previous and Next:
+    // a click goes by file, and a chapter is asked for by name, never by a
+    // press that could be miscounted (plan 009).
+    for (w, label, forward) in [(&prev, "Previous Chapter", false), (&next, "Next Chapter", true)] {
+        let menu = gtk::gio::Menu::new();
+        menu.append(Some(label), Some(if forward { "np.chapter-on" } else { "np.chapter-back" }));
+        let pop = gtk::PopoverMenu::from_model(Some(&menu));
+        pop.set_parent(w);
+        let (p, pop2) = (app.playback().clone(), pop.clone());
+        let g = gtk::GestureClick::builder().button(3).build();
+        g.connect_pressed(move |_, _, _, _| {
+            if p.current().is_some_and(|s| !s.chapters.is_empty()) {
+                pop2.popup();
+            }
+        });
+        w.add_controller(g);
+    }
+    let group = gtk::gio::SimpleActionGroup::new();
+    for (name, forward) in [("chapter-on", true), ("chapter-back", false)] {
+        let act = gtk::gio::SimpleAction::new(name, None);
+        let p = app.playback().clone();
+        act.connect_activate(move |_, _| if forward { p.chapter_on() } else { p.chapter_back() });
+        group.add_action(&act);
+    }
+    b.insert_action_group("np", Some(&group));
+    for (button, kind) in [(&fav, store::FAV), (&later, store::LATER)] {
+        let (a, p) = (app.clone(), app.playback().clone());
+        button.connect_clicked(move |_| {
+            let Some(s) = p.current() else { return };
+            let on = a.marks.borrow().has(kind, s.id);
+            a.mark(kind, &[s.id], !on);
+        });
+    }
+    // A double click on the song goes to its album, book or show.
+    let twice = gtk::GestureClick::new();
+    let p = app.playback().clone();
+    twice.connect_pressed(move |g, n, _, _| {
+        if let (2, Some(s)) = (n, p.current()) {
+            let _ = g.widget().and_then(|w| w.activate_action("win.go-album", Some(&s.id.to_variant())).ok());
+        }
+    });
+    text.add_controller(twice);
     outer.append(&b);
 
     let pb = app.playback().clone();
@@ -90,6 +183,10 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
     next.connect_clicked(move |_| p.next(true));
     let p = pb.clone();
     repeat.connect_clicked(move |_| p.cycle_repeat());
+    let p = pb.clone();
+    back.connect_clicked(move |_| p.seek_back());
+    let p = pb.clone();
+    on.connect_clicked(move |_| p.seek_forward());
     // Set from the player, the scale's moves are not the user's.
     let quiet = Rc::new(Cell::new(false));
     let (p, q) = (pb.clone(), quiet.clone());
@@ -116,27 +213,59 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
             dur.set_label(&if d > 0 { clock(d) } else { String::new() });
         }
     };
+    let marks = {
+        let (app, pb) = (app.clone(), pb.clone());
+        move || {
+            let m = app.marks.borrow();
+            let id = pb.current().map_or(0, |s| s.id);
+            let (f, l) = (m.has(store::FAV, id), m.has(store::LATER, id));
+            fav.set_icon_name(if f { "starred-symbolic" } else { "non-starred-symbolic" });
+            fav.set_tooltip_text(Some(if f { "Remove from Favorites" } else { "Add to Favorites" }));
+            later.set_tooltip_text(Some(if l { "Remove from Listen Later" } else { "Listen Later" }));
+            for (b, on) in [(&fav, f), (&later, l)] {
+                if on { b.add_css_class("accent") } else { b.remove_css_class("accent") }
+            }
+        }
+    };
+    let marks = Rc::new(marks);
+    // The line under the title: the chapter playing, else the bookmarks; who
+    // and from what; the sleep timer.
+    let line = {
+        let (app, pb) = (app.clone(), pb.clone());
+        Rc::new(move || artist.set_label(&subtitle(&app, &pb)))
+    };
     let update = {
-        let (app, pb, b, art, title, artist, play, shuffle, repeat, waiting, quiet, up) = (
+        let marks = marks.clone();
+        let (app, pb, b, art, title, play, shuffle, repeat, quiet, up) = (
             app.clone(),
             pb.clone(),
             b.clone(),
             art,
             title,
-            artist,
             play.clone(),
             shuffle,
             repeat,
-            waiting,
             quiet,
             update_position.clone(),
         );
+        let (details, back, on, mark, line) = (details, back, on, mark, line.clone());
         move || {
             let cur = pb.current();
             b.set_sensitive(cur.is_some());
             art.set_child(Some(&cover(&app, cur.as_ref(), 48)));
             title.set_label(cur.as_ref().map_or("Nothing playing", |s| s.title.as_str()));
-            artist.set_label(cur.as_ref().map_or("", |s| s.display_artist()));
+            line();
+            let spoken = cur.as_ref().is_some_and(|s| s.spoken());
+            let long = cur.as_ref().is_some_and(|s| pb.is_long(s));
+            details.set_visible(spoken);
+            shuffle.set_visible(!spoken);
+            for w in [back.upcast_ref::<gtk::Widget>(), on.upcast_ref(), mark.upcast_ref()] {
+                w.set_visible(long);
+            }
+            let settings = app.settings.borrow();
+            back.set_tooltip_text(Some(&format!("Back {} seconds", synced::SEEK_BACK.get(&settings))));
+            on.set_tooltip_text(Some(&format!("Forward {} seconds", synced::SEEK_FORWARD.get(&settings))));
+            drop(settings);
             let playing = pb.is_playing();
             play.set_icon_name(if playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" });
             play.set_tooltip_text(Some(if playing { "Pause (Space)" } else { "Play (Space)" }));
@@ -159,20 +288,56 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView) -> gtk::Box {
             } else {
                 repeat.add_css_class("accent")
             }
-            waiting.set_visible(pb.waiting());
+            marks();
             up();
         }
     };
     update();
+    let line2 = line.clone();
     app.listen(move |c| {
         match c {
             Change::Playback | Change::Queues | Change::Thumbs => update(),
-            Change::Position => update_position(),
+            Change::Position => {
+                update_position();
+                line2();
+            }
+            Change::Marks => {
+                marks();
+                line2();
+            }
             _ => {}
         }
         true
     });
     outer
+}
+
+/// "Chapter 3 of 20 · Name · Author · Book", "Artist · Album · Sleep in 12 min".
+fn subtitle(app: &App, pb: &crate::playback::Playback) -> String {
+    let Some(s) = pb.current() else { return String::new() };
+    if pb.waiting() {
+        return "Waiting for the network…".into();
+    }
+    let marks = app.marks.borrow().bookmarks.iter().filter(|b| b.song == s.id).count();
+    let mut parts = vec![crate::controls::chapter_label(&s, pb.position_ms()).unwrap_or_else(|| match marks {
+        0 => String::new(),
+        1 => "1 bookmark".into(),
+        n => format!("{n} bookmarks"),
+    })];
+    match s.kind.as_str() {
+        dhun_core::model::PODCAST => parts.extend([s.group_title.clone(), s.day()]),
+        // A book of one file is often titled as the book: not twice.
+        dhun_core::model::AUDIOBOOK => parts.extend([
+            if s.group_title == s.title { String::new() } else { s.group_title.clone() },
+            if s.artist.is_empty() { s.album_artist.clone() } else { s.artist.clone() },
+        ]),
+        _ => parts.extend([s.display_artist().to_string(), s.album.clone()]),
+    }
+    if let Some(l) = pb.sleep_label() {
+        parts.push(format!("Sleep {l}"));
+    }
+    parts.retain(|p| !p.is_empty());
+    parts.join(" · ")
 }
 
 /// "Continue from Pixel": what another device played last (plan 017).

@@ -2,6 +2,7 @@
 //! order the engine reads, and where long files go on from (plans 009, 020).
 //! The app's `Playback` holds the rest, as the Mac's does.
 
+use crate::catalog::{SongRef, sort_key};
 use crate::model::QueueRow;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -85,6 +86,61 @@ pub fn chapter_before(starts: &[i64], pos: i64, window: i64) -> Option<i64> {
     } else {
         None
     }
+}
+
+/// How a queue or a playlist can be sorted: Musicolet's Randomize and
+/// Reverse, then by what a song's tags say.
+pub const SORTS: [&str; 14] = [
+    "Randomize",
+    "Reverse",
+    "Title, A to Z",
+    "Title, Z to A",
+    "Artist, A to Z",
+    "Artist, Z to A",
+    "Album, A to Z",
+    "Album, Z to A",
+    "Folder and file name",
+    "Year, oldest first",
+    "Year, newest first",
+    "Shortest first",
+    "Longest first",
+    "Recently added first",
+];
+
+/// `songs` in the order `SORTS[sort]` names.
+pub fn sorted(sort: usize, songs: &[SongRef]) -> Vec<SongRef> {
+    let mut s = songs.to_vec();
+    let key = |f: fn(&SongRef) -> String| move |a: &SongRef| sort_key(&f(a));
+    // An artist's songs in album order, as on the phone.
+    let album = |a: &SongRef| (sort_key(&a.album), a.disc, a.track);
+    let artist = |a: &SongRef| (sort_key(a.display_artist()), sort_key(&a.album), a.disc, a.track);
+    match sort {
+        0 => {
+            for i in (1..s.len()).rev() {
+                s.swap(i, random(i + 1));
+            }
+        }
+        1 => s.reverse(),
+        2 | 3 => s.sort_by_cached_key(key(|a| a.title.clone())),
+        4 | 5 => s.sort_by_cached_key(artist),
+        6 | 7 => s.sort_by_cached_key(album),
+        8 => s.sort_by_cached_key(key(|a| a.path.clone())),
+        9 | 10 => s.sort_by_key(|a| a.year),
+        11 | 12 => s.sort_by_key(|a| a.duration_ms),
+        _ => s.sort_by_key(|a| std::cmp::Reverse(a.added_at)),
+    }
+    if matches!(sort, 3 | 5 | 7 | 10 | 12) {
+        s.reverse();
+    }
+    s
+}
+
+/// A number below `n`, from the clock: shuffling needs no more than that.
+pub fn random(n: usize) -> usize {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(std::time::Instant::now().elapsed().as_nanos() ^ crate::time::now_ms() as u128);
+    (h.finish() % n.max(1) as u64) as usize
 }
 
 #[cfg(test)]

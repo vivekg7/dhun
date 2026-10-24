@@ -19,6 +19,37 @@ finish-args:
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:
+  # Pitch apart from speed (plan 016) needs GStreamer's `pitch`, which the
+  # GNOME runtime leaves out: libSoundTouch, and that one plugin from
+  # gst-plugins-bad at the runtime's GStreamer version (plan 039, the spike).
+  - name: soundtouch
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      # 2.3.3 asks for an older CMake than the SDK's.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DSOUNDSTRETCH=OFF
+      - -DBUILD_SHARED_LIBS=ON
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: archive
+        url: https://codeberg.org/soundtouch/soundtouch/archive/2.3.3.tar.gz
+        sha256: 06c00f37d28e5984944951c20d0845c7931e691c59820922230915d205131a47
+  - name: gst-soundtouch
+    buildsystem: simple
+    build-commands:
+      - meson setup _build --prefix=/app -Dauto_features=disabled -Dsoundtouch=enabled
+      - ninja -C _build ext/soundtouch/libgstsoundtouch.so
+      - install -Dm755 _build/ext/soundtouch/libgstsoundtouch.so /app/lib/gstreamer-1.0/libgstsoundtouch.so
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.28.6.tar.xz
+        sha256: 6636f2c2289ceda52c4aba971338c81e2b5780d3381bd3673c1c116ec87587c3
   - name: dhun
     buildsystem: simple
     build-options:

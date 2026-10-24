@@ -336,6 +336,8 @@ pub struct Query {
     pub terms: Vec<Term>,
     /// The words with no field, as one string: a title that is all of them comes first.
     pub whole: String,
+    /// What to look for in lyrics: the `lyrics:` words, or else every word if nothing is narrowed to another field.
+    pub lyrics: String,
 }
 
 pub const FIELDS: [&str; 8] = ["title", "artist", "album", "composer", "genre", "year", "folder", "lyrics"];
@@ -355,7 +357,28 @@ impl Query {
             terms.extend(words(value).into_iter().map(|w| Term::new(w, field.clone(), None)));
         }
         let whole = terms.iter().filter(|t| t.field.is_none()).map(|t| t.word.as_str()).collect::<Vec<_>>().join(" ");
-        Query { terms, whole }
+        let narrowed: Vec<&str> =
+            terms.iter().filter(|t| t.field.as_deref() == Some("lyrics")).map(|t| t.word.as_str()).collect();
+        let lyrics = if !narrowed.is_empty() {
+            narrowed.join(" ")
+        } else if terms.iter().any(|t| t.field.is_some()) {
+            String::new()
+        } else {
+            whole.clone()
+        };
+        Query { terms, whole, lyrics }
+    }
+
+    /// Whether a line of lyrics holds every word, by the start of a word or
+    /// its sound; no typos among thousands of lines.
+    pub fn in_line(&self, words: &[String]) -> bool {
+        let looked: Vec<&Term> =
+            self.terms.iter().filter(|t| t.field.is_none() || t.field.as_deref() == Some("lyrics")).collect();
+        if looked.is_empty() {
+            return false;
+        }
+        let keys: Vec<String> = words.iter().map(|w| key(w)).collect();
+        looked.iter().all(|t| words.iter().zip(&keys).any(|(w, k)| t.quality(w.as_bytes(), k.as_bytes()) <= 3))
     }
 
     pub fn is_empty(&self) -> bool {

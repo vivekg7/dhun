@@ -46,11 +46,20 @@ struct Shared {
     serial: AtomicU64,
     /// The container of the source just set up, for the type finder made next.
     caps: Mutex<Option<gst::Caps>>,
+    /// Each song's speed (plan 016), set on its segment as it reaches the
+    /// filter: a gapless switch keeps the next song's speed without a seek.
+    speeds: Mutex<HashMap<i64, f64>>,
 }
 
 pub struct Engine {
     playbin: gst::Element,
     shared: Arc<Shared>,
+    /// The pitch shift the filter has, None without the `pitch` element:
+    /// that element breaks gapless joins, so it is there only while a
+    /// song's pitch is shifted (plan 039, the spike).
+    pitch: std::cell::Cell<Option<f64>>,
+    /// The shift asked for, put in when the next song opens.
+    want_pitch: std::cell::Cell<Option<f64>>,
     /// Where to seek once the song opened by `play` has prerolled.
     pending_seek: std::cell::Cell<Option<(u64, bool)>>,
     _bus: gst::bus::BusWatchGuard,
@@ -76,7 +85,9 @@ impl Engine {
             decoding: AtomicU64::new(0),
             serial: AtomicU64::new(0),
             caps: Mutex::default(),
+            speeds: Mutex::default(),
         });
+        playbin.set_property("audio-filter", filter(&shared, None));
         let s = shared.clone();
         playbin.connect("source-setup", false, move |args| {
             let src = args[1].get::<gst::Element>().ok()?;
@@ -155,7 +166,58 @@ impl Engine {
                 glib::ControlFlow::Continue
             })
             .expect("a bus watch");
-        Engine { playbin, shared, pending_seek: Default::default(), _bus: guard }
+        Engine {
+            playbin,
+            shared,
+            pitch: Default::default(),
+            want_pitch: Default::default(),
+            pending_seek: Default::default(),
+            _bus: guard,
+        }
+    }
+
+    /// Whether pitch can be shifted: the Flatpak builds `pitch`, a system may lack it.
+    pub fn can_pitch() -> bool {
+        gst::ElementFactory::find("pitch").is_some()
+    }
+
+    /// Each song's speed, for the songs that may play next; the rest play at 1×.
+    pub fn set_speeds(&self, speeds: HashMap<i64, f64>) {
+        *self.shared.speeds.lock().unwrap() = speeds;
+    }
+
+    /// `song` at `speed` and `semitones`: the speed from its next segment,
+    /// which, when it is `playing` now, a seek to where it is brings at once.
+    /// True when the filter must change for the pitch, which takes opening
+    /// the song again (`play`).
+    pub fn set_tempo(&self, song: i64, speed: f64, semitones: i64, playing: bool) -> bool {
+        let before = self.shared.speeds.lock().unwrap().insert(song, speed);
+        if playing && before.unwrap_or(1.0) != speed {
+            if let Some((pos, _)) = self.position() {
+                self.seek(pos);
+            }
+        }
+        let want = (semitones != 0 && Engine::can_pitch()).then(|| 2f64.powf(semitones as f64 / 12.0));
+        self.want_pitch.set(want);
+        match (self.pitch.get(), want) {
+            (Some(_), Some(w)) => {
+                self.pitch_element().inspect(|p| p.set_property("pitch", w as f32));
+                self.pitch.set(want);
+                false
+            }
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    fn pitch_element(&self) -> Option<gst::Element> {
+        let f = self.playbin.property::<Option<gst::Element>>("audio-filter")?;
+        f.downcast::<gst::Bin>().ok()?.by_name("pitch")
+    }
+
+    /// The volume, 0 to 1: the sleep timer fades out with it.
+    pub fn set_volume(&self, v: f64) {
+        self.playbin.set_property("volume", v.clamp(0.0, 1.0));
     }
 
     /// The queue's songs and play order, for what follows by itself.
@@ -167,6 +229,11 @@ impl Engine {
     /// Opens `source` for `song` at `from_ms`, playing or paused.
     pub fn play(&self, song: i64, source: Source, from_ms: i64, paused: bool) {
         let _ = self.playbin.set_state(gst::State::Ready);
+        if self.want_pitch.get() != self.pitch.get() {
+            let want = self.want_pitch.get();
+            self.playbin.set_property("audio-filter", filter(&self.shared, want));
+            self.pitch.set(want);
+        }
         let uri = self.shared.register(song, source);
         self.playbin.set_property("uri", &uri);
         self.pending_seek.set((from_ms > 0).then_some((from_ms as u64, paused)));
@@ -183,8 +250,13 @@ impl Engine {
         let pb = self.playbin.downgrade();
         let pending = self.pending_seek.take();
         let Some((ms, paused)) = pending else { return };
+        // Another song opened before this one was ready: the seek was this one's.
+        let (shared, opened) = (self.shared.clone(), self.shared.serial.load(Ordering::SeqCst));
         glib::timeout_add_local(std::time::Duration::from_millis(30), move || {
             let Some(pb) = pb.upgrade() else { return glib::ControlFlow::Break };
+            if shared.serial.load(Ordering::SeqCst) != opened {
+                return glib::ControlFlow::Break;
+            }
             let (r, now, _) = pb.state(gst::ClockTime::ZERO);
             if r.is_err() {
                 return glib::ControlFlow::Break;
@@ -226,6 +298,45 @@ impl Engine {
         let dur = self.playbin.query_duration::<gst::ClockTime>().map_or(0, |d| d.mseconds() as i64);
         Some((pos.mseconds() as i64, dur))
     }
+}
+
+/// `scaletempo`, which keeps the pitch at any speed, after `pitch` when the
+/// pitch is shifted; each segment entering it carries its song's speed as
+/// its rate.
+fn filter(shared: &Arc<Shared>, pitch: Option<f64>) -> gst::Element {
+    let bin = gst::Bin::new();
+    let tempo = gst::ElementFactory::make("scaletempo").build().expect("GStreamer's scaletempo");
+    let mut chain = vec![];
+    if let Some(p) = pitch {
+        match gst::ElementFactory::make("pitch").name("pitch").property("pitch", p as f32).build() {
+            Ok(e) => chain.push(e),
+            Err(e) => glib::g_warning!("Dhun", "no pitch: {e}"),
+        }
+    }
+    chain.push(tempo);
+    bin.add_many(&chain).unwrap();
+    gst::Element::link_many(&chain).unwrap();
+    let sink = gst::GhostPad::with_target(&chain[0].static_pad("sink").unwrap()).unwrap();
+    let src = gst::GhostPad::with_target(&chain[chain.len() - 1].static_pad("src").unwrap()).unwrap();
+    let s = shared.clone();
+    sink.add_probe(gst::PadProbeType::EVENT_DOWNSTREAM, move |_, info| {
+        if let Some(gst::PadProbeData::Event(ev)) = &info.data {
+            if let gst::EventView::Segment(seg) = ev.view() {
+                let song = s.decoding.load(Ordering::SeqCst) as i64;
+                let rate = s.speeds.lock().unwrap().get(&song).copied().unwrap_or(1.0);
+                let mut segment = seg.segment().clone();
+                if segment.rate() != rate {
+                    segment.set_rate(rate);
+                    let new = gst::event::Segment::builder(&segment).seqnum(ev.seqnum()).build();
+                    info.data = Some(gst::PadProbeData::Event(new));
+                }
+            }
+        }
+        gst::PadProbeReturn::Ok
+    });
+    bin.add_pad(&sink).unwrap();
+    bin.add_pad(&src).unwrap();
+    bin.upcast()
 }
 
 impl Shared {

@@ -2,13 +2,17 @@
 //! the window; the logic is in `dhun-core`.
 
 mod app;
+mod controls;
 mod downloads;
 mod engine;
+mod lists;
+mod lyrics;
 mod mpris;
 mod nowplaying;
 mod pages;
 mod playback;
 mod search;
+mod settings;
 mod widgets;
 mod window;
 
@@ -46,7 +50,12 @@ fn main() -> glib::ExitCode {
             w.present();
             return;
         }
-        let app = state.get_or_init(|| start(gapp)).clone();
+        let app = state.get_or_init(|| {
+            let app = start(gapp);
+            settings::start_theme(&app);
+            app
+        });
+        let app = app.clone();
         let window = window::build(gapp, &app);
         if let Some((w, h)) = std::env::var("DHUN_SIZE")
             .ok()
@@ -101,6 +110,7 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     // The kept copy at once, then what changed on the server.
     if app.signed_in() {
         app.reload_playlists();
+        app.reload_marks();
         let a = app.clone();
         glib::spawn_future_local(async move {
             a.reload_queues();
@@ -136,10 +146,12 @@ fn screenshot(window: &adw::ApplicationWindow, path: PathBuf) {
     let secs = std::env::var("DHUN_SCREENSHOT_AFTER").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
     let w = window.clone();
     glib::timeout_add_seconds_local_once(secs, move || {
-        // The window's content: a paintable of the window itself draws nothing,
-        // and a paintable has an image only once the widget draws again.
-        let paintable = gtk::WidgetPaintable::new(w.content().as_ref());
-        w.content().unwrap().queue_draw();
+        // The window's child, which holds the content and any dialog over it: a
+        // paintable of the window itself draws nothing, and a paintable has an
+        // image only once the widget draws again.
+        let child = w.first_child().unwrap();
+        let paintable = gtk::WidgetPaintable::new(Some(&child));
+        child.queue_draw();
         glib::timeout_add_local_once(Duration::from_millis(500), move || {
             let snapshot = gtk::Snapshot::new();
             // The window's own background, which its content leaves to it.
@@ -147,6 +159,26 @@ fn screenshot(window: &adw::ApplicationWindow, path: PathBuf) {
             let rect = gtk::graphene::Rect::new(0.0, 0.0, w.width() as f32, w.height() as f32);
             snapshot.append_color(&gdk::RGBA::parse(bg).unwrap(), &rect);
             paintable.snapshot(&snapshot, w.width() as f64, w.height() as f64);
+            // An open popover is a surface of its own: drawn over its button.
+            let mut todo = vec![child.clone()];
+            while let Some(x) = todo.pop() {
+                if let (Some(pop), Some(r)) = (
+                    x.downcast_ref::<gtk::Popover>().filter(|p| p.is_visible()),
+                    x.parent().and_then(|p| p.compute_bounds(&w)),
+                ) {
+                    let (pw, ph) = (pop.width() as f32, pop.height() as f32);
+                    let px = (r.x() + r.width() / 2.0 - pw / 2.0).clamp(0.0, (w.width() as f32 - pw).max(0.0));
+                    snapshot.save();
+                    snapshot.translate(&gtk::graphene::Point::new(px, (r.y() - ph).max(0.0)));
+                    gtk::WidgetPaintable::new(Some(pop)).snapshot(&snapshot, pw as f64, ph as f64);
+                    snapshot.restore();
+                }
+                let mut c = x.first_child();
+                while let Some(n) = c {
+                    c = n.next_sibling();
+                    todo.push(n);
+                }
+            }
             match (snapshot.to_node(), w.renderer()) {
                 (Some(node), Some(renderer)) => {
                     if let Err(e) = renderer.render_texture(&node, None).save_to_png(&path) {
