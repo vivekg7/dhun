@@ -639,24 +639,48 @@ fn group_page(nav: &Rc<Nav>, g: &Group, artist: bool) -> gtk::Widget {
     top.append(&header(app, songs.first(), &g.name, &format!("{what}{}", summary(&songs)), pin));
     if artist && albums.len() > 1 {
         let strip = gtk::Box::builder().spacing(14).margin_start(18).margin_end(18).margin_bottom(12).build();
-        for a in albums {
-            let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).width_request(96).build();
-            b.append(&cover(app, a.songs.first(), 96));
-            b.append(
-                &gtk::Label::builder()
-                    .label(&a.name)
-                    .xalign(0.0)
-                    .ellipsize(gtk::pango::EllipsizeMode::End)
-                    .max_width_chars(1)
-                    .css_classes(["caption"])
-                    .build(),
-            );
-            let button = gtk::Button::builder().child(&b).css_classes(["flat"]).build();
-            let (n, id) = (nav.clone(), a.id.clone());
-            button.connect_clicked(move |_| n.push(Route::Album(id.clone())));
-            strip.append(&button);
-        }
-        top.append(&gtk::ScrolledWindow::builder().child(&strip).vscrollbar_policy(gtk::PolicyType::Never).build());
+        let scroll = gtk::ScrolledWindow::builder().child(&strip).vscrollbar_policy(gtk::PolicyType::Never).build();
+        // Built as it scrolls: all 384 of a singer's albums at once took 280 ms.
+        let rest = RefCell::new(albums.into_iter().cloned().collect::<Vec<_>>().into_iter());
+        let (a, n, weak) = (app.clone(), nav.clone(), strip.downgrade());
+        let more = Rc::new(move || {
+            let Some(strip) = weak.upgrade() else { return };
+            for album in rest.borrow_mut().by_ref().take(30) {
+                let b =
+                    gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).width_request(96).build();
+                b.append(&cover(&a, album.songs.first(), 96));
+                b.append(
+                    &gtk::Label::builder()
+                        .label(&album.name)
+                        .xalign(0.0)
+                        .ellipsize(gtk::pango::EllipsizeMode::End)
+                        .max_width_chars(1)
+                        .css_classes(["caption"])
+                        .build(),
+                );
+                let button = gtk::Button::builder().child(&b).css_classes(["flat"]).build();
+                let (n, id) = (n.clone(), album.id.clone());
+                button.connect_clicked(move |_| n.push(Route::Album(id.clone())));
+                strip.append(&button);
+            }
+        });
+        more();
+        // Scrolled near the end, or a window wide enough to show them all.
+        let adj = scroll.hadjustment();
+        let m = more.clone();
+        adj.connect_value_changed(move |adj| {
+            if adj.value() + 2.0 * adj.page_size() >= adj.upper() {
+                m();
+            }
+        });
+        // After the layout that changed it: appending during it would lay out again.
+        adj.connect_changed(move |adj| {
+            if adj.page_size() > 0.0 && adj.value() + 2.0 * adj.page_size() >= adj.upper() {
+                let m = more.clone();
+                glib::idle_add_local_once(move || m());
+            }
+        });
+        top.append(&scroll);
     }
     let play =
         Play::List { name: g.name.clone(), source: format!("{}:{}", if artist { "artist" } else { "genre" }, g.name) };

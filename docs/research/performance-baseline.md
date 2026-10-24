@@ -325,9 +325,11 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   stack, and the rest to lay out a grid nobody saw. `Nav::open_at` now
   keeps the section already at the bottom of the stack, and otherwise
   builds it only when Back shows it. From Albums an album opens in
-  25–40 ms, from another section in 70–150 ms; an artist with many
-  songs still takes up to 900 ms for its own page. 240 pages at four a
-  second now take a third of the CPU and end at 459 MB.
+  25–40 ms, from another section in 70–150 ms. 240 pages at four a
+  second now take a third of the CPU and end at 459 MB. An artist with
+  many albums took up to 900 ms more, for the strip of them over the
+  songs, all built at once: Alka Yagnik's 1,179 albums, 280 ms before
+  any layout. It is built as it scrolls now, 30 at a time, in 5 ms.
 - **The albums grid, slow to scroll and to open, fixed.** GTK keeps
   32 rows of cells at the grid's most columns, 385 at 12 for the 12 on
   screen, and while scrolling gives each cell another album at every
