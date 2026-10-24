@@ -1256,8 +1256,7 @@ impl Playback {
             self.close("finished", Some(at));
             // Heard to the end: a long file's resume point is done with.
             if self.is_long(&finished) {
-                let id = finished.id;
-                self.app.store(|db| store::resume(db, id, None));
+                self.app.resume(finished.id, None);
             }
         }
         {
@@ -1283,8 +1282,7 @@ impl Playback {
         let at = self.position_ms();
         self.close("finished", Some(at));
         if let Some(s) = s.as_ref().filter(|s| self.is_long(s)) {
-            let id = s.id;
-            self.app.store(|db| store::resume(db, id, None));
+            self.app.resume(s.id, None);
         }
         let by_sleep = self.pause_after().is_some();
         self.set_playing(false);
@@ -1429,8 +1427,7 @@ impl Playback {
     /// playing, and the pause would save its end as the place to resume.
     fn save_resume(self: &Rc<Self>, s: &SongRef, pos: i64) {
         if self.is_long(s) && pos > 0 && (s.duration_ms <= 0 || pos < s.duration_ms - END_MARGIN_MS) {
-            let id = s.id;
-            self.app.store(|db| store::resume(db, id, Some(pos)));
+            self.app.resume(s.id, Some(pos));
         }
     }
 

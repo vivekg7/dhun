@@ -127,20 +127,43 @@ fn show_kept(app: &App, item: &gtk::ListItem) {
     let (Some(obj), Some(cell)) = (item.item().and_downcast::<glib::BoxedAnyObject>(), item.child()) else { return };
     let id = obj.borrow::<SongRef>().id;
     cell.set_opacity(if app.playable(id) { 1.0 } else { UNPLAYABLE });
-    // The title cell: cover, title, mark, and any menu opened on it after these.
-    if let Some(mark) = cell.first_child().and_then(|c| c.next_sibling()).and_then(|t| t.next_sibling()) {
+    if let Some(mark) = title_line(&cell).and_then(|l| l.first_child()).and_then(|t| t.next_sibling()) {
         mark.set_visible(app.downloaded.borrow().contains_key(&id));
     }
 }
 
-/// Keeps a cell's `show_kept` current while it lives: a row already on
-/// screen is not bound again when only this changes.
+/// The title cell's line, its title and mark: the cell holds the cover,
+/// then the line over the resume bar, then any menu opened on it.
+fn title_line(cell: &gtk::Widget) -> Option<gtk::Widget> {
+    cell.first_child()?.next_sibling()?.first_child().filter(|l| l.is::<gtk::Box>())
+}
+
+/// The bar under a long file's title, as far along as its resume point
+/// (plan 009); none at the very start, which every episode played a
+/// moment has: an empty bar is noise.
+fn show_left(app: &App, item: &gtk::ListItem) {
+    let (Some(obj), Some(cell)) = (item.item().and_downcast::<glib::BoxedAnyObject>(), item.child()) else { return };
+    let Some(bar) = title_line(&cell).and_then(|l| l.next_sibling()).and_downcast::<gtk::ProgressBar>() else {
+        return;
+    };
+    let s = obj.borrow::<SongRef>();
+    let done =
+        app.marks.borrow().left.get(&s.id).filter(|_| s.duration_ms > 0).map(|&ms| ms as f64 / s.duration_ms as f64);
+    bar.set_visible(done.is_some_and(|d| d >= 0.01));
+    bar.set_fraction(done.unwrap_or(0.0).clamp(0.0, 1.0));
+}
+
+/// Keeps a cell's `show_kept` and `show_left` current while it lives: a
+/// row already on screen is not bound again when only these change. A
+/// resume point is kept at a pause, and goes when its file plays to the end.
 fn follow_kept(app: &Rc<App>, item: &gtk::ListItem) {
     let (a, w) = (app.clone(), item.downgrade());
     app.listen(move |c| {
         let Some(item) = w.upgrade() else { return false };
-        if c == Change::Playable {
-            show_kept(&a, &item);
+        match c {
+            Change::Playable => show_kept(&a, &item),
+            Change::Playback | Change::Marks => show_left(&a, &item),
+            _ => {}
         }
         true
     });
@@ -549,8 +572,17 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
             gtk::Picture::builder().content_fit(gtk::ContentFit::Cover).width_request(28).height_request(28).build();
         let frame = gtk::Frame::builder().child(&pic).css_classes(["cover"]).build();
         b.append(&frame);
-        b.append(&gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build());
-        b.append(&downloaded_mark());
+        let text = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .build();
+        let line = gtk::Box::builder().spacing(10).build();
+        line.append(&gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build());
+        line.append(&downloaded_mark());
+        text.append(&line);
+        text.append(&gtk::ProgressBar::builder().css_classes(["resume"]).margin_top(4).visible(false).build());
+        b.append(&text);
         m(b.upcast_ref(), item);
         if let Some(mv) = &moving {
             let it = item.downgrade();
@@ -572,10 +604,10 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
             weak.upgrade().and_then(|i| i.item()).is_some_and(|o| o == obj.clone().upcast::<glib::Object>())
         });
         set_cover(&a, &pic, Some(&song), 28, Some(still));
-        // By place from the cover: a menu opened on the cell is a child of it too, after these.
-        let label = pic.parent().unwrap().next_sibling().and_downcast::<gtk::Label>().unwrap();
+        let label = title_line(b.upcast_ref()).and_then(|l| l.first_child()).and_downcast::<gtk::Label>().unwrap();
         label.set_label(&song.title);
         show_kept(&a, item);
+        show_left(&a, item);
     });
     let title = gtk::ColumnViewColumn::new(Some("Title"), Some(factory));
     title.set_expand(true);
@@ -707,7 +739,9 @@ pub fn song_actions(
             a.mark(kind, &ids, on);
             // Either way an episode starts from the beginning next time.
             if kind == store::PLAYED {
-                a.store(|db| ids.iter().try_for_each(|&i| store::resume(db, i, None)));
+                for &i in &ids {
+                    a.resume(i, None);
+                }
             }
         }),
     );

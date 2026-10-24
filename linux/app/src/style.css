@@ -11,3 +11,11 @@ gridview.album-grid > child {
 frame.cover > * {
   border-radius: 6px;
 }
+/* The bar under a long file's title in a list: how far in its resume point is. */
+progressbar.resume > trough,
+progressbar.resume > trough > progress {
+  min-height: 3px;
+}
+progressbar.resume > trough {
+  min-width: 0;
+}

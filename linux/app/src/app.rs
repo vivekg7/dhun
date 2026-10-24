@@ -57,6 +57,8 @@ pub struct Marks {
     pub played: HashSet<i64>,
     /// Every long file's bookmarks, by place (plan 033).
     pub bookmarks: Vec<dhun_core::model::Bookmark>,
+    /// Where each long file was left, for the bar under it in a list (plan 009).
+    pub left: HashMap<i64, i64>,
 }
 
 impl Marks {
@@ -286,6 +288,7 @@ impl App {
             later: ids(store::LATER).collect(),
             played: ids(store::PLAYED).collect(),
             bookmarks: db.bookmarks().unwrap_or_default(),
+            left: db.resumes().unwrap_or_default().into_iter().map(|r| (r.song, r.position_ms)).collect(),
         };
         drop(db);
         *self.marks.borrow_mut() = m;
@@ -294,11 +297,19 @@ impl App {
 
     /// What has been heard of the spoken files: played, and where each was left (plan 031).
     pub fn heard(&self) -> dhun_core::spoken::Heard {
-        let resumes = self.db.lock().unwrap().resumes().unwrap_or_default();
-        dhun_core::spoken::Heard {
-            played: self.marks.borrow().played.clone(),
-            left: resumes.into_iter().map(|r| (r.song, r.position_ms)).collect(),
-        }
+        let m = self.marks.borrow();
+        dhun_core::spoken::Heard { played: m.played.clone(), left: m.left.clone() }
+    }
+
+    /// A long file's place to resume, or None once it is heard to the end
+    /// or marked (plan 009): kept, sent, and shown in the lists at once.
+    pub fn resume(self: &Rc<Self>, song: i64, at: Option<i64>) {
+        self.store(|db| store::resume(db, song, at));
+        let mut m = self.marks.borrow_mut();
+        match at {
+            Some(ms) => m.left.insert(song, ms),
+            None => m.left.remove(&song),
+        };
     }
 
     /// Puts `songs` into a list or takes them out: Favorites, Listen Later, played.

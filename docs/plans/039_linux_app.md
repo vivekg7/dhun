@@ -806,13 +806,17 @@ alongside, for what Linux lacks.
   sidebar), and of such a result in search, as on the phone. It shows the
   download asked for, whether or not every file is here yet; the page's
   Download button says how far along it is.
+- **The thin resume bar** (009) under a long file's title in every song
+  list, as far along as its resume point; none under 1%, which every
+  episode played a moment has. The resume points are kept in memory with
+  the marks, so a list reads them without asking the database at each row,
+  and a pause moves the bar at once.
 
-**Still missing against the phone:** the thin resume bar under songs in
-ordinary lists; a queue's search that scrolls to a match rather than
-filtering; the song menu and dragging in the playing-queue panel; renaming
-and removing from the queue picker; the artist link under the title on the
-bar; Play and Shuffle on Downloads, which also leaves out downloaded
-episodes.
+**Still missing against the phone:** a queue's search that scrolls to a
+match rather than filtering; the song menu and dragging in the
+playing-queue panel; renaming and removing from the queue picker; the
+artist link under the title on the bar; Play and Shuffle on Downloads,
+which also leaves out downloaded episodes.
 
 ## Open questions
 
