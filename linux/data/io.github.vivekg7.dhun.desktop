@@ -2,9 +2,26 @@
 Type=Application
 Name=Dhun
 Comment=The family's music, podcasts and audiobooks, from the NAS
-Exec=dhun
+Exec=dhun %U
 Icon=io.github.vivekg7.dhun
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 Keywords=music;podcast;audiobook;player;
 StartupNotify=true
+# Open With (plan 021): the formats the server indexes. A file plays in a
+# small window of its own and makes no queue.
+MimeType=audio/mpeg;audio/mp4;audio/x-m4a;audio/x-m4b;audio/aac;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/x-opus+ogg;audio/opus;application/ogg;audio/webm;audio/wav;audio/x-wav;audio/aiff;audio/x-aiff;
+# The launcher's shortcuts, as the phone's (plan 038).
+Actions=search;resume;shuffle;
+
+[Desktop Action search]
+Name=Search
+Exec=dhun --search
+
+[Desktop Action resume]
+Name=Resume
+Exec=dhun --resume
+
+[Desktop Action shuffle]
+Name=Shuffle all
+Exec=dhun --shuffle

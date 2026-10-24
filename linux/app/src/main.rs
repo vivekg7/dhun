@@ -7,35 +7,54 @@ mod downloads;
 mod engine;
 mod lists;
 mod lyrics;
+mod mini;
 mod mpris;
 mod nowplaying;
+mod openfile;
 mod pages;
 mod playback;
 mod search;
 mod settings;
+mod tray;
 mod widgets;
 mod window;
 
 use adw::prelude::*;
-use app::App;
+use app::{App, Change};
 use gtk::{gdk, gio, glib};
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
-const ID: &str = "io.github.vivekg7.dhun";
+pub const ID: &str = "io.github.vivekg7.dhun";
+
+/// The launcher's three shortcuts (plan 038), as `Actions` in the
+/// `.desktop` file: each an option, handed to the copy already running.
+const SHORTCUTS: [(&str, &str); 3] =
+    [("search", "Search the library"), ("resume", "Play on where you were"), ("shuffle", "Shuffle every song")];
+
+/// The library and its window, made on the first activation: a file opened
+/// from the file manager plays without them (plan 021).
+#[derive(Default)]
+struct Shell {
+    app: std::cell::OnceCell<Rc<App>>,
+    window: std::cell::OnceCell<adw::ApplicationWindow>,
+}
 
 fn main() -> glib::ExitCode {
     gstreamer::init().expect("GStreamer");
     // A build under test (DHUN_DATA) runs beside the installed app rather
     // than handing itself to it, as a second launch of the same app does.
-    let flags = if std::env::var_os("DHUN_DATA").is_some() {
-        gio::ApplicationFlags::NON_UNIQUE
-    } else {
-        gio::ApplicationFlags::empty()
-    };
+    let mut flags = gio::ApplicationFlags::HANDLES_OPEN;
+    if std::env::var_os("DHUN_DATA").is_some() {
+        flags |= gio::ApplicationFlags::NON_UNIQUE;
+    }
     let gapp = adw::Application::builder().application_id(ID).flags(flags).build();
-    gapp.connect_startup(|_| {
+    let shell: Rc<Shell> = Rc::default();
+    let sh = shell.clone();
+    gapp.connect_startup(move |gapp| {
         let css = gtk::CssProvider::new();
         css.load_from_string(include_str!("style.css"));
         gtk::style_context_add_provider_for_display(
@@ -43,19 +62,63 @@ fn main() -> glib::ExitCode {
             &css,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-    });
-    let state: Rc<std::cell::OnceCell<Rc<App>>> = Rc::default();
-    gapp.connect_activate(move |gapp| {
-        if let Some(w) = gapp.active_window() {
-            w.present();
-            return;
+        for (name, _) in SHORTCUTS {
+            let a = gio::SimpleAction::new(name, None);
+            let (g, sh) = (gapp.clone(), sh.clone());
+            a.connect_activate(move |a, _| shortcut(&show(&g, &sh), &sh, a.name().as_str()));
+            gapp.add_action(&a);
         }
-        let app = state.get_or_init(|| {
+        if let Ok(path) = std::env::var("DHUN_SCREENSHOT") {
+            screenshot(gapp, PathBuf::from(path));
+        }
+    });
+    for (name, what) in SHORTCUTS {
+        gapp.add_main_option(name, glib::Char::from(0), glib::OptionFlags::NONE, glib::OptionArg::None, what, None);
+    }
+    gapp.connect_handle_local_options(|gapp, opts| {
+        let Some((name, _)) = SHORTCUTS.iter().find(|(n, _)| opts.contains(n)) else {
+            return std::ops::ControlFlow::Continue(());
+        };
+        if gapp.register(None::<&gio::Cancellable>).is_err() {
+            return std::ops::ControlFlow::Break(glib::ExitCode::FAILURE);
+        }
+        // Sent to the copy running, or run here once this one has started.
+        gapp.activate_action(name, None);
+        if gapp.is_remote() {
+            std::ops::ControlFlow::Break(glib::ExitCode::SUCCESS)
+        } else {
+            std::ops::ControlFlow::Continue(())
+        }
+    });
+    let sh = shell.clone();
+    gapp.connect_activate(move |gapp| {
+        show(gapp, &sh);
+    });
+    let sh = shell.clone();
+    gapp.connect_open(move |gapp, files, _| {
+        // The playing queue pauses where it is, and is not resumed after (plan 021).
+        if let Some(app) = sh.app.get() {
+            app.playback().pause();
+        }
+        if let Some(f) = files.first() {
+            openfile::open(gapp, f);
+        }
+    });
+    gapp.run()
+}
+
+/// Shows the window, made the first time; the app and its window are kept
+/// while the app runs, so the same window comes back.
+fn show(gapp: &adw::Application, shell: &Shell) -> Rc<App> {
+    let app = shell
+        .app
+        .get_or_init(|| {
             let app = start(gapp);
             settings::start_theme(&app);
             app
-        });
-        let app = app.clone();
+        })
+        .clone();
+    let window = shell.window.get_or_init(|| {
         let window = window::build(gapp, &app);
         if let Some((w, h)) = std::env::var("DHUN_SIZE")
             .ok()
@@ -63,13 +126,84 @@ fn main() -> glib::ExitCode {
         {
             window.set_default_size(w, h);
         }
-        window.present();
-        glib::g_info!("Dhun", "window shown");
-        if let Ok(path) = std::env::var("DHUN_SCREENSHOT") {
-            screenshot(&window, PathBuf::from(path));
-        }
+        // Closing the window keeps the music playing (owner, 2026-10-23):
+        // hidden, it comes back as it was. Signed out, there is nothing to keep.
+        let (a, asked) = (app.clone(), Cell::new(false));
+        window.connect_close_request(move |w| {
+            if !a.signed_in() {
+                if let Some(g) = w.application() {
+                    g.quit();
+                }
+                return glib::Propagation::Proceed;
+            }
+            w.set_visible(false);
+            if !asked.replace(true) {
+                background();
+            }
+            glib::Propagation::Stop
+        });
+        window
     });
-    gapp.run()
+    window.present();
+    glib::g_info!("Dhun", "window shown");
+    app
+}
+
+/// Asks the Background portal for leave to run with no window, so a
+/// Flatpak is not stopped as an app left behind. Outside one, nothing asks.
+fn background() {
+    if !std::path::Path::new("/.flatpak-info").exists() {
+        return;
+    }
+    let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) else { return };
+    let options: HashMap<&str, glib::Variant> =
+        HashMap::from([("reason", "To keep playing with the window closed".to_variant())]);
+    conn.call(
+        Some("org.freedesktop.portal.Desktop"),
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Background",
+        "RequestBackground",
+        Some(&("", options).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        -1,
+        None::<&gio::Cancellable>,
+        |r| {
+            if let Err(e) = r {
+                glib::g_info!("Dhun", "background portal: {e}");
+            }
+        },
+    );
+}
+
+/// A launcher shortcut, once the library is here: on a cold start it is still loading.
+fn shortcut(app: &Rc<App>, shell: &Shell, name: &str) {
+    if name == "search" {
+        if let Some(w) = shell.window.get() {
+            let _ = WidgetExt::activate_action(w, "win.find", None);
+        }
+        return;
+    }
+    let (a, name) = (app.clone(), name.to_string());
+    let go = move || {
+        let pb = a.playback();
+        // Resume plays on where the listener was; with no queue, as the phone, it shuffles.
+        if name == "resume" && pb.current().is_some() {
+            return pb.play();
+        }
+        let songs = a.catalog().songs.clone();
+        pb.play_list("All songs", "all", &dhun_core::queue::sorted(0, &songs), 0);
+    };
+    if !app.catalog().by_id.is_empty() {
+        return go();
+    }
+    app.listen(move |c| {
+        if c != Change::Catalog {
+            return true;
+        }
+        go();
+        false
+    });
 }
 
 /// The app's folder: `DHUN_DATA` for a build under test, so it keeps its
@@ -84,6 +218,7 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     let _ = app.playback.set(playback::Playback::new(&app));
     let _ = app.downloads.set(downloads::Downloads::new(&app));
     mpris::start(gapp, &app);
+    tray::start(gapp, &app);
     // On quitting: the open listen and the place are kept, as on pause.
     let a = app.clone();
     gapp.connect_shutdown(move |_| a.playback().quitting());
@@ -104,6 +239,8 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     );
     let g = gapp.clone();
     action("about", Box::new(move || about(&g)));
+    let (g, a) = (gapp.clone(), app.clone());
+    action("mini", Box::new(move || mini::open(&g, &a)));
     let g = gapp.clone();
     action("quit", Box::new(move || g.quit()));
     gapp.set_accels_for_action("app.quit", &["<Control>q"]);
@@ -141,11 +278,17 @@ fn about(gapp: &adw::Application) {
 }
 
 /// For checking the window without a person at the screen: draws it to a
-/// PNG once the library has had time to load, then quits.
-fn screenshot(window: &adw::ApplicationWindow, path: PathBuf) {
+/// PNG once the library has had time to load, then quits. The main window,
+/// or the one `DHUN_SCREENSHOT_OF` names: `mini`, or `file` for a file opened.
+fn screenshot(gapp: &adw::Application, path: PathBuf) {
     let secs = std::env::var("DHUN_SCREENSHOT_AFTER").ok().and_then(|s| s.parse().ok()).unwrap_or(6);
-    let w = window.clone();
+    let g = gapp.clone();
     glib::timeout_add_seconds_local_once(secs, move || {
+        let name = std::env::var("DHUN_SCREENSHOT_OF").unwrap_or_else(|_| "main".into());
+        let Some(w) = g.windows().into_iter().find(|w| w.widget_name() == name.as_str()) else {
+            eprintln!("screenshot: no {name} window");
+            return g.quit();
+        };
         // The window's child, which holds the content and any dialog over it: a
         // paintable of the window itself draws nothing, and a paintable has an
         // image only once the widget draws again.

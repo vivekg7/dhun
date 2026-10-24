@@ -14,6 +14,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder()
         .application(gapp)
         .title("Dhun")
+        .name("main")
         .default_width(1100)
         .default_height(720)
         .build();
@@ -119,7 +120,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
 /// `play:<song id>`, `switch:<queue name>`, `list:N` (of `ListKind::ALL`), `playlist:Name`, `queue:Name`,
 /// `select:N` and `do:<action>[=text|#number]` for a song list's menu, `type:text` into a dialog,
 /// `tempo:<speed>/<semitones>`, `sleep:end` or `sleep:<minutes>`, `popup:<tooltip>` for a button, `settings:<page>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
-/// `sidebar` for a narrow window, or a click two seconds on: `activate:N` on a song row, `nav:N` on a sidebar row.
+/// `sidebar` for a narrow window, `app:<action>` (`app:mini`), `close` for the window, or a click two seconds on: `activate:N` on a song row, `nav:N` on a sidebar row.
 fn open_when_loaded(
     app: &Rc<App>,
     nav: &Rc<Nav>,
@@ -349,6 +350,19 @@ fn open_when_loaded(
                     s.set_show_content(false);
                     continue;
                 }
+                "close" => {
+                    if let Some(w) = s.root().and_downcast::<gtk::Window>() {
+                        w.close();
+                    }
+                    continue;
+                }
+                // An app action, as the menu or the launcher would: `app:mini`, `app:shuffle`.
+                "app" => {
+                    if let Some(g) = gio::Application::default() {
+                        g.activate_action(arg, None);
+                    }
+                    continue;
+                }
                 _ => continue,
             };
             if i == 0 { n.open(route) } else { n.push(route) }
@@ -534,10 +548,12 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
 
 fn menu() -> gtk::MenuButton {
     let m = gio::Menu::new();
+    m.append(Some("Mini Player"), Some("app.mini"));
     m.append(Some("Settings"), Some("win.settings"));
     m.append(Some("Sync Now"), Some("app.sync"));
     m.append(Some("Sign Out"), Some("app.sign-out"));
     m.append(Some("About Dhun"), Some("app.about"));
+    m.append(Some("Quit"), Some("app.quit"));
     gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&m).tooltip_text("Menu").build()
 }
 

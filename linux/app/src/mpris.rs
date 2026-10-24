@@ -132,11 +132,8 @@ fn serve(conn: &gio::DBusConnection, gapp: &adw::Application, app: &Rc<App>) {
 fn call(gapp: &adw::Application, app: &Rc<App>, method: &str, params: &Variant) {
     let pb = app.playback();
     match method {
-        "Raise" => {
-            if let Some(w) = gapp.active_window().or_else(|| gapp.windows().first().cloned()) {
-                w.present();
-            }
-        }
+        // The main window, even when hidden; not the mini window or a file's.
+        "Raise" => gapp.activate(),
         "Quit" => gapp.quit(),
         "Next" => pb.next(false),
         "Previous" => pb.previous(false),

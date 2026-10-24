@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `IN PROGRESS` — steps 0 to 4 done (2026-10-24): the phone's features, Settings included; 0.16.3 installed on the owner's desktop (2026-10-23), not released
+**Status:** `IN PROGRESS` — steps 0 to 5 done (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.16.3 installed on the owner's desktop (2026-10-23), not released
 **Started:** 2026-10-23
 
 ## Problem
@@ -238,18 +238,26 @@ override:
   with its mini bar, so a narrow window stays usable. Keyboard: Space plays
   or pauses, Ctrl+← and Ctrl+→ skip, Ctrl+F searches, Ctrl+Q quits.
 - **Closing the window does not stop the music** (owner, 2026-10-23). The
-  app holds itself running, and asks the Background portal for leave to
-  do so, so a Flatpak is not killed on close. Opening the app again from
-  the launcher brings back the same window.
+  window is hidden rather than closed, which keeps the app running, and a
+  Flatpak asks the Background portal for leave to do so, so it is not
+  stopped as an app left behind. Opening the app again from the launcher,
+  the tray or the desktop's media controls brings back the same window.
+  Ctrl+Q, Quit in the ☰ menu or the tray's ends it. Signed out, closing
+  quits: there is no music to keep.
 - **The tray icon** is a StatusNotifierItem, which COSMIC and KDE show
   (GNOME needs its AppIndicator extension). Its menu: play or pause,
-  previous, next, the current song, Show Dhun, Quit. Written over GIO's
-  D-Bus, about 200 lines, with no crate.
+  previous, next, the current song, the mini window, Show Dhun, Quit. A
+  click shows the window, a middle click plays or pauses. Written over
+  GIO's D-Bus, about 250 lines, with no crate. It registers by the
+  connection's own name, as Chromium's does, so the Flatpak needs only to
+  talk to the watcher, not to own a name of its own.
 - **The mini window** is a small window with the cover, title and controls,
-  opened from the menu. A Wayland app cannot keep itself above other
-  windows, so the owner pins it with the desktop's own "Always on top"
-  window menu item. This replaces the Mac's floating mini window and the
-  phone's pill.
+  opened from the ☰ menu or the tray. A Wayland app cannot keep itself
+  above other windows, so the owner pins it with the desktop's own "Always
+  on top" window menu item. With no title bar, as the Mac's, it is moved
+  by any part of it, and a right-click opens that window menu. A double
+  click on the song shows the main window. This replaces the Mac's
+  floating mini window and the phone's pill.
 - **MPRIS** (`org.mpris.MediaPlayer2.dhun`) over GIO's D-Bus: play, pause,
   next, previous, seek, position, cover and title, and `Raise` to show the
   window.
@@ -258,8 +266,13 @@ override:
   playback pauses, as on the phone.
 - **Open With.** The `.desktop` file declares the audio types the server
   indexes. A file opened from the file manager plays in a small window of
-  its own, through a second player. It makes no queue and logs no listen;
-  the playing queue pauses where it is (021).
+  its own, through a second player (a plain `playbin3` on the file). It
+  makes no queue and logs no listen; the playing queue pauses where it is
+  (021). With Dhun not running, the file opens without the library: no
+  sync starts and the app ends when the file's window closes.
+- **The launcher's shortcuts** (038) are `--search`, `--resume` and
+  `--shuffle`, the `.desktop` file's `Actions`. Each is handed to the copy
+  already running, or done once the library has loaded on a cold start.
 - **Storage.** Everything in one folder, `$XDG_DATA_HOME/dhun/`
   (`~/.var/app/io.github.vivekg7.dhun/data/dhun/` inside the Flatpak): the
   SQLite database, downloads, the cache and covers, on one volume so that
@@ -390,7 +403,8 @@ moves with it.
    family members (023). Ported tests: lyrics, tempo. **Done
    (2026-10-24)**; see [How step 4 went](#how-step-4-went-2026-10-24).
 5. **Linux-only pieces.** The tray icon, the mini window, Open With, the
-   launcher's three shortcuts, the Background portal.
+   launcher's three shortcuts, the Background portal. **Done
+   (2026-10-24)**; see [How step 5 went](#how-step-5-went-2026-10-24).
 6. **Measure and release.** The Linux section of `performance-baseline.md`;
    REQUIREMENTS, README and this plan's status brought up to date.
 
@@ -657,6 +671,51 @@ works, which `scripts/guide.sh` now copies into `linux/app/src/guide.md`.
 - Entries of a playlist that match no song are not shown, as the Mac shows
   them ("Unavailable"); they are kept, and sorting keeps them at the end.
 - A book's or a show's filter still says "Filter songs".
+
+## How step 5 went (2026-10-24)
+
+**Built:** the tray icon (`tray.rs`, a StatusNotifierItem and its
+`com.canonical.dbusmenu` menu); the mini window (`mini.rs`); Open With
+(`openfile.rs`, and the `.desktop` file's `MimeType`, the server's
+formats); the launcher's Search, Resume and Shuffle all; and closing the
+window hiding it, with the Background portal asked the first time. The ☰
+menu gained Mini Player and Quit. MPRIS's `Raise` now shows the main
+window, never the mini window or a file's.
+
+**Checked**, signed in as the test account, silent:
+
+- The tray, through the Flatpak's D-Bus filter with only
+  `--talk-name=org.kde.StatusNotifierWatcher`: COSMIC's watcher listed it;
+  its tooltip and menu answered from the host; Pause from the menu paused
+  (MPRIS said so) and the item became Play; Quit ended the app and the
+  panel dropped the icon.
+- The window closed while a song played: it played on (MPRIS's position
+  moved 3 s in 3 s), and `Raise` showed the same window again.
+- On a private session bus with a running copy: `dhun --shuffle` started
+  "All songs" shuffled, `dhun <file>` paused the queue and opened the
+  file's window, `dhun --search` showed the window; each second launch
+  exited at once.
+- A file opened with Dhun not running: a tagged M4A showed its title,
+  artists and embedded cover, and played; an untagged FLAC showed its
+  name and played to the end.
+- The mini window after Shuffle all: the cover, the song and the controls.
+
+**Changed while building:**
+
+- **COSMIC's portal has no Background interface**, so the request fails
+  there, quietly. Nothing is lost: COSMIC does not stop a Flatpak with no
+  window. GNOME's and KDE's portals have it.
+- **The screenshot hook draws any window**, named by `DHUN_SCREENSHOT_OF`
+  (`mini`, `file`), and starts with the app, so a file opened without the
+  library can be drawn. The test hook gained `app:<action>` and `close`.
+
+**Not done:**
+
+- Seen only through D-Bus and screenshots: the tray icon's look on the
+  panel, the mini window pinned with "Always on top", and Open With from
+  COSMIC Files are for the owner to try.
+- The shortcuts' names in the launcher's right-click menu are the
+  `.desktop` file's; whether COSMIC's dock shows `Actions` is untried.
 
 ## Open questions
 

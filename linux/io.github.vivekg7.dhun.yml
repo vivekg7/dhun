@@ -16,6 +16,8 @@ finish-args:
   - --device=dri
   - --socket=pulseaudio
   - --own-name=org.mpris.MediaPlayer2.dhun
+  # The tray icon registers with the panel's watcher (StatusNotifierItem).
+  - --talk-name=org.kde.StatusNotifierWatcher
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:
