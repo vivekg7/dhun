@@ -5,9 +5,11 @@
 use crate::app::{App, Change};
 use crate::widgets::{self, clock, cover, row};
 use adw::prelude::*;
+use dhun_core::catalog::SongRef;
 use dhun_core::{store, synced};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
 /// The bar and the offers over it.
 pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> gtk::Box {
@@ -434,26 +436,59 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
     head.append(&name);
     head.append(&picker(app));
     b.append(&head);
+    let time = gtk::Label::builder()
+        .xalign(0.0)
+        .margin_start(12)
+        .margin_bottom(6)
+        .css_classes(["caption", "dim-label"])
+        .build();
+    b.append(&time);
     let holder = adw::Bin::builder().vexpand(true).build();
     b.append(&holder);
     let pb = app.playback().clone();
+    // The rows are made again only when the queue, its songs or the
+    // catalogue change: a long queue takes a while, and play, pause and the
+    // next song only move the mark and the time left.
+    let current = Rc::new(Cell::new(None::<i64>));
+    let shown = RefCell::new((String::new(), Vec::new(), 0usize));
+    let songs = RefCell::new(Vec::<SongRef>::new());
+    let store = RefCell::new(None::<gtk::gio::ListStore>);
     let update = {
-        let (app, holder) = (app.clone(), holder.clone());
+        let (app, holder, current) = (app.clone(), holder.clone(), current.clone());
         move || {
             let q = pb.active();
             name.set_label(&q.as_ref().map_or("No queue".to_string(), |q| q.name.clone()));
-            let songs = app.catalog().songs_of(&pb.items());
-            let current = pb.current().map(|s| s.id);
-            let left: i64 = current
-                .and_then(|c| songs.iter().position(|s| s.id == c))
+            let key = (pb.active_id(), pb.items(), Arc::as_ptr(&app.catalog()) as usize);
+            let same = *shown.borrow() == key;
+            if !same {
+                *songs.borrow_mut() = app.catalog().songs_of(&key.1);
+            }
+            let songs = songs.borrow();
+            let was = current.replace(pb.current().map(|s| s.id));
+            let at = |id: Option<i64>| id.and_then(|c| songs.iter().position(|s| s.id == c));
+            let left: i64 = at(current.get())
                 .map_or(0, |i| songs[i..].iter().map(|s| s.duration_ms).sum::<i64>() - pb.position_ms());
-            let (a, p) = (app.clone(), pb.clone());
+            time.set_label(&format!("{} · {} left", widgets::count(songs.len()), clock(left.max(0))));
+            if same {
+                // Only the rows that gain or lose the mark are bound again.
+                // GTK keeps a row whose item is the same object, so each
+                // gets a new one.
+                if let (Some(m), true) = (store.borrow().as_ref(), was != current.get()) {
+                    for i in [at(was), at(current.get())].into_iter().flatten() {
+                        let item = gtk::glib::BoxedAnyObject::new((i, songs[i].clone()));
+                        m.splice(i as u32, 1, &[item]);
+                    }
+                }
+                return;
+            }
+            *shown.borrow_mut() = key;
+            let (a, p, cur) = (app.clone(), pb.clone(), current.clone());
             let list = widgets::list(
                 &app,
                 &songs.iter().cloned().enumerate().collect::<Vec<_>>(),
                 move |(_, s)| {
                     let r = row(&cover(&a, Some(s), 32), &s.title, s.display_artist());
-                    if Some(s.id) == current {
+                    if Some(s.id) == cur.get() {
                         r.add_css_class("accent");
                         r.append(&gtk::Image::from_icon_name("audio-volume-high-symbolic"));
                     }
@@ -461,20 +496,12 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
                 },
                 move |(i, _)| p.play_at(*i),
             );
-            let scroll = widgets::scrolled(&list);
-            let col = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-            let what = format!("{} · {} left", widgets::count(songs.len()), clock(left.max(0)));
-            col.append(
-                &gtk::Label::builder()
-                    .label(what)
-                    .xalign(0.0)
-                    .margin_start(12)
-                    .margin_bottom(6)
-                    .css_classes(["caption", "dim-label"])
-                    .build(),
-            );
-            col.append(&scroll);
-            holder.set_child(Some(&col));
+            *store.borrow_mut() = list
+                .model()
+                .and_downcast::<gtk::NoSelection>()
+                .and_then(|m| m.model())
+                .and_downcast::<gtk::gio::ListStore>();
+            holder.set_child(Some(&widgets::scrolled(&list)));
         }
     };
     update();
