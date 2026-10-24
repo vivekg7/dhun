@@ -506,19 +506,54 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
                 return;
             }
             *shown.borrow_mut() = key;
-            let (a, p, cur) = (app.clone(), pb.clone(), current.clone());
+            // The song menu of any queue's songs, on the one right-clicked,
+            // and the songs dragged into another order, as on its page.
+            let id = pb.active_id();
+            let play = widgets::Play::Queue(id.clone());
+            let picked: Rc<RefCell<Vec<SongRef>>> = Rc::default();
+            let all = Rc::new(songs.clone());
+            let (a, p, cur, pl, pk) = (app.clone(), pb.clone(), current.clone(), play.clone(), picked.clone());
             let list = widgets::list(
                 &songs.iter().cloned().enumerate().collect::<Vec<_>>(),
-                move |(_, s)| {
+                move |(i, s)| {
                     let r = row(&cover(&a, Some(s), 32), &s.title, s.display_artist());
                     if Some(s.id) == cur.get() {
                         r.add_css_class("accent");
                         r.append(&gtk::Image::from_icon_name("audio-volume-high-symbolic"));
                     }
+                    let g = gtk::GestureClick::builder().button(3).build();
+                    let (a2, s2, pl2, pk2, rw) = (a.clone(), s.clone(), pl.clone(), pk.clone(), r.downgrade());
+                    g.connect_pressed(move |_, _, x, y| {
+                        let Some(r) = rw.upgrade() else { return };
+                        *pk2.borrow_mut() = vec![s2.clone()];
+                        let menu = gtk::gio::Menu::new();
+                        widgets::song_menu(&a2, &menu, std::slice::from_ref(&s2), &pl2, &widgets::Edit::None);
+                        widgets::popup(&menu, &r, x, y);
+                    });
+                    r.add_controller(g);
+                    let (p2, id2, all2, i) = (p.clone(), id.clone(), all.clone(), *i);
+                    widgets::drag_rows(
+                        &r,
+                        move || Some(i),
+                        Rc::new(move |from, to| p2.move_in(&id2, all2[from].id, all2[to].id)),
+                    );
                     r.upcast()
                 },
-                move |(i, _)| p.play_at(*i),
+                {
+                    let p = pb.clone();
+                    move |(i, _)| p.play_at(*i)
+                },
             );
+            let pk = picked.clone();
+            let group = widgets::song_actions(
+                &app,
+                list.upcast_ref(),
+                Rc::new(move || pk.borrow().clone()),
+                Rc::new(Vec::new),
+                &play,
+                &widgets::Edit::None,
+            );
+            list.insert_action_group("songs", Some(&group));
             *store.borrow_mut() = list
                 .model()
                 .and_downcast::<gtk::NoSelection>()

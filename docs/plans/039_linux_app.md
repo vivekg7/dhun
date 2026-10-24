@@ -818,11 +818,14 @@ alongside, for what Linux lacks.
   whole, so a song can be dragged with its neighbours in view. GTK's
   `scroll_to` cannot centre a row, so the list is scrolled by hand first:
   its rows are of one height.
+- **The playing-queue panel has the song menu and dragging** (020), as a
+  queue's page has: a right-click opens the queue's song menu (Stop After
+  This Song and Remove from Queue among it), and a song dragged onto
+  another takes its place.
 
-**Still missing against the phone:** the song menu and dragging in the
-playing-queue panel; renaming and removing from the queue picker; the
-artist link under the title on the bar; Play and Shuffle on Downloads,
-which also leaves out downloaded episodes.
+**Still missing against the phone:** renaming and removing from the
+queue picker; the artist link under the title on the bar; Play and Shuffle
+on Downloads, which also leaves out downloaded episodes.
 
 ## Open questions
 
