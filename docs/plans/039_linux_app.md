@@ -773,6 +773,8 @@ alongside, for what Linux lacks.
 - **Sign Out in the ☰ menu** signed out at once; it now asks, as Settings does.
 - **Play and Shuffle** were missing on a folder's page (every song under it)
   and on the user's own playlists.
+- **Search results had no song menu**; songs, episodes and lyrics hits now
+  have the phone's.
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on

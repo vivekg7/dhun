@@ -8,7 +8,7 @@ use crate::widgets::{self, count, cover, row};
 use adw::prelude::*;
 use dhun_core::catalog::SongRef;
 use dhun_core::search::{self, Query};
-use gtk::glib;
+use gtk::{gio, glib};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -161,15 +161,32 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
     found
 }
 
+/// A right-click on a song found opens the song menu for it, as in any song list.
+fn menu_on(nav: &Nav, r: &gtk::ListBoxRow, song: &SongRef, picked: &Rc<RefCell<Vec<SongRef>>>) {
+    let g = gtk::GestureClick::builder().button(3).build();
+    let (app, song, picked, row) = (nav.app.clone(), song.clone(), picked.clone(), r.downgrade());
+    g.connect_pressed(move |_, _, x, y| {
+        let Some(row) = row.upgrade() else { return };
+        *picked.borrow_mut() = vec![song.clone()];
+        let menu = gio::Menu::new();
+        let play = widgets::Play::List { name: String::new(), source: "search".into() };
+        widgets::song_menu(&app, &menu, std::slice::from_ref(&song), &play, &widgets::Edit::None);
+        widgets::popup(&menu, &row, x, y);
+    });
+    r.add_controller(g);
+}
+
 /// The results page. The window's search field fills it; Nav keeps it current.
 pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
+    let picked: Rc<RefCell<Vec<SongRef>>> = Rc::default();
     let list =
         gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
     let expanded: Rc<RefCell<HashSet<&'static str>>> = Rc::default();
     // What each row does, by its index in the list.
     let routes: Rc<RefCell<Vec<Option<Action>>>> = Rc::default();
     let fill: Rc<dyn Fn()> = {
-        let (nav, list, expanded, routes) = (Rc::downgrade(nav), list.downgrade(), expanded.clone(), routes.clone());
+        let (nav, list, expanded, routes, picked) =
+            (Rc::downgrade(nav), list.downgrade(), expanded.clone(), routes.clone(), picked.clone());
         Rc::new(move || {
             let (Some(nav), Some(list)) = (nav.upgrade(), list.upgrade()) else { return };
             list.remove_all();
@@ -206,7 +223,11 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                         }
                         (song, None) => cover(&nav.app, song.as_ref(), 36),
                     };
-                    list.append(&gtk::ListBoxRow::builder().child(&row(&image, &h.title, &h.detail)).build());
+                    let r = gtk::ListBoxRow::builder().child(&row(&image, &h.title, &h.detail)).build();
+                    if let Some(s) = &h.song {
+                        menu_on(&nav, &r, s, &picked);
+                    }
+                    list.append(&r);
                     routes.push(match h.route {
                         Some(r) => Some(Action::Open(r)),
                         None => Some(Action::Play(text.to_string(), found.clone(), i)),
@@ -246,8 +267,8 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let found_in: Rc<RefCell<(String, Rc<Vec<SongRef>>)>> = Rc::default();
     let pending: Rc<std::cell::Cell<Option<glib::SourceId>>> = Rc::default();
     let fill_lyrics: Rc<dyn Fn()> = {
-        let (nav, l, found_in, main) =
-            (Rc::downgrade(nav), lyrics_list.downgrade(), found_in.clone(), list.downgrade());
+        let (nav, l, found_in, main, picked) =
+            (Rc::downgrade(nav), lyrics_list.downgrade(), found_in.clone(), list.downgrade(), picked.clone());
         Rc::new(move || {
             let (Some(nav), Some(l)) = (nav.upgrade(), l.upgrade()) else { return };
             l.remove_all();
@@ -276,8 +297,8 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             };
             l.append(&heading("In lyrics"));
             l.append(&heading("Searching lyrics…"));
-            let (nav2, l2, found_in, pending2, main) =
-                (nav.clone(), l.downgrade(), found_in.clone(), pending.clone(), main.clone());
+            let (nav2, l2, found_in, pending2, main, picked) =
+                (nav.clone(), l.downgrade(), found_in.clone(), pending.clone(), main.clone(), picked.clone());
             pending.set(Some(glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
                 pending2.take();
                 glib::spawn_future_local(async move {
@@ -298,11 +319,11 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                     l.append(&heading("In lyrics"));
                     for (s, line) in &hits {
                         let detail = format!("“{line}” · {}", s.display_artist());
-                        l.append(
-                            &gtk::ListBoxRow::builder()
-                                .child(&row(&cover(&nav2.app, Some(s), 36), &s.title, &detail))
-                                .build(),
-                        );
+                        let r = gtk::ListBoxRow::builder()
+                            .child(&row(&cover(&nav2.app, Some(s), 36), &s.title, &detail))
+                            .build();
+                        menu_on(&nav2, &r, s, &picked);
+                        l.append(&r);
                     }
                     *found_in.borrow_mut() =
                         (format!("Lyrics: {text}"), Rc::new(hits.into_iter().map(|h| h.0).collect()));
@@ -329,5 +350,15 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let both = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     both.append(&list);
     both.append(&lyrics_list);
+    let p = picked.clone();
+    let group = widgets::song_actions(
+        &nav.app,
+        both.upcast_ref(),
+        Rc::new(move || p.borrow().clone()),
+        Rc::new(Vec::new),
+        &widgets::Play::List { name: String::new(), source: "search".into() },
+        &widgets::Edit::None,
+    );
+    both.insert_action_group("songs", Some(&group));
     widgets::scrolled(&both).upcast()
 }

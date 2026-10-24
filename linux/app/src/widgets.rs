@@ -449,15 +449,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
                     sel.select_item(pos, true);
                 }
                 song_menu(&app, &menu, &selected(), &play, &edit);
-                let pop = gtk::PopoverMenu::from_model(Some(&menu));
-                pop.set_parent(&cell);
-                pop.set_has_arrow(false);
-                pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-                pop.connect_closed(|p| {
-                    let p = p.clone();
-                    glib::idle_add_local_once(move || p.unparent());
-                });
-                pop.popup();
+                popup(&menu, &cell, x, y);
             });
             cell.add_controller(g);
         }
@@ -597,6 +589,34 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
             }
         }
     });
+    let group = song_actions(app, view.upcast_ref(), Rc::new(selected), Rc::new(rows), &play, &edit);
+    view.insert_action_group("songs", Some(&group));
+    view
+}
+
+/// A menu at the pointer, over `on`.
+pub fn popup(menu: &gio::Menu, on: &impl IsA<gtk::Widget>, x: f64, y: f64) {
+    let pop = gtk::PopoverMenu::from_model(Some(menu));
+    pop.set_parent(on);
+    pop.set_has_arrow(false);
+    pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+    pop.connect_closed(|p| {
+        let p = p.clone();
+        glib::idle_add_local_once(move || p.unparent());
+    });
+    pop.popup();
+}
+
+/// The song menu's actions, as `songs.*`, on the songs `selected` gives;
+/// `rows` are their places in the list, for taking them out of a playlist.
+pub fn song_actions(
+    app: &Rc<App>,
+    view: &gtk::Widget,
+    selected: Rc<dyn Fn() -> Vec<SongRef>>,
+    rows: Rc<dyn Fn() -> Vec<usize>>,
+    play: &Play,
+    edit: &Edit,
+) -> gio::SimpleActionGroup {
     let group = gio::SimpleActionGroup::new();
     let action = |name: &str, arg: Option<&glib::VariantTy>, f: SongAction| {
         let a = gio::SimpleAction::new(name, arg);
@@ -722,8 +742,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
             _ => {}
         }),
     );
-    view.insert_action_group("songs", Some(&group));
-    view
+    group
 }
 
 /// A row dragged onto another: the row's place, which `at` tells, travels as text.
@@ -754,7 +773,7 @@ pub fn drag_rows(
 /// The phone's song menu for the songs picked (plan 011): play next, add to
 /// the playing queue or another, add to a playlist, the two lists, played,
 /// download, take out of this list, go to the album or artist.
-fn song_menu(app: &App, menu: &gio::Menu, songs: &[SongRef], play: &Play, edit: &Edit) {
+pub fn song_menu(app: &App, menu: &gio::Menu, songs: &[SongRef], play: &Play, edit: &Edit) {
     menu.remove_all();
     let item = |m: &gio::Menu, label: &str, action: &str, target: Option<glib::Variant>| {
         let i = gio::MenuItem::new(Some(label), None);
