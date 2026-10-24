@@ -115,6 +115,9 @@ struct Covers {
 
 /// Decoded covers kept in memory, by their pixels: 128 covers at 256 px.
 const COVER_BYTES: usize = 32 << 20;
+/// Decoded thumbnails kept in memory, 64 MB: scrolling every album kept
+/// them all, 3,500 of them, 220 MB.
+const THUMBS_KEPT: usize = 1000;
 
 // A blip is over in seconds; the 15 minutes this once grew to on the phone
 // left it offline long after the network was back (plan 019).
@@ -443,8 +446,20 @@ impl App {
         }
         let data = self.db.lock().unwrap().thumb(&s.art).ok().flatten();
         let t = data.filter(|d| !d.is_empty()).and_then(|d| gdk::Texture::from_bytes(&glib::Bytes::from_owned(d)).ok());
-        self.thumbs.borrow_mut().insert(s.art.clone(), t.clone());
+        let mut thumbs = self.thumbs.borrow_mut();
+        // Decoded, 64 KB each: past the limit they are read again as shown.
+        if thumbs.len() >= THUMBS_KEPT {
+            thumbs.clear();
+        }
+        thumbs.insert(s.art.clone(), t.clone());
         t
+    }
+
+    /// The cover `cover` would give at once, from memory, if it is there.
+    pub fn cover_kept(&self, s: &SongRef, px: u32) -> Option<gdk::Texture> {
+        let s = self.catalog().art_of(s).clone();
+        let name = format!("{}.{}", covers::key(&s), covers::size_for(px));
+        self.covers.borrow().kept.get(&name).cloned()
     }
 
     /// A cover at least `px` across, given to `done` once it is here: at

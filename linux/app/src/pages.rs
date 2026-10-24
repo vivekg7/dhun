@@ -365,6 +365,24 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
     store.extend(albums.iter().map(|a| glib::BoxedAnyObject::new(a.clone())));
     let factory = gtk::SignalListItemFactory::new();
     const SIZE: i32 = 150;
+    // Full covers for the cells on screen, once the grid has stopped.
+    let shown: Rc<std::cell::OnceCell<glib::WeakRef<gtk::GridView>>> = Rc::default();
+    let settle = {
+        let (a, g, pending) = (app.clone(), shown.clone(), Rc::new(RefCell::new(None::<glib::SourceId>)));
+        Rc::new(move || {
+            if let Some(id) = pending.borrow_mut().take() {
+                id.remove();
+            }
+            let (a, g, p) = (a.clone(), g.clone(), pending.clone());
+            let id = glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
+                p.borrow_mut().take();
+                if let Some(grid) = g.get().and_then(|w| w.upgrade()) {
+                    grid_covers(&a, &grid, SIZE);
+                }
+            });
+            *pending.borrow_mut() = Some(id);
+        })
+    };
     let a = app.clone();
     factory.connect_setup(move |_, item| {
         let b = gtk::Box::builder()
@@ -408,7 +426,7 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
             true
         });
     });
-    let a = app.clone();
+    let (a, settled) = (app.clone(), settle.clone());
     factory.connect_bind(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let obj = item.item().and_downcast::<glib::BoxedAnyObject>().unwrap();
@@ -420,7 +438,24 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
         let still = Rc::new(move || {
             weak.upgrade().and_then(|i| i.item()).is_some_and(|o| o == obj.clone().upcast::<glib::Object>())
         });
-        widgets::set_cover(&a, &pic, album.songs.first(), SIZE, Some(still));
+        // The cover if it is in memory, else the thumbnail until `grid_covers`:
+        // GTK binds many more cells than are on screen, and gives each
+        // another album at every frame of a scroll. Asked for at each bind,
+        // their covers were read and decoded over and over: a whole core.
+        let song = album.songs.first().filter(|s| s.has_art);
+        let px = (SIZE * pic.scale_factor().max(1)) as u32;
+        match song.and_then(|s| Some((s, a.cover_kept(s, px)?))) {
+            Some((s, t)) => {
+                pic.set_paintable(Some(&t));
+                pic.set_widget_name(&format!("{}+", s.id));
+            }
+            None => {
+                // Size 0: the thumbnail alone, at any scale.
+                widgets::set_cover(&a, &pic, album.songs.first(), 0, Some(still));
+                pic.set_widget_name(&song.map(|s| s.id.to_string()).unwrap_or_default());
+                settled();
+            }
+        }
         let name = pic.parent().unwrap().next_sibling().unwrap();
         let title = name.first_child().and_downcast::<gtk::Label>().unwrap();
         title.set_label(&album.name);
@@ -434,7 +469,13 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
         }
     });
     let grid = gtk::GridView::new(Some(gtk::NoSelection::new(Some(store.clone()))), Some(factory));
-    grid.set_max_columns(12);
+    // GTK keeps 32 rows of cells at the most columns allowed, whatever it
+    // shows: at 12 that was 385 cells for the 12 on screen, 80 ms to make
+    // and drop at each visit. So no more than fit, and one to spare.
+    const COLUMN: i32 = SIZE + 16; // with its padding, in style.css
+    let fit = |w: i32| (w / COLUMN + 1).clamp(2, 12) as u32;
+    let width = nav.view.width();
+    grid.set_max_columns(if width > 0 { fit(width) } else { 6 });
     grid.set_single_click_activate(true);
     grid.add_css_class("album-grid");
     let n = nav.clone();
@@ -453,10 +494,55 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
             index.filter(&q).into_iter().map(|i| glib::BoxedAnyObject::new(index.items[i].clone())).collect();
         s.splice(0, s.n_items(), &shown);
     });
+    let _ = shown.set(grid.downgrade());
     let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     b.append(&entry);
     b.append(&widgets::scrolled(&grid));
+    if let Some(adj) = grid.vadjustment() {
+        adj.connect_value_changed(move |_| settle());
+    }
+    // Its width, as the window is resized; set after the layout that told it.
+    if let Some(adj) = grid.hadjustment() {
+        let g = grid.downgrade();
+        adj.connect_changed(move |adj| {
+            let want = fit(adj.page_size() as i32);
+            if let Some(g) = g.upgrade().filter(|g| adj.page_size() > 0.0 && g.max_columns() != want) {
+                glib::idle_add_local_once(move || g.set_max_columns(want));
+            }
+        });
+    }
     b.upcast()
+}
+
+/// Asks for the full cover of each album cell on screen that shows its
+/// thumbnail. A cell's picture is named after its album's first song, with
+/// "+" once it shows the cover.
+fn grid_covers(app: &Rc<App>, grid: &gtk::GridView, size: i32) {
+    let height = grid.height() as f32;
+    let mut next = grid.first_child();
+    while let Some(cell) = next {
+        next = cell.next_sibling();
+        let pic = cell
+            .first_child()
+            .and_then(|b| b.first_child())
+            .and_downcast::<gtk::Frame>()
+            .and_then(|f| f.child())
+            .and_downcast::<gtk::Picture>();
+        let Some(pic) = pic else { continue };
+        let name = pic.widget_name().to_string();
+        let Ok(id) = name.parse::<i64>() else { continue };
+        // GTK keeps the cells it has bound off screen unmapped.
+        let on_screen =
+            cell.is_mapped() && cell.compute_bounds(grid).is_some_and(|r| r.y() + r.height() > 0.0 && r.y() < height);
+        let Some(song) = app.catalog().by_id.get(&id).cloned().filter(|_| on_screen) else { continue };
+        let weak = pic.downgrade();
+        app.cover(&song, (size * pic.scale_factor().max(1)) as u32, move |t| {
+            if let Some(p) = weak.upgrade().filter(|p| p.widget_name() == name.as_str()) {
+                p.set_paintable(Some(t));
+                p.set_widget_name(&format!("{name}+"));
+            }
+        });
+    }
 }
 
 /// An album cell's "downloaded" mark, for the album bound to it now.

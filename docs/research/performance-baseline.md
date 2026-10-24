@@ -317,8 +317,8 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   `Nav` now pops the pushed pages, without animation, before it
   replaces the stack. Opening the grid and pushing an album for a minute
   went from 305→430 MB to 303→316 MB, and the 240 pages from 1,228 MB
-  to 511 MB; what is left is the 128 px thumbnails, which are kept
-  without a limit, about 64 KB each, and the 32 MB of covers.
+  to 511 MB; what is left is the 128 px thumbnails, 64 KB each decoded
+  and then kept without a limit, now to 1,000, and the 32 MB of covers.
 - **"Go to Album" and "Go to Artist" took 370–430 ms of the main
   thread, fixed.** Most of it went on the albums or artists page built
   again under the pushed one: 20–40 ms to build, 60–80 ms to put in the
@@ -327,10 +327,20 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   builds it only when Back shows it. From Albums an album opens in
   25–40 ms, from another section in 70–150 ms; an artist with many
   songs still takes up to 900 ms for its own page. 240 pages at four a
-  second now take a third of the CPU and end at 459 MB. Opening Albums
-  from the sidebar still takes over 250 ms.
-- **Slow scrolling of the albums grid holds a core** and reads 22 MB/s,
-  more than a faster scroll does; not yet traced.
+  second now take a third of the CPU and end at 459 MB.
+- **The albums grid, slow to scroll and to open, fixed.** GTK keeps
+  32 rows of cells at the grid's most columns, 385 at 12 for the 12 on
+  screen, and while scrolling gives each cell another album at every
+  frame, some 1,200 binds a second. Each bind asked for its album's
+  256 px cover; with 128 kept in memory, nearly every one was read from
+  disk and decoded again: 22 MB/s and a whole core. A cell now shows the
+  cover only from memory, else the thumbnail, and the cells on screen
+  ask for theirs 150 ms after the grid stops; the most columns is what
+  fits, and one. A scroll at 1,000 px/s went from 110 % of a core to
+  42 % on average, with almost nothing read. A fast one went from 100 %
+  to 55 %, and its memory from 524 to 259 MB. Opening the grid makes 161 cells, not 385, and asks
+  for 12 covers, not 384: 200 visits took 40 % of a core, not 80 %,
+  reading 2 MB/s, not 16.5. Showing the grid takes 238 MB, not 306.
 - Scrolling the artists list raises the GPU's memory to 268 MB.
 - The scroll runs need the display on: with it asleep, the compositor
   draws no frames and the page did not move.
