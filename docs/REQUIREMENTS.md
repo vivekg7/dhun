@@ -461,7 +461,7 @@ plan for an Android feature also says what the Mac does —
 
 **Linux** — everything the Android app has, offline included, as far as
 Linux allows; a feature the Mac lacks is built here if Linux can do it
-(owner, 2026-10-23). A sidebar window that narrows to the phone's tabs, a
+(owner, 2026-10-23). A sidebar window that narrows to one pane and the phone's mini bar, a
 tray icon, a mini window, the desktop's media controls (MPRIS), and Open
 With from the file manager. No local library: it plays NAS songs. Closing
 the window keeps the music playing. Voice search and the assistant are

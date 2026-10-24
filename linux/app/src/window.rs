@@ -30,7 +30,12 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
         .sidebar(&side)
         .build();
     let main = adw::ToolbarView::builder().content(&panel).build();
-    main.add_bottom_bar(&crate::nowplaying::bar(app, &panel, &pages));
+    // A tighter Now playing bar below the first width; one pane at a time,
+    // as on a phone, below the second. Only the last that matches applies.
+    let medium = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 960sp").unwrap());
+    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 800sp").unwrap());
+    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    main.add_bottom_bar(&crate::nowplaying::bar(app, &panel, &pages, &medium, &narrow));
     stack.add_named(&main, Some("main"));
     stack.add_named(&sign_in(app), Some("sign-in"));
     let show = {
@@ -54,9 +59,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
         }
     }));
     window.set_content(Some(&toasts));
-    // One pane at a time below this width, as on a phone.
-    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 640sp").unwrap());
-    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    window.add_breakpoint(medium);
     window.add_breakpoint(narrow);
     // Ctrl+F searches.
     let find = gio::SimpleAction::new("find", None);

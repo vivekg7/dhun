@@ -11,19 +11,33 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// The bar and the offers over it.
-pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> gtk::Box {
+/// The bar and the offers over it. Below `medium`'s width the times go and
+/// the song's text narrows; below `narrow`'s it is the phone's mini bar: the
+/// song, Previous, Play, Next and the queue.
+pub fn bar(
+    app: &Rc<App>,
+    panel: &adw::OverlaySplitView,
+    pages: &gtk::Stack,
+    medium: &adw::Breakpoint,
+    narrow: &adw::Breakpoint,
+) -> gtk::Box {
     let outer = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     outer.append(&handoff(app));
     outer.append(&resume_offer(app));
     // Close together: a long file's bar holds thirteen buttons.
     let b = gtk::Box::builder().spacing(4).margin_start(12).margin_end(12).margin_top(8).margin_bottom(8).build();
     let art = adw::Bin::new();
-    let title =
-        gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).css_classes(["heading"]).build();
+    // A long title asks for no more than this, or it takes the seek bar's room.
+    let title = gtk::Label::builder()
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .max_width_chars(32)
+        .css_classes(["heading"])
+        .build();
     let artist = gtk::Label::builder()
         .xalign(0.0)
         .ellipsize(gtk::pango::EllipsizeMode::End)
+        .max_width_chars(40)
         .css_classes(["caption", "dim-label"])
         .build();
     let text = gtk::Box::builder()
@@ -52,7 +66,8 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> 
         .build();
     let next = button("media-skip-forward-symbolic", "Next (Ctrl+→)");
     let pos = gtk::Label::builder().css_classes(["caption", "numeric", "dim-label"]).width_chars(7).xalign(1.0).build();
-    let scale = gtk::Scale::builder().hexpand(true).draw_value(false).valign(gtk::Align::Center).build();
+    let scale =
+        gtk::Scale::builder().hexpand(true).width_request(120).draw_value(false).valign(gtk::Align::Center).build();
     scale.set_range(0.0, 1.0);
     let dur = gtk::Label::builder().css_classes(["caption", "numeric", "dim-label"]).width_chars(7).xalign(0.0).build();
     let shuffle = gtk::ToggleButton::builder()
@@ -98,23 +113,32 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> 
     let on = button("media-seek-forward-symbolic", "Forward");
     // A book is heard in order: in Shuffle's place, its chapters and notes (plan 031).
     let details = crate::controls::details_button(app);
+    // What the phone's mini bar leaves out, hidden in a narrow window.
+    let (left, right) = (gtk::Box::builder().spacing(4).build(), gtk::Box::builder().spacing(4).build());
+    left.append(&details);
+    left.append(&shuffle);
     for w in [
         art.upcast_ref::<gtk::Widget>(),
         text.upcast_ref(),
-        details.upcast_ref(),
-        shuffle.upcast_ref(),
+        left.upcast_ref(),
         prev.upcast_ref(),
         back.upcast_ref(),
         play.upcast_ref(),
         on.upcast_ref(),
         next.upcast_ref(),
-        repeat.upcast_ref(),
+        right.upcast_ref(),
     ] {
         b.append(w);
     }
-    for w in [pos.upcast_ref::<gtk::Widget>(), scale.upcast_ref(), dur.upcast_ref()] {
-        b.append(w);
+    for w in [repeat.upcast_ref::<gtk::Widget>(), pos.upcast_ref(), scale.upcast_ref(), dur.upcast_ref()] {
+        right.append(w);
     }
+    medium.add_setter(&pos, "visible", Some(&false.to_value()));
+    medium.add_setter(&dur, "visible", Some(&false.to_value()));
+    medium.add_setter(&text, "width-request", Some(&140.to_value()));
+    narrow.add_setter(&left, "visible", Some(&false.to_value()));
+    narrow.add_setter(&right, "visible", Some(&false.to_value()));
+    narrow.add_setter(&text, "width-request", Some(&100.to_value()));
     // Favorites and Listen Later for the song playing, as the phone's Now playing has.
     let fav = button("non-starred-symbolic", "Add to Favorites");
     let later = button("alarm-symbolic", "Listen Later");
@@ -128,10 +152,10 @@ pub fn bar(app: &Rc<App>, panel: &adw::OverlaySplitView, pages: &gtk::Stack) -> 
         crate::controls::speed_button(app).upcast_ref(),
         crate::controls::sleep_button(app).upcast_ref(),
         lyrics.upcast_ref(),
-        queue.upcast_ref(),
     ] {
-        b.append(w);
+        right.append(w);
     }
+    b.append(&queue);
     // A chapter back or on, from the right-click menu of Previous and Next:
     // a click goes by file, and a chapter is asked for by name, never by a
     // press that could be miscounted (plan 009).

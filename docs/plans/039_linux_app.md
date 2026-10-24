@@ -35,26 +35,26 @@ window, a player fed by our own byte source, media keys, Open With. Where
 this plan is silent, Linux does what the phone does, for the reason the
 phone's plan gives.
 
-| Android                                                                               | Linux                                                                                                                              |
-| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Room tables, `Store` (local write + outbox op), `Sync`                                | The same tables in SQLite, ported unchanged in behaviour                                                                           |
-| `Playback`: 20 queues, listens, resume points, hand-off                               | Ported; GStreamer underneath (below)                                                                                               |
-| `SongSource`: download → cache → growing `.part` → stream                             | The same order                                                                                                                     |
-| Downloads, the song cache with prefetch, covers                                       | The same, under the app's data folder                                                                                              |
-| Sleep timer, speed and pitch, lyrics, bookmarks (033)                                 | The same                                                                                                                           |
-| Podcasts and audiobooks ([031](031_podcasts_and_audiobooks.md))                       | The same                                                                                                                           |
-| Tabs, mini bar or floating pill                                                       | A sidebar window with a Now playing bar, as the Mac; it narrows to the phone's tabs in a small window. A small mini window (below) |
-| Media session, notification, headset controls                                         | **MPRIS** on D-Bus: media keys, the panel's media controls (COSMIC, GNOME, KDE), Bluetooth headset buttons                         |
-| Pause when headphones are unplugged                                                   | Pause when the output device goes away                                                                                             |
-| `PlayFileActivity` (open from other apps)                                             | **Open With** from the file manager, in a small window of its own                                                                  |
-| Family members (admin only, [023](023_users_on_android.md))                           | The same, under Settings                                                                                                           |
-| Light, dark, **black** and **by-time** themes; 8 palettes                             | All four, and the eight palettes as the accent. The Mac left out Black and by-time; Linux can do both cheaply, so it has them      |
-| Wi-Fi only for downloads; prefetch 2 on mobile, 10 on Wi-Fi                           | "Metered network" (GIO's `network-metered`) in place of mobile data, as the Mac's "expensive network"                              |
-| App shortcuts: Search, Resume, Shuffle all ([038](038_voice_search_and_assistant.md)) | The same three, as `Actions` in the `.desktop` file (right-click on the launcher icon)                                             |
-| Voice search, "play it on Dhun" (038)                                                 | **Left out.** Linux has no system speech recogniser and no assistant to hand a request to                                          |
-| The headset button with no player running (038)                                       | **Left out.** MPRIS exists only while the app runs; nothing on Linux remembers a player to start                                   |
-| Phone-local songs ([025](025_phone_local_songs.md))                                   | **None** (owner, 2026-10-23)                                                                                                       |
-| The fast scroller ([035](035_fast_scroller.md))                                       | **Left out**, as on the Mac and the web: a desktop scrollbar can already be dragged                                                |
+| Android                                                                               | Linux                                                                                                                                               |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Room tables, `Store` (local write + outbox op), `Sync`                                | The same tables in SQLite, ported unchanged in behaviour                                                                                            |
+| `Playback`: 20 queues, listens, resume points, hand-off                               | Ported; GStreamer underneath (below)                                                                                                                |
+| `SongSource`: download → cache → growing `.part` → stream                             | The same order                                                                                                                                      |
+| Downloads, the song cache with prefetch, covers                                       | The same, under the app's data folder                                                                                                               |
+| Sleep timer, speed and pitch, lyrics, bookmarks (033)                                 | The same                                                                                                                                            |
+| Podcasts and audiobooks ([031](031_podcasts_and_audiobooks.md))                       | The same                                                                                                                                            |
+| Tabs, mini bar or floating pill                                                       | A sidebar window with a Now playing bar, as the Mac; a small window shows one pane at a time over the phone's mini bar. A small mini window (below) |
+| Media session, notification, headset controls                                         | **MPRIS** on D-Bus: media keys, the panel's media controls (COSMIC, GNOME, KDE), Bluetooth headset buttons                                          |
+| Pause when headphones are unplugged                                                   | Pause when the output device goes away                                                                                                              |
+| `PlayFileActivity` (open from other apps)                                             | **Open With** from the file manager, in a small window of its own                                                                                   |
+| Family members (admin only, [023](023_users_on_android.md))                           | The same, under Settings                                                                                                                            |
+| Light, dark, **black** and **by-time** themes; 8 palettes                             | All four, and the eight palettes as the accent. The Mac left out Black and by-time; Linux can do both cheaply, so it has them                       |
+| Wi-Fi only for downloads; prefetch 2 on mobile, 10 on Wi-Fi                           | "Metered network" (GIO's `network-metered`) in place of mobile data, as the Mac's "expensive network"                                               |
+| App shortcuts: Search, Resume, Shuffle all ([038](038_voice_search_and_assistant.md)) | The same three, as `Actions` in the `.desktop` file (right-click on the launcher icon)                                                              |
+| Voice search, "play it on Dhun" (038)                                                 | **Left out.** Linux has no system speech recogniser and no assistant to hand a request to                                                           |
+| The headset button with no player running (038)                                       | **Left out.** MPRIS exists only while the app runs; nothing on Linux remembers a player to start                                                    |
+| Phone-local songs ([025](025_phone_local_songs.md))                                   | **None** (owner, 2026-10-23)                                                                                                                        |
+| The fast scroller ([035](035_fast_scroller.md))                                       | **Left out**, as on the Mac and the web: a desktop scrollbar can already be dragged                                                                 |
 
 **Parity is a standing commitment**, as 024 made it for the Mac: from now on
 a plan for an Android feature also says what Linux does, or why Linux leaves
@@ -234,8 +234,8 @@ override:
   audiobooks; Favorites, Listen Later and the automatic views (010); the
   user's playlists; and Downloads. A Now playing bar along the bottom, the
   hand-off bar above it, and a panel on the right for the playing queue or
-  the lyrics. Below a width breakpoint the window becomes the phone's tabs
-  with its mini bar, so a narrow window stays usable. Keyboard: Space plays
+  the lyrics. Below a width breakpoint the window shows one pane at a time,
+  over the phone's mini bar, so a narrow window stays usable. Keyboard: Space plays
   or pauses, Ctrl+← and Ctrl+→ skip, Ctrl+F searches, Ctrl+Q quits.
 - **Closing the window does not stop the music** (owner, 2026-10-23). The
   window is hidden rather than closed, which keeps the app running, and a
@@ -756,6 +756,11 @@ alongside, for what Linux lacks.
   stylesheet paints with CSS variables (`--accent-bg-color`), so the
   `@define-color` overrides changed nothing on screen and the system's accent
   showed instead. They now set the variables.
+- **The Now playing bar did not fit.** Below about 1,050 px the seek bar
+  shrank to a sliver, and below 920 px the window was cut off. Long titles
+  now ask for less room, and two breakpoints keep everything inside: below
+  960sp the times go; below 800sp the window shows one pane and the bar
+  becomes the phone's mini bar (the song, Previous, Play, Next, the queue).
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on
