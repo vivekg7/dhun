@@ -1018,7 +1018,24 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
     top.append(&line);
     top.append(&state);
     top.append(&bar);
+    top.append(&gtk::Box::builder().spacing(8).margin_top(6).name("buttons").build());
     b.append(&top);
+    let c = app.catalog();
+    let downloaded = app.downloaded.borrow().clone();
+    // Apart from the songs, so playing every download plays music only (plan 031).
+    let mut songs = c.songs_of(&downloaded.keys().copied().collect::<Vec<_>>());
+    songs.retain(|s| !s.spoken());
+    let songs = catalog::natural_sorted(songs, |s| s.title.as_str());
+    // A book's files and a show's episodes, by book and show, in their order.
+    let spoken: Vec<SongRef> = c
+        .books
+        .iter()
+        .chain(&c.shows)
+        .flat_map(|s| s.items.iter())
+        .filter(|s| downloaded.contains_key(&s.id))
+        .cloned()
+        .collect();
+    widgets::play_buttons(app, &top, "Downloads", "downloads", &songs);
     let show = {
         let (app, line, state, bar) = (app.clone(), line.downgrade(), state.downgrade(), bar.downgrade());
         move || {
@@ -1068,7 +1085,6 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
         b.append(&s);
         return b.upcast();
     }
-    let c = app.catalog();
     let a = app.clone();
     let list = widgets::list(
         &pins,
@@ -1112,30 +1128,23 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
         |_| {},
     );
     let scroll = widgets::scrolled(&list);
-    let have: Vec<i64> = app.downloaded.borrow().keys().copied().collect();
-    let mut songs = app.catalog().songs_of(&have);
-    // Apart from the songs, so playing every download plays music only (plan 031).
-    songs.retain(|s| !s.spoken());
-    if !songs.is_empty() {
+    let bounded = |scroll: &gtk::ScrolledWindow| {
         scroll.set_vexpand(false);
         scroll.set_min_content_height(120);
         scroll.set_max_content_height(220);
         scroll.set_propagate_natural_height(true);
+    };
+    if !songs.is_empty() || !spoken.is_empty() {
+        bounded(&scroll);
     }
     b.append(&scroll);
-    if !songs.is_empty() {
-        let songs = catalog::natural_sorted(songs, |s| s.title.as_str());
+    let heading = |text: String| {
+        gtk::Label::builder().label(text).xalign(0.0).margin_start(18).margin_top(12).css_classes(["heading"]).build()
+    };
+    let any_songs = !songs.is_empty();
+    if any_songs {
         b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        let what = format!("Songs on this computer · {}", summary(&songs));
-        b.append(
-            &gtk::Label::builder()
-                .label(what)
-                .xalign(0.0)
-                .margin_start(18)
-                .margin_top(12)
-                .css_classes(["heading"])
-                .build(),
-        );
+        b.append(&heading(format!("Songs on this computer · {}", summary(&songs))));
         let play = Play::List { name: "Downloads".into(), source: "downloads".into() };
         b.append(&songs_page(
             app,
@@ -1145,6 +1154,19 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
             play,
             Edit::None,
         ));
+    }
+    // Each plays its own show or book from it, as on their pages.
+    if !spoken.is_empty() {
+        b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        let (n, ms) = (spoken.len(), spoken.iter().map(|s| s.duration_ms).sum());
+        let files = if n == 1 { "1 file".to_string() } else { format!("{n} files") };
+        b.append(&heading(format!("Podcasts and audiobooks · {files} · {}", widgets::clock(ms))));
+        let cols = Columns { track: false, album: true, ..Default::default() };
+        let list = widgets::scrolled(&widgets::song_list(app, &spoken, cols, Play::Spoken, Edit::None));
+        if any_songs {
+            bounded(&list);
+        }
+        b.append(&list);
     }
     b.upcast()
 }

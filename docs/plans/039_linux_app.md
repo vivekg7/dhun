@@ -832,9 +832,10 @@ alongside, for what Linux lacks.
   line's colour and are underlined under the pointer. The line is set
   again only when its text changes: set four times a second with the
   position, a link could lose a click between the press and the release.
-
-**Still missing against the phone:** Play and Shuffle on Downloads,
-which also leaves out downloaded episodes.
+- **Downloads has Play and Shuffle**, for its songs, music only (031), and
+  lists the downloaded episodes and books' files apart, under "Podcasts and
+  audiobooks", by book and show in their order. One of them plays its own
+  show or book from it, as on their pages.
 
 ## Open questions
 

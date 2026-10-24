@@ -447,6 +447,8 @@ pub enum Play {
     Queue(String),
     /// A book's files or a show's episodes, by the shelf's id (plan 031).
     Shelf(String),
+    /// Files of several books and shows: each plays its own, from it.
+    Spoken,
 }
 
 /// What a list's menu can take out of it, and whether its rows are dragged
@@ -640,6 +642,11 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
             Play::Queue(id) => pb.play_queue_at(id, l[pos as usize].id),
             Play::Shelf(id) => {
                 if let Some(shelf) = a.catalog().shelves.get(id).cloned() {
+                    crate::pages::play_shelf(&a, &shelf, Some(&l[pos as usize]));
+                }
+            }
+            Play::Spoken => {
+                if let Some(shelf) = a.catalog().shelf_of(&l[pos as usize]).cloned() {
                     crate::pages::play_shelf(&a, &shelf, Some(&l[pos as usize]));
                 }
             }
