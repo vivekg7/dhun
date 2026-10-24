@@ -770,6 +770,7 @@ alongside, for what Linux lacks.
   failure, while playing, moves on, as on the phone.
 - **Sync on waking from sleep** (logind's `PrepareForSleep`), which the
   Decision promised, was missing; the Flatpak now talks to `login1`.
+- **Sign Out in the ☰ menu** signed out at once; it now asks, as Settings does.
 
 **Still missing against the phone:** recent searches and the empty field's
 help; the choice to keep downloads on signing out; the "downloaded" mark on
