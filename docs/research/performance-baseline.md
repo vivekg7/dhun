@@ -319,10 +319,16 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   went from 305→430 MB to 303→316 MB, and the 240 pages from 1,228 MB
   to 511 MB; what is left is the 128 px thumbnails, which are kept
   without a limit, about 64 KB each, and the 32 MB of covers.
-- **"Go to Album" and "Go to Artist" cost about 450 ms of CPU each**,
-  most of it building the albums or artists page again under the pushed
-  one; opening Albums alone takes over 250 ms. Both are on the main
-  thread.
+- **"Go to Album" and "Go to Artist" took 370–430 ms of the main
+  thread, fixed.** Most of it went on the albums or artists page built
+  again under the pushed one: 20–40 ms to build, 60–80 ms to put in the
+  stack, and the rest to lay out a grid nobody saw. `Nav::open_at` now
+  keeps the section already at the bottom of the stack, and otherwise
+  builds it only when Back shows it. From Albums an album opens in
+  25–40 ms, from another section in 70–150 ms; an artist with many
+  songs still takes up to 900 ms for its own page. 240 pages at four a
+  second now take a third of the CPU and end at 459 MB. Opening Albums
+  from the sidebar still takes over 250 ms.
 - **Slow scrolling of the albums grid holds a core** and reads 22 MB/s,
   more than a faster scroll does; not yet traced.
 - Scrolling the artists list raises the GPU's memory to 268 MB.

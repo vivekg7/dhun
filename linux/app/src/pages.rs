@@ -14,7 +14,7 @@ use dhun_core::spoken::Heard;
 use dhun_core::store;
 use dhun_core::synced;
 use gtk::{gio, glib};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -61,6 +61,9 @@ pub struct Nav {
     /// What the queue page showing was built with, its name and songs: the
     /// queues change at each song as it plays, which leaves it as it was.
     queue_shown: RefCell<Option<(String, Vec<i64>)>>,
+    /// While the stack is emptied to its bottom, which shows each page for
+    /// a moment: a section built on showing waits for a real look.
+    popping: Cell<bool>,
 }
 
 impl Nav {
@@ -73,6 +76,7 @@ impl Nav {
             search_fill: RefCell::new(None),
             pins_shown: RefCell::default(),
             queue_shown: RefCell::default(),
+            popping: Cell::new(false),
         });
         let weak = Rc::downgrade(&nav);
         nav.search.connect_search_changed(move |e| {
@@ -144,6 +148,44 @@ impl Nav {
         self.view.push(&self.build(&r));
     }
 
+    /// A page on its section, as Go to Album and Go to Artist open it. The
+    /// section already at the bottom of the stack is kept, where it was
+    /// scrolled. Otherwise it is built only once it shows: put in the stack
+    /// and laid out under the page, the albums grid cost 350 ms.
+    pub fn open_at(self: &Rc<Self>, section: Route, page: Route) {
+        if self.current() == Some(section.clone()) {
+            self.pop_all();
+            // It slides over the section only once the section is built.
+            let built = self.view.visible_page().is_some_and(|p| p.child().is_some());
+            self.view.set_animate_transitions(built);
+            self.push(page);
+            self.view.set_animate_transitions(true);
+            return;
+        }
+        let title = match section {
+            Route::Artists => "Artists",
+            Route::Books => "Audiobooks",
+            Route::Shows => "Podcasts",
+            _ => "Albums",
+        };
+        let lazy = adw::NavigationPage::builder().title(title).build();
+        *self.routes.borrow_mut() = vec![section.clone()];
+        self.replace(std::slice::from_ref(&lazy));
+        self.app.changed(Change::Section);
+        self.view.set_animate_transitions(false);
+        self.push(page);
+        self.view.set_animate_transitions(true);
+        // Only now: it showed for a moment on its own, before the page.
+        let weak = Rc::downgrade(self);
+        lazy.connect_showing(move |p| {
+            let Some(n) = weak.upgrade().filter(|n| p.child().is_none() && !n.popping.get()) else { return };
+            let built = n.build(&section);
+            let child = built.child();
+            built.set_child(None::<&gtk::Widget>);
+            p.set_child(child.as_ref());
+        });
+    }
+
     /// The search page while the field is empty: the recent searches (plan 029).
     pub fn show_recent(self: &Rc<Self>) {
         if self.search.text().is_empty() && self.current() != Some(Route::Search) {
@@ -197,11 +239,18 @@ impl Nav {
     /// at once. Their pops leave the routes as they were.
     fn replace(&self, pages: &[adw::NavigationPage]) {
         let routes = self.routes.borrow().clone();
-        self.view.set_animate_transitions(false);
-        while self.view.pop() {}
-        self.view.set_animate_transitions(true);
+        self.pop_all();
         *self.routes.borrow_mut() = routes;
         self.view.replace(pages);
+    }
+
+    /// Back to the bottom of the stack at once.
+    fn pop_all(&self) {
+        self.view.set_animate_transitions(false);
+        self.popping.set(true);
+        while self.view.pop() {}
+        self.popping.set(false);
+        self.view.set_animate_transitions(true);
     }
 
     fn build(self: &Rc<Self>, r: &Route) -> adw::NavigationPage {

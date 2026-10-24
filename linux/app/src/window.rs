@@ -90,14 +90,14 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
             let Some(song) = v.and_then(|v| v.get::<i64>()).and_then(|id| c.by_id.get(&id).cloned()) else { return };
             n.search.set_text("");
             if artist {
-                n.open(Route::Artists);
-                n.push(Route::Artist(song.artists.first().cloned().unwrap_or_else(|| song.display_artist().into())));
+                n.open_at(
+                    Route::Artists,
+                    Route::Artist(song.artists.first().cloned().unwrap_or_else(|| song.display_artist().into())),
+                );
             } else if let Some(shelf) = c.shelf_of(&song) {
-                n.open(if shelf.is_book() { Route::Books } else { Route::Shows });
-                n.push(Route::Shelf(shelf.id.clone()));
+                n.open_at(if shelf.is_book() { Route::Books } else { Route::Shows }, Route::Shelf(shelf.id.clone()));
             } else if let Some(album) = c.album_of.get(&song.id) {
-                n.open(Route::Albums);
-                n.push(Route::Album(album.id.clone()));
+                n.open_at(Route::Albums, Route::Album(album.id.clone()));
             }
             s.set_show_content(true);
         });
@@ -109,8 +109,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     open.connect_activate(move |_, v| {
         let Some(name) = v.and_then(|v| v.get::<String>()).filter(|n| !n.is_empty()) else { return };
         n.search.set_text("");
-        n.open(Route::Artists);
-        n.push(Route::Artist(name));
+        n.open_at(Route::Artists, Route::Artist(name));
         s.set_show_content(true);
     });
     window.add_action(&open);
