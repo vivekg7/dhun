@@ -30,6 +30,8 @@ struct Hit {
 enum Action {
     Open(Route),
     Play(String, Rc<Vec<SongRef>>, usize),
+    /// A recent search, into the field again.
+    Search(String),
 }
 
 struct Found {
@@ -176,6 +178,69 @@ fn menu_on(nav: &Nav, r: &gtk::ListBoxRow, song: &SongRef, picked: &Rc<RefCell<V
     r.add_controller(g);
 }
 
+/// The last searches, each a click away; or, with none yet, what the field searches (plan 029).
+fn recent(nav: &Rc<Nav>, list: &gtk::ListBox, routes: &mut Vec<Option<Action>>) {
+    let searches = nav.app.prefs.get().recent_searches;
+    if searches.is_empty() {
+        let songs = nav.app.catalog().songs.len();
+        if songs > 0 {
+            let help = adw::StatusPage::builder()
+                .title("Search")
+                .icon_name("edit-find-symbolic")
+                .description(format!(
+                    "Search {songs} songs by title, artist, album, composer, genre or lyrics.\n\
+                    Narrow a word with artist:, album:, title:, genre:, year: or lyrics:"
+                ))
+                .build();
+            list.append(&help);
+            routes.push(None);
+        }
+        return;
+    }
+    let head = gtk::Box::builder().margin_top(12).margin_start(6).build();
+    head.append(
+        &gtk::Label::builder().label("Recent searches").xalign(0.0).hexpand(true).css_classes(["heading"]).build(),
+    );
+    let clear = gtk::Button::builder().label("Clear").css_classes(["flat"]).build();
+    let n = Rc::downgrade(nav);
+    clear.connect_clicked(move |_| {
+        if let Some(n) = n.upgrade() {
+            n.app.prefs.forget_search(None);
+            n.refill_search();
+        }
+    });
+    head.append(&clear);
+    list.append(&gtk::ListBoxRow::builder().child(&head).activatable(false).selectable(false).build());
+    routes.push(None);
+    for q in searches {
+        let b = gtk::Box::builder().spacing(12).margin_start(6).build();
+        b.append(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
+        b.append(
+            &gtk::Label::builder()
+                .label(&q)
+                .xalign(0.0)
+                .hexpand(true)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build(),
+        );
+        let forget = gtk::Button::builder()
+            .icon_name("window-close-symbolic")
+            .tooltip_text("Forget")
+            .css_classes(["flat", "circular"])
+            .build();
+        let (n, q2) = (Rc::downgrade(nav), q.clone());
+        forget.connect_clicked(move |_| {
+            if let Some(n) = n.upgrade() {
+                n.app.prefs.forget_search(Some(&q2));
+                n.refill_search();
+            }
+        });
+        b.append(&forget);
+        list.append(&gtk::ListBoxRow::builder().child(&b).build());
+        routes.push(Some(Action::Search(q)));
+    }
+}
+
 /// The results page. The window's search field fills it; Nav keeps it current.
 pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let picked: Rc<RefCell<Vec<SongRef>>> = Rc::default();
@@ -193,6 +258,9 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             let mut routes = routes.borrow_mut();
             routes.clear();
             let text = nav.search.text();
+            if text.trim().is_empty() {
+                return recent(&nav, &list, &mut routes);
+            }
             let found = find(&nav, &text);
             // Words long enough to search lyrics wait for that answer before saying so.
             if found.is_empty() && !text.is_empty() && Query::new(&text).lyrics.chars().count() < 3 {
@@ -254,9 +322,14 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     list.connect_row_activated(move |_, r| {
         let action = routes.borrow().get(r.index() as usize).cloned().flatten();
         let Some(n) = n.upgrade() else { return };
+        // Kept once something it found is picked, so half-typed words are not.
+        if matches!(action, Some(Action::Open(_) | Action::Play(..))) {
+            n.app.prefs.keep_search(&n.search.text());
+        }
         match action {
             Some(Action::Open(route)) => n.push(route),
             Some(Action::Play(name, songs, i)) => n.app.playback().play_list(&name, "search", &songs, i),
+            Some(Action::Search(q)) => n.search.set_text(&q),
             None => {}
         }
     });
@@ -337,6 +410,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
         let (name, songs) = found_in.borrow().clone();
         // The heading is the first row.
         if let Some(i) = (r.index() as usize).checked_sub(1).filter(|&i| i < songs.len()) {
+            n.app.prefs.keep_search(&n.search.text());
             n.app.playback().play_list(&name, "search", &songs, i);
         }
     });

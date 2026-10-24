@@ -91,6 +91,16 @@ impl Nav {
                 }
             }
         });
+        // A click into the empty field shows the recent searches, as Ctrl+F does.
+        let click = gtk::GestureClick::new();
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(&nav);
+        click.connect_pressed(move |_, _, _, _| {
+            if let Some(n) = weak.upgrade() {
+                n.show_recent();
+            }
+        });
+        nav.search.add_controller(click);
         let weak = Rc::downgrade(&nav);
         nav.view.connect_popped(move |_, _| {
             if let Some(n) = weak.upgrade() {
@@ -132,6 +142,13 @@ impl Nav {
     pub fn push(self: &Rc<Self>, r: Route) {
         self.routes.borrow_mut().push(r.clone());
         self.view.push(&self.build(&r));
+    }
+
+    /// The search page while the field is empty: the recent searches (plan 029).
+    pub fn show_recent(self: &Rc<Self>) {
+        if self.search.text().is_empty() && self.current() != Some(Route::Search) {
+            self.open(Route::Search);
+        }
     }
 
     pub fn set_search_fill(&self, f: Rc<dyn Fn()>) {

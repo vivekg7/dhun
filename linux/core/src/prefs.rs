@@ -44,6 +44,8 @@ pub struct Values {
     pub theme: String,
     /// One of the eight accents, Dull Orange first.
     pub palette: usize,
+    /// The search page's last searches, newest first (plan 029): this computer's, never synced.
+    pub recent_searches: Vec<String>,
 }
 
 impl Values {
@@ -58,6 +60,8 @@ impl Values {
         crate::tempo::Tempo { speed, semitones: self.semitones }
     }
 }
+
+const RECENT_SEARCHES: usize = 10;
 
 pub struct Prefs {
     file: PathBuf,
@@ -103,9 +107,29 @@ impl Prefs {
                 sleep_finish_song: v.sleep_finish_song,
                 theme: std::mem::take(&mut v.theme),
                 palette: v.palette,
+                recent_searches: std::mem::take(&mut v.recent_searches),
                 ..Default::default()
             }
         });
+    }
+
+    /// A search something was picked from, first, once; half-typed words are never kept.
+    pub fn keep_search(&self, query: &str) {
+        let q = query.trim();
+        if q.is_empty() {
+            return;
+        }
+        let lower = q.to_lowercase();
+        self.update(|v| {
+            v.recent_searches.retain(|s| s.to_lowercase() != lower);
+            v.recent_searches.insert(0, q.to_string());
+            v.recent_searches.truncate(RECENT_SEARCHES);
+        });
+    }
+
+    /// Forgets one search, or every one.
+    pub fn forget_search(&self, query: Option<&str>) {
+        self.update(|v| v.recent_searches.retain(|s| query.is_some_and(|q| q != s)));
     }
 
     /// The sign-in token, in a file only this user can read, as the phone
@@ -157,6 +181,20 @@ mod tests {
         assert_eq!(super::server_url(" my-nas "), "http://my-nas:8585");
         assert_eq!(super::server_url("192.168.1.50:8585/"), "http://192.168.1.50:8585");
         assert_eq!(super::server_url("https://nas.example.ts.net"), "https://nas.example.ts.net");
+    }
+
+    #[test]
+    fn a_search_kept_again_moves_to_the_top_once() {
+        let dir = std::env::temp_dir().join(format!("dhun-searches-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = super::Prefs::open(&dir);
+        for q in ["arijit", "lata", " Arijit "] {
+            p.keep_search(q);
+        }
+        assert_eq!(p.get().recent_searches, ["Arijit", "lata"]);
+        p.forget_search(Some("lata"));
+        assert_eq!(p.get().recent_searches, ["Arijit"]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     // The token is a credential: no other user on the machine may read it.

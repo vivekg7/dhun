@@ -777,13 +777,24 @@ alongside, for what Linux lacks.
   have the phone's.
 - A smaller song-cache limit now trims the cache at once.
 
-**Still missing against the phone:** recent searches and the empty field's
-help; the choice to keep downloads on signing out; the "downloaded" mark on
-albums, folders and playlists; the thin resume bar under songs in ordinary
-lists; a queue's search that scrolls to a match rather than filtering; the
-song menu and dragging in the playing-queue panel; renaming and removing
-from the queue picker; the artist link under the title on the bar; Play and
-Shuffle on Downloads, which also leaves out downloaded episodes.
+**Missing against the phone, then built:**
+
+- **Recent searches and the empty field's help** (029). A click into the
+  empty search field, or Ctrl+F, opens the search page on the last ten
+  searches, each with ✕, and Clear; with none yet, what the field
+  searches and its `artist:` and other words. A search is kept when
+  something it found is opened or played. They are this computer's, kept
+  through a sign-out, as on the phone. They are a page rather than the
+  Mac's suggestions under the field: a popover under the field would take
+  the focus from it.
+
+**Still missing against the phone:** the choice to keep downloads on
+signing out; the "downloaded" mark on albums, folders and playlists; the
+thin resume bar under songs in ordinary lists; a queue's search that
+scrolls to a match rather than filtering; the song menu and dragging in the
+playing-queue panel; renaming and removing from the queue picker; the
+artist link under the title on the bar; Play and Shuffle on Downloads,
+which also leaves out downloaded episodes.
 
 ## Open questions
 

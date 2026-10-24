@@ -68,6 +68,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     find.connect_activate(move |_, _| {
         s.set_show_content(false);
         n.search.grab_focus();
+        n.show_recent();
     });
     window.add_action(&find);
     gapp.set_accels_for_action("win.find", &["<Control>f"]);
@@ -119,7 +120,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
 
 /// For screenshots under test (`DHUN_SCREENSHOT`): pages to open once the
 /// library has loaded, as `artists,artist:Name`, `album:Name`,
-/// `folder:Path`, `books`, `search:words`, `play-album:Name`,
+/// `folder:Path`, `books`, `search:words` (`search:` for the empty field), `play-album:Name`,
 /// `play:<song id>`, `switch:<queue name>`, `list:N` (of `ListKind::ALL`), `playlist:Name`, `queue:Name`,
 /// `select:N` and `do:<action>[=text|#number]` for a song list's menu, `type:text` into a dialog,
 /// `tempo:<speed>/<semitones>`, `sleep:end` or `sleep:<minutes>`, `popup:<tooltip>` for a button, `settings:<page>`, `seek-later:<ms>`, `continue-later` for a hand-off, `panel` for the playing queue,
@@ -287,7 +288,12 @@ fn open_when_loaded(
                     None => continue,
                 },
                 "search" => {
-                    n.search.set_text(arg);
+                    // `search:` alone is the empty field's page.
+                    if arg.is_empty() {
+                        n.show_recent()
+                    } else {
+                        n.search.set_text(arg)
+                    }
                     continue;
                 }
                 "continue-later" => {
