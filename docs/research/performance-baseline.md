@@ -270,3 +270,59 @@ both grow with the library, the views do not.
 - Memory rose by 70 MB since step 1, most of it decoded 128 px
   thumbnails (64 KB each) for the rows GTK binds up front.
 - The native build is not measured.
+
+## 2026-10-24, the Linux app's resources over a session (0.17.0)
+
+The installed 0.17.0 Flatpak, release, on the Linux desktop (i5-8250U,
+Intel graphics, COSMIC on Wayland), signed in as the test account on a data
+folder of its own, 31,239 songs. Sound went to a `fakesink` that keeps
+time, so decoding is real and nothing was heard. Each run started from
+the same synced folder and was sampled every second from `/proc`: CPU as a
+share of one core, the resident set, wakeups (context switches), reads
+and writes, and the GPU's time and memory from the i915 `fdinfo`. Pages
+were opened over D-Bus (`win.go-album`, `win.go-artist`) and songs skipped
+over MPRIS. Scrolling and typing need test steps the release lacks, so
+those runs used a release build of the same commit with two added steps,
+run in the app's own sandbox; idle there matched the installed app.
+
+| Situation                                           | CPU, mean / peak | Memory       | Other                          |
+| --------------------------------------------------- | ---------------- | ------------ | ------------------------------ |
+| Signed out, window open                             | 0 %              | 92 MB        |                                |
+| First sync, empty folder                            | 146 % for 2 s    | 287 MB       | library in 2.4 s               |
+| … then the album thumbnails                         | 10–20 % for 50 s | 287 MB       | 4 MB/s written; DB 64 MB       |
+| Idle, the albums grid on screen                     | 0.0 %            | 303 MB       | 4 wakeups/s, no I/O, no GPU    |
+| Idle, closed to the tray                            | 0.1 %            | 298 MB       | 4 wakeups/s                    |
+| Playing, streamed, window open / closed             | 5.2 / 4.6 %      | 326 / 319 MB | 180 wakeups/s; caches ahead    |
+| Playing from the cache / in the mini player         | 5.6 / 6.2 %      | 326 / 324 MB |                                |
+| Playing at 1.25×, +2 semitones                      | 7.2 % / 34 %     | 325 MB       |                                |
+| Next every 3 s through a shuffle, 26 songs          | 15 % / 46 %      | 362 MB       | 4 MB/s into the cache          |
+| Downloading a 12-song album, 101 MB                 | 5–17 % for 30 s  | 243 MB       | then 0 %                       |
+| Typing "arijit singh" a key every 150 ms, 5 times   | 2.5 % / 11 %     | 302 MB       | no growth                      |
+| Scrolling the albums grid, 3,000 px/s               | 83 % / 115 %     | 337→389 MB   | GPU 37 ms/s, 55→138 MB         |
+| Scrolling the albums grid, 1,000 px/s               | 97 % / 111 %     | 314→407 MB   | 22 MB/s read, 5,000 wakeups/s  |
+| Scrolling the artists list, 3,000 px/s              | 42 % / 47 %      | 287→320 MB   | GPU 66 ms/s, 55→268 MB         |
+| Two album or artist pages a second, 90 s            | 53 % / 102 %     | 302→460 MB   |                                |
+| Four a second, 240 pages, then 90 s idle            | 42 % / 105 %     | 305→1,228 MB | not given back                 |
+
+**Idle and playback are good:** nothing runs while idle, in the window
+or the tray, and playing costs about 5 % of one core. The rest of the
+memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
+
+**Found, for the next change:**
+
+- **A leak on navigation.** A page pushed on the stack and then dropped
+  by `Nav::open`'s `NavigationView::replace` is never freed; popped, it
+  is. Opening the albums grid and pushing an album 150 times grew memory
+  by 125 MB a minute; push and pop alone grew nothing; the grid opened
+  again alone, 23 MB over 200 (its thumbnails). Every "Go to Album" or
+  "Go to Artist", and every sidebar section opened from an album or
+  artist page, takes it: 2–5 MB each, kept until the app quits.
+- **"Go to Album" and "Go to Artist" cost about 450 ms of CPU each**,
+  most of it building the albums or artists page again under the pushed
+  one; opening Albums alone takes over 250 ms. Both are on the main
+  thread.
+- **Slow scrolling of the albums grid holds a core** and reads 22 MB/s,
+  more than a faster scroll does; not yet traced.
+- Scrolling the artists list raises the GPU's memory to 268 MB.
+- The scroll runs need the display on: with it asleep, the compositor
+  draws no frames and the page did not move.
