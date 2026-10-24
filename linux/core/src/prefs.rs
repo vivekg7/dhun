@@ -44,6 +44,9 @@ pub struct Values {
     pub theme: String,
     /// One of the eight accents, Dull Orange first.
     pub palette: usize,
+    /// Who signed out keeping this computer's downloads, until the next
+    /// sign-in's first sync brings back what their pins name (plan 026).
+    pub kept_from: String,
     /// The search page's last searches, newest first (plan 029): this computer's, never synced.
     pub recent_searches: Vec<String>,
 }
@@ -108,6 +111,7 @@ impl Prefs {
                 theme: std::mem::take(&mut v.theme),
                 palette: v.palette,
                 recent_searches: std::mem::take(&mut v.recent_searches),
+                kept_from: std::mem::take(&mut v.kept_from),
                 ..Default::default()
             }
         });

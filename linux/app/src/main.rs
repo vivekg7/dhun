@@ -235,19 +235,9 @@ fn start(gapp: &adw::Application) -> Rc<App> {
         Box::new({
             let g = gapp.clone();
             move || {
-                // Asked first, as Settings asks: it deletes the downloads and unsent changes.
+                // Asked first, as Settings asks: unsent changes go, and the downloads if not kept.
                 let Some(w) = g.active_window() else { return };
-                let a = a.clone();
-                crate::widgets::confirm(
-                    &w,
-                    "Sign out?",
-                    "This computer forgets your queues, downloads and changes not yet sent.",
-                    "Sign Out",
-                    move || {
-                        let a = a.clone();
-                        glib::spawn_future_local(async move { a.sign_out().await });
-                    },
-                );
+                crate::settings::ask_sign_out(&w, &a, || {});
             }
         }),
     );

@@ -787,9 +787,22 @@ alongside, for what Linux lacks.
   through a sign-out, as on the phone. They are a page rather than the
   Mac's suggestions under the field: a popover under the field would take
   the focus from it.
+- **Signing out asks whether to keep the downloads** (026), from Settings
+  and from the ☰ menu: Keep Downloads or Delete Downloads, with how many
+  songs and how much room; with none, just Sign Out. Kept, the files, their
+  pins and their lyrics stay, and the song cache goes. Unlike the phone they
+  do not play while signed out: Linux has no songs of its own, so there is
+  nothing to use without an account. Whoever signs in next takes them over:
+  someone else gets each file as a download of its own song, and the pins
+  of the leaver's playlists and lists go; the library's pins (album, folder,
+  artist, genre, a book or show) stay. Until that sign-in's first sync, no
+  file is deleted for want of a pin. Signing in as someone else keeps the
+  downloads too, as on the phone, where it used to delete them. They stay
+  whatever the server's address, since one server is reached at two; a
+  file whose song the server lacks, or holds at another size, goes or is
+  fetched again, as any download.
 
-**Still missing against the phone:** the choice to keep downloads on
-signing out; the "downloaded" mark on albums, folders and playlists; the
+**Still missing against the phone:** the "downloaded" mark on albums, folders and playlists; the
 thin resume bar under songs in ordinary lists; a queue's search that
 scrolls to a match rather than filtering; the song menu and dragging in the
 playing-queue panel; renaming and removing from the queue picker; the

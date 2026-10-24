@@ -171,6 +171,30 @@ mod tests {
         assert_eq!(ids, [4, 2, 3, 1]);
     }
 
+    // Downloads left by someone else: their playlist's file must not be
+    // deleted because the new person's playlists lack it, and their
+    // Favorites pin must not fetch the new person's favourites.
+    #[test]
+    fn downloads_taken_over_keep_their_files_and_not_the_lists() {
+        use crate::model::Download;
+        let c = Catalog::new(vec![song(1, "A/a.mp3"), song(2, "B/b.mp3"), song(3, "B/c.mp3"), song(4, "C/d.mp3")]);
+        let db = crate::db::Db::open(std::path::Path::new(":memory:")).unwrap();
+        for p in [pin(PLAYLIST, "7", 1), pin(LIST, crate::store::FAV, 2), pin(FOLDER, "B", 3)] {
+            db.put_pin(&p).unwrap();
+        }
+        for song in [1, 2] {
+            db.put_download(&Download { song, path: format!("{song}.mp3"), size: 1, at: 0 }).unwrap();
+        }
+        db.wipe(true).unwrap();
+        db.adopt_downloads().unwrap();
+        let favs = [Mark { kind: crate::store::FAV.into(), song: 4, at: 0, deleted: false }];
+        let mut ids: Vec<i64> =
+            covered(&db.pins().unwrap(), &c, &[], &favs, &[]).unwrap().iter().map(|s| s.id).collect();
+        ids.sort();
+        assert_eq!(ids, [1, 2, 3]);
+        assert!(db.pins().unwrap().iter().all(|p| p.kind != LIST && p.kind != PLAYLIST));
+    }
+
     // An album's id holds a NUL between its name and its artist or folder; as
     // a C string the Mac's database cut it there, and the album's download
     // then matched no album.

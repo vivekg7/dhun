@@ -479,20 +479,12 @@ fn account(app: &Rc<App>, dialog: &adw::PreferencesDialog) -> adw::PreferencesPa
     out.set_sensitive(app.signed_in());
     let (a, d) = (app.clone(), dialog.downgrade());
     out.connect_clicked(move |b| {
-        let (a, d) = (a.clone(), d.clone());
-        confirm(
-            b,
-            "Sign out?",
-            "This computer forgets your queues, downloads and changes not yet sent.",
-            "Sign Out",
-            move || {
-                if let Some(d) = d.upgrade() {
-                    d.close();
-                }
-                let a = a.clone();
-                glib::spawn_future_local(async move { a.sign_out().await });
-            },
-        );
+        let d = d.clone();
+        ask_sign_out(b, &a, move || {
+            if let Some(d) = d.upgrade() {
+                d.close();
+            }
+        });
     });
     actions.append(&out);
     g.add(&actions);
@@ -513,6 +505,45 @@ fn account(app: &Rc<App>, dialog: &adw::PreferencesDialog) -> adw::PreferencesPa
     about.add(&source);
     page.add(&about);
     page
+}
+
+/// Asks before signing out, and with downloads here, whether they stay
+/// (plan 026): kept, they wait for the next sign-in, the owner's or
+/// another family member's. `before` runs on either answer.
+pub fn ask_sign_out(parent: &impl IsA<gtk::Widget>, app: &Rc<App>, before: impl Fn() + 'static) {
+    let (n, bytes) = {
+        let d = app.downloaded.borrow();
+        (d.len(), d.values().map(|d| d.size.max(0) as u64).sum::<u64>())
+    };
+    let mut body = "Your queues, playlists and history stay on the server; changes not yet sent are lost.".to_string();
+    if n > 0 {
+        let songs = crate::widgets::count(n);
+        body += &format!(
+            "\n\nKept, this computer's {songs} downloaded ({}) stay for whoever signs in next.",
+            format_bytes(bytes)
+        );
+    }
+    let dialog = adw::AlertDialog::builder().heading("Sign out?").body(body).build();
+    dialog.add_response("cancel", "Cancel");
+    if n > 0 {
+        dialog.add_responses(&[("delete", "Delete Downloads"), ("keep", "Keep Downloads")]);
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_response_appearance("keep", adw::ResponseAppearance::Suggested);
+    } else {
+        dialog.add_response("keep", "Sign Out");
+        dialog.set_response_appearance("keep", adw::ResponseAppearance::Destructive);
+    }
+    dialog.set_close_response("cancel");
+    let a = app.clone();
+    dialog.connect_response(None, move |_, r| {
+        if r == "cancel" {
+            return;
+        }
+        before();
+        let (a, keep) = (a.clone(), r == "keep");
+        glib::spawn_future_local(async move { a.sign_out(keep).await });
+    });
+    dialog.present(Some(parent));
 }
 
 /// Family members, for the admin (plan 023): list, add, reset a forgotten password.

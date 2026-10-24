@@ -399,6 +399,10 @@ impl App {
         if pulled.songs > 0 || self.catalog.borrow().by_id.is_empty() {
             self.reload_songs().await;
         }
+        // The playlists and marks the kept downloads' pins name are here: the files follow the pins again.
+        if !self.prefs.get().kept_from.is_empty() {
+            self.prefs.update(|p| p.kept_from.clear());
+        }
         // The server is there: whatever waited for it can go on.
         if let Some(d) = self.downloads.get() {
             d.poke();
@@ -532,12 +536,22 @@ impl App {
                 0 => format!("Cannot reach {server}: {e}"),
                 _ => e.to_string(),
             })?;
-        let same = self.prefs.get().user == user && self.prefs.get().server == server;
-        if !same {
-            let _ = self.db.lock().unwrap().wipe();
+        let before = self.prefs.get();
+        if before.user != user || before.server != server {
+            // Someone else's data stays theirs. The downloads stay, the
+            // library being the family's (plan 026); once it is here, a file
+            // whose song the server lacks, or holds at another size, goes or
+            // is fetched again, as any download. Not the song cache.
+            let _ = self.db.lock().unwrap().wipe(true);
             self.prefs.forget_account();
             *self.catalog.borrow_mut() = Arc::new(Catalog::empty());
-            self.forget_files();
+            let from = if before.kept_from.is_empty() { before.user } else { before.kept_from };
+            if from != user {
+                let _ = self.db.lock().unwrap().adopt_downloads();
+            }
+            self.prefs.update(|p| p.kept_from = from);
+            self.cache.remove_all();
+            self.reload_pins();
         }
         self.prefs.set_token(&login.token);
         self.prefs.update(|p| {
@@ -554,15 +568,28 @@ impl App {
     }
 
     /// Forgets this account here: its data, unsent edits and the token,
-    /// which the server forgets too when it can be reached.
-    pub async fn sign_out(&self) {
+    /// which the server forgets too when it can be reached. The downloads
+    /// only if not `keep_downloads`: kept, they wait for the next sign-in,
+    /// whoever's (plan 026).
+    pub async fn sign_out(&self, keep_downloads: bool) {
         let api = self.api.clone();
         let _ = gio::spawn_blocking(move || api.logout()).await;
         self.prefs.set_token("");
-        let _ = self.db.lock().unwrap().wipe();
+        let who = self.prefs.get().user;
+        let _ = self.db.lock().unwrap().wipe(keep_downloads);
         self.prefs.forget_account();
         *self.catalog.borrow_mut() = Arc::new(Catalog::empty());
-        self.forget_files();
+        if keep_downloads {
+            self.prefs.update(|p| {
+                if p.kept_from.is_empty() {
+                    p.kept_from = who;
+                }
+            });
+            self.cache.remove_all();
+        } else {
+            self.prefs.update(|p| p.kept_from.clear());
+            self.forget_files();
+        }
         self.playlists.borrow_mut().clear();
         self.queues.borrow_mut().clear();
         self.settings.borrow_mut().clear();

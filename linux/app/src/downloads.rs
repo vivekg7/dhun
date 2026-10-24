@@ -149,7 +149,8 @@ impl Downloads {
         let Some(songs) = self.covered(&pins) else { return };
         let want: std::collections::HashMap<i64, &SongRef> = songs.iter().map(|s| (s.id, s)).collect();
         // Files nothing covers any more: removed from a playlist, unpinned, gone from the library.
-        {
+        // Not while kept through a sign-out: their pins' playlists and marks are not here yet.
+        if self.app.prefs.get().kept_from.is_empty() {
             let db = self.app.db.lock().unwrap();
             for d in self.app.downloaded.borrow().values() {
                 if !want.contains_key(&d.song) {

@@ -1049,7 +1049,12 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
                 _ => ("audio-x-generic-symbolic", "Song"),
             };
             let image = gtk::Image::builder().icon_name(icon).pixel_size(24).width_request(36).build();
-            let r = row(&image.upcast(), &p.name, kind);
+            // A song taken over from someone else's downloads is named once the catalogue is here.
+            let title = match p.r#ref.parse().ok().and_then(|id: i64| c.by_id.get(&id)) {
+                Some(s) if p.name.is_empty() && p.kind == dl::SONG => s.title.clone(),
+                _ => p.name.clone(),
+            };
+            let r = row(&image.upcast(), &title, kind);
             let remove = gtk::Button::builder()
                 .icon_name("window-close-symbolic")
                 .tooltip_text("Remove the download")

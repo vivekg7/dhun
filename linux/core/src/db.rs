@@ -86,12 +86,29 @@ impl Db {
     /// Everything this account kept, its unsent edits included: used when the
     /// user signs out or another signs in, as the phone's `forgetAccount`. A
     /// refused token keeps everything instead (plan 023), so an offline edit
-    /// is only ever dropped by the person who made it.
-    pub fn wipe(&self) -> Result<()> {
+    /// is only ever dropped by the person who made it. Downloads kept stay
+    /// with their pins and lyrics, for the next sign-in (plan 026).
+    pub fn wipe(&self, keep_downloads: bool) -> Result<()> {
         self.sql.execute_batch(
             "DELETE FROM song; DELETE FROM playlist; DELETE FROM queue; DELETE FROM mark; DELETE FROM resume;
-            DELETE FROM setting; DELETE FROM outbox; DELETE FROM play_stat; DELETE FROM pin; DELETE FROM download;
-            DELETE FROM lyrics; DELETE FROM bookmark;",
+            DELETE FROM setting; DELETE FROM outbox; DELETE FROM play_stat; DELETE FROM bookmark;",
+        )?;
+        if keep_downloads {
+            self.sql.execute("DELETE FROM lyrics WHERE song NOT IN (SELECT song FROM download)", []).map(|_| ())
+        } else {
+            self.sql.execute_batch("DELETE FROM pin; DELETE FROM download; DELETE FROM lyrics;")
+        }
+    }
+
+    /// Downloads someone else left, taken over (plan 026): each file stays,
+    /// as a pin of its own song, until removed. Pins of their playlists and
+    /// lists go; album, folder, artist, genre and shelf pins are the
+    /// library's and stay. The name comes from the catalogue once it is here.
+    pub fn adopt_downloads(&self) -> Result<()> {
+        self.sql.execute_batch(
+            "INSERT OR IGNORE INTO pin (key, kind, ref, name, at)
+              SELECT 'song:' || song, 'song', CAST(song AS TEXT), '', at FROM download;
+            DELETE FROM pin WHERE kind IN ('playlist', 'list');",
         )
     }
 
