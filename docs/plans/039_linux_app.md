@@ -822,10 +822,14 @@ alongside, for what Linux lacks.
   queue's page has: a right-click opens the queue's song menu (Stop After
   This Song and Remove from Queue among it), and a song dragged onto
   another takes its place.
+- **The queue picker renames and removes** (020), as the phone's: each
+  queue has ✎ and ✕, each asking first, and Remove All Other Queues… keeps
+  only the one playing. The dialogs open from the picker's button, the
+  picker closing first.
 
-**Still missing against the phone:** renaming and removing from the
-queue picker; the artist link under the title on the bar; Play and Shuffle
-on Downloads, which also leaves out downloaded episodes.
+**Still missing against the phone:** the artist link under the title on
+the bar; Play and Shuffle on Downloads, which also leaves out downloaded
+episodes.
 
 ## Open questions
 

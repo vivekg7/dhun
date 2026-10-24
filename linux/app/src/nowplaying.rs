@@ -572,20 +572,24 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
     b
 }
 
-/// The queues, to switch between: numbered from 1 in the user's order, as in Musicolet (plan 020).
+/// The queues, to switch between: numbered from 1 in the user's order, as
+/// in Musicolet (plan 020). Each can be renamed or removed from here, and
+/// every queue but the one playing removed at once, as on the phone.
 pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
     let list =
         gtk::ListBox::builder().css_classes(["navigation-sidebar"]).selection_mode(gtk::SelectionMode::None).build();
-    let pop = gtk::Popover::builder()
-        .child(
-            &gtk::ScrolledWindow::builder()
-                .child(&list)
-                .propagate_natural_height(true)
-                .max_content_height(420)
-                .min_content_width(260)
-                .build(),
-        )
-        .build();
+    let others = gtk::Button::builder().label("Remove All Other Queues…").css_classes(["flat"]).margin_top(4).build();
+    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    body.append(
+        &gtk::ScrolledWindow::builder()
+            .child(&list)
+            .propagate_natural_height(true)
+            .max_content_height(420)
+            .min_content_width(300)
+            .build(),
+    );
+    body.append(&others);
+    let pop = gtk::Popover::builder().child(&body).build();
     let button = gtk::MenuButton::builder()
         .icon_name("view-more-symbolic")
         .tooltip_text("Switch queue")
@@ -602,21 +606,67 @@ pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
             p.switch_to(&id);
         }
     });
+    // The dialogs open over the window, from the button: the popover closes first.
+    let (p, popover, anchor) = (pb.clone(), pop.downgrade(), button.downgrade());
+    others.connect_clicked(move |_| {
+        let (Some(popover), Some(anchor)) = (popover.upgrade(), anchor.upgrade()) else { return };
+        popover.popdown();
+        let (n, keep) = (p.ordered().len(), p.active_id());
+        let name = p.active().map(|q| q.name).unwrap_or_default();
+        let p = p.clone();
+        let heading = format!("Remove the other {} queues?", n - 1);
+        let body = format!("Only “{name}”, the queue playing, stays.");
+        widgets::confirm(&anchor, &heading, &body, "Remove", move || p.delete_others(&keep));
+    });
+    let (popover, anchor) = (pop.downgrade(), button.downgrade());
     pop.connect_show(move |_| {
         list.remove_all();
         let active = pb.active_id();
         let mut v = ids.borrow_mut();
         v.clear();
-        for (n, q) in pb.ordered().into_iter().enumerate() {
+        let queues = pb.ordered();
+        others.set_visible(queues.len() > 1);
+        for (n, q) in queues.into_iter().enumerate() {
+            let r = gtk::Box::builder().spacing(2).build();
             let l = gtk::Label::builder()
                 .label(format!("{}. {}", n + 1, q.name))
                 .xalign(0.0)
+                .hexpand(true)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
             if q.id == active {
                 l.add_css_class("accent");
             }
-            list.append(&l);
+            r.append(&l);
+            let button = |icon: &str, tip: &str| {
+                gtk::Button::builder().icon_name(icon).tooltip_text(tip).css_classes(["flat", "circular"]).build()
+            };
+            let (rename, remove) =
+                (button("document-edit-symbolic", "Rename Queue"), button("window-close-symbolic", "Remove Queue"));
+            let (p, pop, at, id, name) = (pb.clone(), popover.clone(), anchor.clone(), q.id.clone(), q.name.clone());
+            rename.connect_clicked(move |_| {
+                let (Some(pop), Some(at)) = (pop.upgrade(), at.upgrade()) else { return };
+                pop.popdown();
+                let (p, id) = (p.clone(), id.clone());
+                widgets::ask_name(&at, "Rename Queue", &name, "Rename", move |n| p.rename(&id, &n));
+            });
+            let (p, pop, at, id, name) = (pb.clone(), popover.clone(), anchor.clone(), q.id.clone(), q.name.clone());
+            remove.connect_clicked(move |_| {
+                let (Some(pop), Some(at)) = (pop.upgrade(), at.upgrade()) else { return };
+                pop.popdown();
+                let (p, id) = (p.clone(), id.clone());
+                let heading = format!("Remove “{name}”?");
+                widgets::confirm(
+                    &at,
+                    &heading,
+                    "The queue goes; its songs stay in your library.",
+                    "Remove",
+                    move || p.delete(&id),
+                );
+            });
+            r.append(&rename);
+            r.append(&remove);
+            list.append(&r);
             v.push(q.id);
         }
     });
