@@ -801,13 +801,18 @@ alongside, for what Linux lacks.
   whatever the server's address, since one server is reached at two; a
   file whose song the server lacks, or holds at another size, goes or is
   fetched again, as any download.
+- **The "downloaded" mark** (012) after the name of a downloaded album (in
+  the grid), folder, artist, genre, book or show, and playlist (in the
+  sidebar), and of such a result in search, as on the phone. It shows the
+  download asked for, whether or not every file is here yet; the page's
+  Download button says how far along it is.
 
-**Still missing against the phone:** the "downloaded" mark on albums, folders and playlists; the
-thin resume bar under songs in ordinary lists; a queue's search that
-scrolls to a match rather than filtering; the song menu and dragging in the
-playing-queue panel; renaming and removing from the queue picker; the
-artist link under the title on the bar; Play and Shuffle on Downloads,
-which also leaves out downloaded episodes.
+**Still missing against the phone:** the thin resume bar under songs in
+ordinary lists; a queue's search that scrolls to a match rather than
+filtering; the song menu and dragging in the playing-queue panel; renaming
+and removing from the queue picker; the artist link under the title on the
+bar; Play and Shuffle on Downloads, which also leaves out downloaded
+episodes.
 
 ## Open questions
 

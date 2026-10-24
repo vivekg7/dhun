@@ -7,6 +7,7 @@ use crate::pages::{Nav, Route};
 use crate::widgets::{self, count, cover, row};
 use adw::prelude::*;
 use dhun_core::catalog::SongRef;
+use dhun_core::downloads as dl;
 use dhun_core::search::{self, Query};
 use gtk::{gio, glib};
 use std::cell::RefCell;
@@ -163,6 +164,19 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
     found
 }
 
+/// What a result's download is, by the page it opens.
+fn pin_of(r: &Route) -> Option<(&'static str, String)> {
+    match r {
+        Route::Artist(n) => Some((dl::ARTIST, n.clone())),
+        Route::Album(id) => Some((dl::ALBUM, id.clone())),
+        Route::Genre(n) => Some((dl::GENRE, n.clone())),
+        Route::Folder(p) => Some((dl::FOLDER, p.clone())),
+        Route::Playlist(id) => Some((dl::PLAYLIST, id.to_string())),
+        Route::Shelf(id) => Some((dl::SHELF, id.clone())),
+        _ => None,
+    }
+}
+
 /// A right-click on a song found opens the song menu for it, as in any song list.
 fn menu_on(nav: &Nav, r: &gtk::ListBoxRow, song: &SongRef, picked: &Rc<RefCell<Vec<SongRef>>>) {
     let g = gtk::GestureClick::builder().button(3).build();
@@ -291,7 +305,12 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                         }
                         (song, None) => cover(&nav.app, song.as_ref(), 36),
                     };
-                    let r = gtk::ListBoxRow::builder().child(&row(&image, &h.title, &h.detail)).build();
+                    let b = row(&image, &h.title, &h.detail);
+                    // An episode opens its show, whose download is not the episode's.
+                    if let Some((kind, r#ref)) = h.route.as_ref().filter(|_| f.kind != "Episodes").and_then(pin_of) {
+                        b.append(&widgets::pin_mark(&nav.app, kind, &r#ref));
+                    }
+                    let r = gtk::ListBoxRow::builder().child(&b).build();
                     if let Some(s) = &h.song {
                         menu_on(&nav, &r, s, &picked);
                     }

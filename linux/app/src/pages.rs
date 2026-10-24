@@ -303,7 +303,8 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
     store.extend(albums.iter().map(|a| glib::BoxedAnyObject::new(a.clone())));
     let factory = gtk::SignalListItemFactory::new();
     const SIZE: i32 = 150;
-    factory.connect_setup(|_, item| {
+    let a = app.clone();
+    factory.connect_setup(move |_, item| {
         let b = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(3)
@@ -316,16 +317,34 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
             .height_request(SIZE)
             .build();
         b.append(&gtk::Frame::builder().child(&pic).css_classes(["cover"]).margin_bottom(4).build());
+        // The name, with the "downloaded" mark after it, then two lines under.
+        let name = gtk::Box::builder().spacing(4).build();
         for class in ["heading", "caption", "caption"] {
             let l =
                 gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(1).build();
             l.add_css_class(class);
             if class == "caption" {
                 l.add_css_class("dim-label");
+                b.append(&l);
+            } else {
+                l.set_hexpand(true);
+                name.append(&l);
+                b.append(&name);
             }
-            b.append(&l);
         }
-        item.downcast_ref::<gtk::ListItem>().unwrap().set_child(Some(&b));
+        let mark = widgets::downloaded_mark();
+        name.append(&mark);
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        item.set_child(Some(&b));
+        // The cell is recycled: the mark follows the album it shows.
+        let (a, w, m) = (a.clone(), item.downgrade(), mark.downgrade());
+        a.clone().listen(move |c| {
+            let (Some(item), Some(mark)) = (w.upgrade(), m.upgrade()) else { return false };
+            if c == Change::Downloads {
+                album_mark(&a, &item, &mark);
+            }
+            true
+        });
     });
     let a = app.clone();
     factory.connect_bind(move |_, item| {
@@ -340,9 +359,13 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
             weak.upgrade().and_then(|i| i.item()).is_some_and(|o| o == obj.clone().upcast::<glib::Object>())
         });
         widgets::set_cover(&a, &pic, album.songs.first(), SIZE, Some(still));
-        let mut l = pic.parent().unwrap().next_sibling().and_downcast::<gtk::Label>();
+        let name = pic.parent().unwrap().next_sibling().unwrap();
+        let title = name.first_child().and_downcast::<gtk::Label>().unwrap();
+        title.set_label(&album.name);
+        album_mark(&a, item, &title.next_sibling().and_downcast::<gtk::Image>().unwrap());
+        let mut l = name.next_sibling().and_downcast::<gtk::Label>();
         let year = if album.year > 0 { format!("{} · ", album.year) } else { String::new() };
-        for text in [album.name.clone(), album.artist.clone(), format!("{year}{}", summary(&album.songs))] {
+        for text in [album.artist.clone(), format!("{year}{}", summary(&album.songs))] {
             let label = l.unwrap();
             label.set_label(&text);
             l = label.next_sibling().and_downcast::<gtk::Label>();
@@ -372,6 +395,13 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
     b.append(&entry);
     b.append(&widgets::scrolled(&grid));
     b.upcast()
+}
+
+/// An album cell's "downloaded" mark, for the album bound to it now.
+fn album_mark(app: &App, item: &gtk::ListItem, mark: &gtk::Image) {
+    let Some(obj) = item.item().and_downcast::<glib::BoxedAnyObject>() else { return };
+    let key = dl::key(dl::ALBUM, &obj.borrow::<Arc<Album>>().id);
+    mark.set_visible(app.pins.borrow().iter().any(|p| p.key == key));
 }
 
 fn album_page(app: &Rc<App>, a: &Album) -> gtk::Widget {
@@ -404,7 +434,11 @@ fn groups_page(nav: &Rc<Nav>, groups: &[Arc<Group>], artists: bool) -> gtk::Widg
             list,
             {
                 let a = a.clone();
-                move |g: &Arc<Group>| row(&cover(&a, g.songs.first(), 36), &g.name, &summary(&g.songs)).upcast()
+                move |g: &Arc<Group>| {
+                    let r = row(&cover(&a, g.songs.first(), 36), &g.name, &summary(&g.songs));
+                    r.append(&widgets::pin_mark(&a, if artists { dl::ARTIST } else { dl::GENRE }, &g.name));
+                    r.upcast()
+                }
             },
             move |g| n.push(if artists { Route::Artist(g.name.clone()) } else { Route::Genre(g.name.clone()) }),
         );
@@ -509,7 +543,7 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
         b.append(&top);
     }
     if !f.children.is_empty() {
-        let n = nav.clone();
+        let (n, a) = (nav.clone(), app.clone());
         let cat = c.clone();
         let list = widgets::list(
             &f.children,
@@ -521,7 +555,9 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
                     _ => "folder-symbolic",
                 };
                 let image = gtk::Image::builder().icon_name(icon).pixel_size(24).width_request(36).build();
-                row(&image.upcast(), child.name(), &summary_of(child.song_count, child.duration_ms)).upcast()
+                let r = row(&image.upcast(), child.name(), &summary_of(child.song_count, child.duration_ms));
+                r.append(&widgets::pin_mark(&a, dl::FOLDER, p));
+                r.upcast()
             },
             move |p| n.push(Route::Folder(p.clone())),
         );
@@ -562,7 +598,9 @@ fn shelves_page(nav: &Rc<Nav>, shelves: &[Arc<Shelf>]) -> gtk::Widget {
     let view = widgets::list(
         shelves,
         move |s: &Arc<Shelf>| {
-            row(&cover(&a, s.cover().or(s.items.first()), 48), &s.title, &shelf_line(s, &heard)).upcast()
+            let r = row(&cover(&a, s.cover().or(s.items.first()), 48), &s.title, &shelf_line(s, &heard));
+            r.append(&widgets::pin_mark(&a, dl::SHELF, &s.id));
+            r.upcast()
         },
         move |s| n.push(Route::Shelf(s.id.clone())),
     );

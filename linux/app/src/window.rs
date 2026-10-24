@@ -491,6 +491,9 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
                         &p.name,
                         Some(Route::Playlist(p.id)),
                     );
+                    if let Some(b) = list.last_child().and_then(|r| r.first_child()).and_downcast::<gtk::Box>() {
+                        b.append(&crate::widgets::pin_mark(&app, dhun_core::downloads::PLAYLIST, &p.id.to_string()));
+                    }
                 }
             }
             item("", "", None);

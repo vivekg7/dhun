@@ -255,6 +255,33 @@ pub fn pin_button(app: &Rc<App>, kind: &str, r#ref: String, name: &str) -> gtk::
     button.upcast()
 }
 
+/// The "downloaded" mark beside a name, shown while the album, folder,
+/// artist, genre, playlist or shelf `kind` and `ref` name is downloaded (plan 012).
+pub fn pin_mark(app: &Rc<App>, kind: &str, r#ref: &str) -> gtk::Image {
+    let mark = downloaded_mark();
+    let key = dl::key(kind, r#ref);
+    let (a, w) = (app.clone(), mark.downgrade());
+    let show = move || {
+        let Some(m) = w.upgrade() else { return false };
+        m.set_visible(a.pins.borrow().iter().any(|p| p.key == key));
+        true
+    };
+    show();
+    app.listen(move |c| if c == Change::Downloads { show() } else { true });
+    mark
+}
+
+/// The small mark of something kept on this computer.
+pub fn downloaded_mark() -> gtk::Image {
+    gtk::Image::builder()
+        .icon_name("folder-download-symbolic")
+        .pixel_size(12)
+        .valign(gtk::Align::Center)
+        .css_classes(["dim-label"])
+        .tooltip_text("Downloaded")
+        .build()
+}
+
 /// Asks before a download goes, as the phone does.
 pub fn confirm_unpin(parent: &gtk::Widget, name: &str, remove: impl Fn() + 'static) {
     let body = format!(
@@ -523,10 +550,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
         let frame = gtk::Frame::builder().child(&pic).css_classes(["cover"]).build();
         b.append(&frame);
         b.append(&gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build());
-        let kept = gtk::Image::builder().icon_name("folder-download-symbolic").pixel_size(12).build();
-        kept.add_css_class("dim-label");
-        kept.set_tooltip_text(Some("Downloaded"));
-        b.append(&kept);
+        b.append(&downloaded_mark());
         m(b.upcast_ref(), item);
         if let Some(mv) = &moving {
             let it = item.downgrade();
