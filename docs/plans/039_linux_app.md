@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `MERGED` — every step done and measured (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.17.0 built and handed to the Mac for the release with every platform
+**Status:** `RELEASED` — in the 0.17.0 GitHub release (2026-10-24), the first Linux release, with every platform at 0.17.0; not yet installed or deployed
 **Started:** 2026-10-23
 
 ## Problem

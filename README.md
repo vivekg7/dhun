@@ -31,13 +31,10 @@ server itself, at `http://<nas>:8585/`: the apps' features in a browser,
 online-only, on a computer or a phone. The Linux app (`linux/`,
 [plan 039](docs/plans/039_linux_app.md)) is built to the Android app's
 level in Rust and GTK, offline included, with a tray icon, a mini window,
-the desktop's media controls and Open With from the file manager; 0.16.3
-is installed on the owner's desktop, not yet released. The APK is in the
-[0.16.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.2),
-the Mac app in the
-[0.16.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.1)
-and the server image in the
-[0.16.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.16.0).
+the desktop's media controls and Open With from the file manager.
+All four are in the
+[0.17.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.17.0):
+the APK, the Mac app, the Linux Flatpak and the server image.
 
 ## Run the server
 
@@ -154,9 +151,10 @@ linux-install` builds against the system's GTK instead and installs into
 `~/.local`.
 
 A GitHub release is tagged `vX.Y.Z` on the commit the version came from,
-beside its `server-vX.Y.Z`, and carries the APK and the Mac zip with their
-SHA-256 sums; the server ships as its image on ghcr.io. The R8 mapping stays
-in `local/`: it is only for reading the owner's crash reports.
+beside its `server-vX.Y.Z`, and carries the APK, the Mac zip and the Linux
+Flatpak with their SHA-256 sums; the server ships as its image on ghcr.io.
+The R8 mapping stays in `local/`: it is only for reading the owner's crash
+reports.
 
 - What it must do — [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
 - Why it is built this way — [`docs/plans/`](docs/plans/README.md)
