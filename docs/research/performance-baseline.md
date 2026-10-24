@@ -310,13 +310,15 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
 
 **Found, for the next change:**
 
-- **A leak on navigation.** A page pushed on the stack and then dropped
-  by `Nav::open`'s `NavigationView::replace` is never freed; popped, it
-  is. Opening the albums grid and pushing an album 150 times grew memory
-  by 125 MB a minute; push and pop alone grew nothing; the grid opened
-  again alone, 23 MB over 200 (its thumbnails). Every "Go to Album" or
-  "Go to Artist", and every sidebar section opened from an album or
-  artist page, takes it: 2–5 MB each, kept until the app quits.
+- **A leak on navigation, fixed.** A page pushed on the stack and then
+  dropped by `NavigationView::replace` was never freed; popped, it is.
+  Every "Go to Album" or "Go to Artist", and every sidebar section
+  opened from an album or artist page, kept 2–5 MB until the app quit.
+  `Nav` now pops the pushed pages, without animation, before it
+  replaces the stack. Opening the grid and pushing an album for a minute
+  went from 305→430 MB to 303→316 MB, and the 240 pages from 1,228 MB
+  to 511 MB; what is left is the 128 px thumbnails, which are kept
+  without a limit, about 64 KB each, and the 32 MB of covers.
 - **"Go to Album" and "Go to Artist" cost about 450 ms of CPU each**,
   most of it building the albums or artists page again under the pushed
   one; opening Albums alone takes over 250 ms. Both are on the main

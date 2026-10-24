@@ -135,7 +135,7 @@ impl Nav {
     /// A sidebar section: its page alone. The sidebar follows, however it was opened.
     pub fn open(self: &Rc<Self>, r: Route) {
         *self.routes.borrow_mut() = vec![r.clone()];
-        self.view.replace(&[self.build(&r)]);
+        self.replace(&[self.build(&r)]);
         self.app.changed(Change::Section);
     }
 
@@ -173,7 +173,7 @@ impl Nav {
         let at = self.view.visible_page().and_then(|p| first::<gtk::ScrolledWindow>(p.upcast_ref()));
         let at = at.map(|s| s.vadjustment().value()).filter(|&v| v > 0.0);
         let pages: Vec<_> = routes.iter().map(|r| self.build(r)).collect();
-        self.view.replace(&pages);
+        self.replace(&pages);
         let new = pages.last().and_then(|p| first::<gtk::ScrolledWindow>(p.upcast_ref()));
         if let (Some(v), Some(sw)) = (at, new) {
             // Once the new list is laid out tall enough to be there.
@@ -189,6 +189,19 @@ impl Nav {
                 }
             }));
         }
+    }
+
+    /// The stack made `pages`. A pushed page that `NavigationView::replace`
+    /// drops is never freed, 2–5 MB each, where a popped one is (measured
+    /// 2026-10-24, libadwaita 1.10): so the pushed pages are popped first,
+    /// at once. Their pops leave the routes as they were.
+    fn replace(&self, pages: &[adw::NavigationPage]) {
+        let routes = self.routes.borrow().clone();
+        self.view.set_animate_transitions(false);
+        while self.view.pop() {}
+        self.view.set_animate_transitions(true);
+        *self.routes.borrow_mut() = routes;
+        self.view.replace(pages);
     }
 
     fn build(self: &Rc<Self>, r: &Route) -> adw::NavigationPage {
