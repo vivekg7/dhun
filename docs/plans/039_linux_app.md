@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `MERGED` — every step done and measured (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.16.3 installed on the owner's desktop, not yet in a GitHub release
+**Status:** `MERGED` — every step done and measured (2026-10-24): the phone's features, the tray, the mini window and Open With; 0.17.0 built and handed to the Mac for the release with every platform
 **Started:** 2026-10-23
 
 ## Problem
@@ -319,11 +319,13 @@ override:
   No file system access: Open With hands files in through the document
   portal.
 - **Versioning.** Linux joins the shared sequence (README, Versions). Its
-  version lives in `linux/app/Cargo.toml`. Its first release takes the next
-  free patch number, for Linux alone. Until then the builds installed to
-  try it keep 0.16.3, fixes and all (owner, 2026-10-23): the others reached
-  0.16 by being stable, and a version bumped per iteration of a first build
-  would say nothing.
+  version lives in `linux/app/Cargo.toml`. The builds installed to try it
+  kept 0.16.3, fixes and all (owner, 2026-10-23): the others reached 0.16
+  by being stable, and a version bumped per iteration of a first build
+  would say nothing. Its first release is 0.17.0, a minor release for every
+  platform together rather than a patch for Linux alone (owner,
+  2026-10-24): the Flatpak is built here and copied to the Mac, which
+  publishes the one GitHub release with every platform's build.
 - **Releases.** `make linux` builds the Flatpak and archives it in `local/`
   as `dhun-linux-v<version>.flatpak` with its `.sha256`, under the same
   naming rules as `make apk` and `make mac`. A GitHub release carries it;
