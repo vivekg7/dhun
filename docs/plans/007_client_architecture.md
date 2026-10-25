@@ -5,11 +5,13 @@
 
 ## Problem
 
-There are three clients with very different scopes. The Android app is
-complete and offline-capable. The macOS and web clients are minimal
-([REQUIREMENTS](../REQUIREMENTS.md#platforms)). We must decide what, if
-anything, they share, and how the Android app is built so that multiple
-queues, Downloads and offline sync fit on top of Media3.
+There were three clients with very different scopes: the Android app
+complete and offline-capable, the macOS and web clients minimal. (Since
+then the Mac and the web have grown to the Android app's level, and a Linux
+app has joined: [024](024_macos_app.md), [030](030_web_client.md),
+[039](039_linux_app.md).) We must decide what, if anything, they share, and
+how the Android app is built so that multiple queues, Downloads and offline
+sync fit on top of Media3.
 
 ## Shared code or not
 
@@ -20,46 +22,45 @@ Swift interop (no `async`/`await`, generic types are lost), and the
 lightweight macOS app would carry a Kotlin runtime.
 
 **B. Separate native clients, with the API as the only shared contract.**
-Chosen. The hard client logic — the offline outbox, Downloads, the 20-queue
-player — is needed **only on Android**. The minimal clients are
+Chosen. The hard client logic (the offline outbox, Downloads, the 20-queue
+player) is needed **only on Android**. The minimal clients are
 **online-only**: they send each operation straight to the server and render
-its reply, so they have no outbox and nothing to merge. A shared core would be
-shared with nobody. Revisit if an iOS app or a full offline macOS app is ever
-wanted.
+its reply, so they have no outbox and nothing to merge, and a shared core
+would be shared with nobody. Revisit if an iOS app or a full offline macOS
+app is ever wanted.
 
-**Online-only macOS and web** was confirmed by the owner (2026-10-06). Both
-are used at home or the office over Tailscale, where the server is reachable.
-The owner later asked for a full offline macOS app (2026-10-08); option B was
-revisited in [024](024_macos_app.md) and still stands.
+**Online-only macOS and web** was confirmed by the owner (2026-10-06): both
+are used at home or the office over Tailscale, where the server is
+reachable. The owner later asked for a full offline macOS app (2026-10-08);
+option B was revisited in [024](024_macos_app.md) and still stands.
 
 ## Android
 
-| Concern      | Choice                                                                                                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Language, UI | Kotlin, Jetpack Compose, Material 3.                                                                                                                                                                                                                          |
-| Playback     | Media3 ExoPlayer in a `MediaLibraryService`. The same service gives the notification, lock screen, Bluetooth and headset controls now, and **Android Auto later with no rework**. Gapless playback, and speed and pitch (`PlaybackParameters`), are built in. |
-| Local data   | Room. It holds the catalogue copy, the user-data working copy, the outbox, and the download index ([006](006_api_and_sync.md)).                                                                                                                               |
-| Network      | OkHttp plus kotlinx.serialization. Media3's OkHttp data source shares the same client, so auth is one interceptor.                                                                                                                                            |
-| Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads run in a `dataSync` foreground service ([012](012_downloads.md)).                                                   |
-| DI           | Manual: one `AppGraph` object. Hilt is not worth it for a single-module app.                                                                                                                                                                                  |
-| Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                |
-| `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest.                                                                                                                                                                       |
+| Concern      | Choice                                                                                                                                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language, UI | Kotlin, Jetpack Compose, Material 3.                                                                                                                                                                                                                                                                    |
+| Playback     | Media3 ExoPlayer in a `MediaSessionService`. The same service gives the notification, lock screen, Bluetooth and headset controls; Android Auto, later, needs only its subclass `MediaLibraryService`, which adds browsing. Gapless playback, and speed and pitch (`PlaybackParameters`), are built in. |
+| Local data   | Room. It holds the catalogue copy, the user-data working copy, the outbox, and the download index ([006](006_api_and_sync.md)).                                                                                                                                                                         |
+| Network      | OkHttp plus kotlinx.serialization. Media3's OkHttp data source shares the same client, so auth is one interceptor.                                                                                                                                                                                      |
+| Background   | Sync runs in-process, with retries and on reconnect: WorkManager would bring a second copy of Room ([011](011_android_app.md)). Downloads run in a `dataSync` foreground service ([012](012_downloads.md)).                                                                                             |
+| DI           | Manual: the `App` class builds every long-lived object once. Hilt is not worth it for a single-module app.                                                                                                                                                                                              |
+| Modules      | **One `app` module.** Split only when a second consumer appears (for example, an Android Auto or Wear module).                                                                                                                                                                                          |
+| `minSdk`     | 31 (Android 12), the owner's choice (2026-10-07; first 29), and `targetSdk` the latest.                                                                                                                                                                                                                 |
 
 **Multiple queues on one player.** Media3's player holds one playlist. The
-app's `QueueManager` owns all 20 queues (in Room, mirrored from the server),
-and loads **only the active queue** into the player. Switching queues saves
+app's `Playback` owns all 20 queues (in Room, mirrored from the server), and
+loads **only the active queue** into the player. Switching queues saves
 the current song and position into the outgoing queue, then loads the
 incoming one at its saved song and position. Gapless playback works within a
 queue, which is where it matters. "End of queue → jump to the next queue"
 (Musicolet, after v1) is the same switch, triggered on completion.
 
 **A wired headset's button is counted by the app** (owner, 2026-10-11):
-one press plays or pauses, two go to the next song, three to the
-previous. Media3 counts only to two, so a third press paused. Buds count
-their own taps and send Next or Previous. A press counts once the presses
-stop, 0.3 s after the last (Android's double-tap time), so two take a
-moment longer than with Media3's count; the notification's Play still acts
-at once.
+one press plays or pauses, two go to the next song, three to the previous.
+Media3 counts only to two, so a third press paused. Buds count their own
+taps and send Next or Previous. The count acts once the presses stop, 0.3 s
+after the last (Android's double-tap time), so two take a moment longer
+than with Media3's count; the notification's Play still acts at once.
 
 **Where audio comes from.** Each song resolves, in order, to a **Download**,
 then the **Cache** (built in [019](019_networking_and_caching.md), read
@@ -123,14 +124,16 @@ server/          Go module: the backend
 server/web/      the web client (inside the Go module, so `embed` can reach it)
 android/         Gradle project
 macos/           Swift package (024)
+linux/           Cargo workspace (039)
 api/openapi.yaml the contract
 deploy/          docker-compose.yml, Dockerfile
+scripts/         release builds and checks
 docs/
 ```
 
 Each toolchain gets `fmt`, `lint` and `test` targets in the root `Makefile`
-as its code lands. The pre-commit hook runs the formatter only for staged
-files of that language.
+as its code lands. The pre-commit hook checks the formatting of staged
+files only, per language.
 
 ## Rejected
 

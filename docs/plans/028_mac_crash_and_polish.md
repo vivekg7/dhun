@@ -13,22 +13,21 @@ motion, and the same look for the same thing.
   installed 0.1.0, all aborts from AppKit: "The window has been marked as
   needing another Update Constraints in Window pass, but it has already had
   more Update Constraints in Window passes than there are views in the
-  window." Driving the app showed it: with the queue or lyrics open on the
-  right, opening a playlist aborted every time, and walking through the
-  sidebar aborted on one page or another. It needs SwiftUI's `.inspector`
-  beside a `NavigationSplitView` whose page changes: with the inspector
-  holding only a line of text, and with no toolbar items, banners or Now
-  playing bar, it still aborted every run; with the inspector closed it
-  never did. Queues side by side with the inspector (024) was one case of
-  it, not its own cause.
+  window." With the queue or lyrics open on the right, opening a playlist
+  aborted every time, and walking through the sidebar aborted on one page
+  or another. The cause is SwiftUI's `.inspector` beside a
+  `NavigationSplitView` whose page changes: with the inspector holding
+  only a line of text, and no toolbar items, banners or Now playing bar,
+  it still aborted every run; with the inspector closed it never did.
+  Queues side by side with the inspector (024) was one case of it, not a
+  cause of its own.
 - **Little moved.** A new song, play and pause, Favorites, the banners and
   the panel on the right all cut rather than moved.
-- **Things alike looked different.** The panel's toggle in the toolbar
-  shared a capsule with the filter field on Albums, Artists and Genres, so
-  it sat somewhere else on those pages than on the rest. The sidebar's
-  icons were the system's blue in an orange app. An empty list showed Play
-  and Shuffle over nothing. One Settings tab had no heading; the song
-  cache had none either.
+- **Things alike looked different.** The panel's toggle shared a toolbar
+  capsule with the filter field on Albums, Artists and Genres, so it sat
+  elsewhere on those pages. The sidebar's icons were the system's blue in
+  an orange app. An empty list showed Play and Shuffle over nothing. One
+  Settings tab, and the song cache, had no heading.
 
 ## Options
 
@@ -45,8 +44,8 @@ For the crash:
 For the toolbar:
 
 - **The filter in the page**, as a queue's page has it. Rejected: the
-  window's first text field takes the focus when it opens, and Space then
-  types instead of playing; default focus elsewhere does not win against
+  window's first text field takes the focus when it opens, so Space types
+  instead of playing, and default focus elsewhere does not win against
   it.
 - **The filter beside the title.** Rejected: it then comes before the
   page's name.
@@ -60,18 +59,17 @@ For the toolbar:
 Decided while building; the owner may override any of it.
 
 - **The panel** (`MainView`): the queue or the lyrics, 320 points wide,
-  beside the split view and below the toolbar; it slides in from the
-  right. The window's minimum width is 1000 points while it is open and
-  820 while it is shut, and the window widens to fit it rather than
-  squeezing the list until its buttons are cut. The panel is no longer
-  dragged wider or narrower.
+  beside the split view and below the toolbar, sliding in from the right.
+  The window's minimum width is 1000 points while it is open and 820 while
+  shut, so the window widens to fit it rather than squeezing the list
+  until its buttons are cut. The panel is no longer resized by dragging.
 - **Now playing:** the next song slides in from the right, the previous
-  from the left, as on the phone; the song leaving only fades, quickly,
-  since SwiftUI keeps the transition a view was last drawn with and a
-  slide of its own would go the way the change before went. Play and
-  Pause, repeat and the sleep timer turn into each other. Favorites and
-  Listen Later fill and bounce when turned on, and only empty when turned
-  off; a song shown that has one on already does not bounce.
+  from the left, as on the phone. The song leaving only fades, quickly:
+  SwiftUI keeps the transition a view was last drawn with, so a slide of
+  its own would go the way the change before went. Play and Pause, repeat
+  and the sleep timer turn into each other. Favorites and Listen Later
+  fill and bounce when turned on, only empty when turned off, and do not
+  bounce on a song shown with one already on.
 - **Covers** fade in over the thumbnail, and a cover already in memory is
   shown in the first frame, so a grid scrolled back does not flash.
 - **The banners** (hand-off, "continue from…?", notes) fold in and out.
@@ -84,22 +82,21 @@ Decided while building; the owner may override any of it.
 Found while testing, and fixed: **a seek made while paused was lost**.
 Only pausing saved the queue's place, so quitting, or another device
 taking over, went back to where the song was paused. A seek while paused
-now saves the place, as pausing does.
+now saves the place too.
 
 Left over from that testing, and fixed in 0.2.1:
 
 - **The mini window's empty strip.** Its window buttons sat in a title bar
-  strip above the player. The window has no title bar now: it is dragged
-  by anywhere on it, and a close button shows over the cover while the
-  pointer is on it. Hiding only the buttons left the strip, at the bottom.
-  A window without a title bar never becomes the key window, so ⌘W does
-  not reach it.
+  strip above the player; hiding only the buttons left the strip. The
+  window has no title bar now: it is dragged by anywhere on it, and a
+  close button shows over the cover while the pointer is on it. A window
+  without a title bar never becomes the key window, so ⌘W does not reach
+  it.
 - **A song dropped just above a list went to its end.** The inset list
   style leaves a margin above the first row, and SwiftUI reports a drop
-  there as one past the last row, as it does below it. The lists that
-  reorder by drag (a queue's songs, the queues, a playlist) use the plain
-  style, which has no such margin; a drop on the divider above does
-  nothing.
+  there as past the last row. The lists that reorder by drag (a queue's
+  songs, the queues, a playlist) use the plain style, which has no such
+  margin; a drop on the divider above does nothing.
 
 Tested by driving the app with real clicks and keys on the owner's Mac: a
 walk through every sidebar section, playlists, a queue's page, album and

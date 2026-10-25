@@ -1,7 +1,6 @@
 # 016 — Play speed and pitch on Android
 
-**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the settings cap on
-the NAS in `server-v0.1.3`; tested live there on 2026-10-07
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the settings cap on the NAS in `server-v0.1.3`; tested live there on 2026-10-07
 **Started:** 2026-10-07
 
 ## Problem
@@ -48,21 +47,20 @@ Rejected: speed only, and speed and pitch linked like a record.
 - **The everyday setting stays on the device** (`Prefs`): the phone in the
   car and the laptop at a desk need not agree.
 
-The server takes any setting the app names, so it needed only one change:
-its cap of 100 settings per user, meant to stop one user filling the
-database, would have been reached by songs given a speed over the years.
-The cap is now **1,000**, and **settings set back to `null` no longer
-count** (`server-v0.1.3`). A server older than that keeps the old cap; a
-setting past it is rejected and the song keeps its speed on that phone
-only.
+The server takes any setting the app names, so it needed one change: its
+cap of 100 settings per user, meant to stop one user filling the database,
+would have been reached by songs given a speed over the years. The cap is
+now **1,000**, and **settings set back to `null` no longer count**
+(`server-v0.1.3`). On an older server a setting past the cap is rejected,
+and the song keeps its speed on that phone only.
 
 ### Where it lives
 
 A **speed button on Now playing**, next to repeat. At normal speed and
 pitch it is an icon; otherwise it shows the speed in the accent colour
-("1.5×"), or the pitch ("+2") when only the pitch is changed. One value,
-not both, so the row of buttons still fits a phone's width with the sleep
-timer counting down beside it; the dialog shows both. **Normal** in the
+("1.5×"), or the pitch ("+2") when only that changed. One value, not both,
+so the row still fits a phone's width beside a sleep timer counting down;
+the dialog shows both. **Normal** in the
 dialog resets whichever setting is being edited.
 
 ### Listens count song time

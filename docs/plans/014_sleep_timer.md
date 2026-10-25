@@ -1,14 +1,12 @@
 # 014 — The sleep timer on Android
 
-**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the stepper dialog and
-the menu entry in 0.4.0
+**Status:** `RELEASED` — in the 0.13.0 GitHub release (2026-10-12); in 0.3.0 on the owner's phone; the stepper dialog and the menu entry in 0.4.0
 **Started:** 2026-10-07
 
 ## Problem
 
 REQUIREMENTS lists a sleep timer for v1: stop after a set time, after N
 songs, or after a song. Musicolet has one, and people fall asleep to music.
-The app has none.
 
 ## Decisions
 
@@ -29,10 +27,9 @@ The dialog offers three, one picked by its radio button and set with
 - **At the end of this queue:** stop after its last song instead of
   repeating.
 
-A fifth, **after a song picked in the queue** ("Stop after this song" in
+One more, **after a song picked in the queue** ("Stop after this song" in
 its menu, as in Musicolet), came with [020](020_queue_screen.md). It is set
-from the Queues tab, not this dialog, and stops the same way as the others
-by songs.
+from the Queues tab, not this dialog, and stops as the others by songs do.
 
 Rejected, both tried first: presets (15 to 90 minutes, 2 to 10 songs) as
 chips, which wrapped into clutter, and the same presets as a list of rows
@@ -65,8 +62,8 @@ asleep, not how much music you hear.
   there from a moon button on Now playing (2026-10-07, the owner's choice),
   which crowded the row of buttons for a feature used once a night.
 - **A moon on Now playing only while a timer runs**, next to repeat and
-  shuffle, with the time left (or the songs left) beside it. It opens the
-  timer, which also turns it off. With no timer set it is not there.
+  shuffle, with the time (or the songs) left beside it. It opens the
+  timer, which also turns it off.
 - **In the notification and on the lock screen**, after the artist:
   "Coldplay · Sleep in 23 min". The session sees the player through a thin
   wrapper that adds this to the metadata and refreshes it every 30 s.

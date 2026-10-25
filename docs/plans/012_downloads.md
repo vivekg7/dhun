@@ -8,11 +8,11 @@
 The app streams every song from the NAS. On a flight, in a basement or
 when Tailscale drops, the music stops; on mobile data, each listen costs
 data. REQUIREMENTS puts **Downloads in v1** (with a storage limit, original
-files, and a Cache after v1), and [007](007_client_architecture.md) already
-decided the storage: **plain files** in the app's own folder, preferably on
-the SD card, tracked in Room, and resolved before the stream. This plan
-decides the rest: what can be downloaded, when it is fetched, what happens
-when space runs out, and how the app shows it.
+files, and a Cache after v1), and [007](007_client_architecture.md) decided
+the storage: **plain files** in the app's own folder, preferably on the SD
+card, tracked in Room, and resolved before the stream. This plan decides
+what can be downloaded, when it is fetched, what happens when space runs
+out, and how the app shows it.
 
 ## Decisions
 
@@ -26,9 +26,8 @@ reference, such as `playlist:12` or `folder:Bollywood/90s`), not as the list
 of songs it had at the time.
 
 The pins **stay in step** with the server: on every change to the
-catalogue, the playlists or the marks, the app recomputes the songs the pins
-cover. Songs that joined are fetched; files that no pin covers any more are
-deleted. A song covered by two pins is stored once and stays until neither
+catalogue, the playlists or the marks, the app recomputes the songs they
+cover, fetches the songs that joined and deletes files no pin covers. A song covered by two pins is stored once and stays until neither
 covers it. A file the server replaced (the size changed, as when curation
 upgrades a file) is fetched again.
 
@@ -51,11 +50,10 @@ that often wastes data and flash.
   since [019](019_networking_and_caching.md), and dropped once its song is
   no longer wanted.
 - A **foreground service** (`dataSync`) shows the progress and keeps the
-  process alive while downloads run. It is started from the app; when
-  Android forbids starting it from the background (Android 12+), the
-  downloads still run while the app or playback is alive, and the rest
-  waits for the next time the app is opened. A network that comes back or a
-  failure 30 s ago starts the queue again.
+  process alive while downloads run. Where Android 12+ forbids starting it
+  from the background, downloads still run while the app or playback is
+  alive, and the rest waits for the app's next start. A network coming
+  back, or 30 s after a failure, starts the queue again.
 - Rejected: **WorkManager**, for the reason in [011](011_android_app.md)
   (a second copy of Room), and **user-initiated data transfer jobs**, which
   need Android 14 and a fallback for 12 and 13 that would be this same
@@ -90,10 +88,10 @@ them too.
 
 ### Playing them
 
-The player keeps the stream URL as each item's address. A
-`ResolvingDataSource` swaps in the local file when the song is downloaded,
-at the moment the song is opened, so a download that finishes while the
-queue is loaded is used the next time that song plays.
+The player keeps the stream URL as each item's address. A data source of
+our own (`SongSource`, since [019](019_networking_and_caching.md)) swaps in
+the local file when the song is opened, so a download that finishes while
+the queue is loaded is used the next time that song plays.
 
 ### How it shows
 
@@ -105,20 +103,21 @@ queue is loaded is used the next time that song plays.
 - A **Downloads card** in the Playlists tab, under Favorites and Listen
   Later: the space used, what is happening (downloading, waiting for Wi-Fi,
   full), the pins, and every downloaded song.
-- **Offline**, songs not on the phone are **dimmed**: not downloaded,
-  and since [019](019_networking_and_caching.md) not in the song cache
-  either. "Offline"
-  means the last request could not reach the server, or there is no
-  network at all. Until 0.4.0 the player also skipped them, moving to the
-  next downloaded song when one failed to load; since
-  [019](019_networking_and_caching.md) it waits for the network instead.
+- **Offline**, songs not on the phone (not downloaded, and since
+  [019](019_networking_and_caching.md) not in the song cache) are
+  **dimmed**. "Offline" means the last request could not reach the server,
+  or there is no network at all. Until 0.4.0 the player also skipped to the
+  next downloaded song when one failed to load; since 019 it waits for the
+  network.
 
 ### On the way: the stream stays out of the art cache
 
 The server serves songs with `Last-Modified` and no `Cache-Control`, which
-OkHttp treats as cacheable. A song streamed without a Range header was
+OkHttp treats as cacheable, so a song streamed without a Range header was
 written into the 64 MB HTTP cache meant for art, pushing the art out.
-Stream and download requests now ask OkHttp not to store them.
+Stream and download requests then asked OkHttp not to store them. Since
+[019](019_networking_and_caching.md) covers are files by their art key and
+the HTTP cache is gone.
 
 ## Open questions
 

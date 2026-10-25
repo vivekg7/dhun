@@ -81,8 +81,8 @@ for other players are not needed.
   either name: "Favorites" in a user's folder is refused, in any letter
   case, since a Mac sees the share without case.
 
-**Automatic views.** These are computed by the apps from data they already
-sync, with no files and no server work:
+**Automatic views**, computed by the apps from data they already sync, with
+no files and no server work:
 
 | View               | From                                                                                                                      |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
@@ -95,8 +95,8 @@ sync, with no files and no server work:
 ## Rejected
 
 - **A and B above**, for the reasons given.
-- **The apps removing finished items themselves:** three apps would each
-  need the rule, and an app that missed it would leave the list stale
+- **The apps removing finished items themselves:** every app would need
+  the rule, and an app that missed it would leave the list stale
   everywhere.
 - **Exporting the views as files:** they change with every listen and are
   cheap to compute; files would add churn to the share for nothing.
@@ -110,7 +110,9 @@ sync, with no files and no server work:
 2. Android: the two lists pinned above the user's playlists, with the
    settings, and the five views below them, on the Playlists tab
    ([011](011_android_app.md)). Each view holds at most 100 songs. Built.
-3. macOS and web: the same lists and views, read-only views first.
+3. macOS, web and Linux: the same lists and views. Built
+   ([024](024_macos_app.md), [030](030_web_client.md),
+   [039](039_linux_app.md)).
 
 ## Open questions
 

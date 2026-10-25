@@ -43,9 +43,9 @@ and every device sees the same one.
   without a server change.
 - **Synced settings.** `setting.set {name, value}` stores one app setting
   per user, as JSON, and every pull returns those that changed. The server
-  reads only the Listen Later ones ([010](010_special_playlists.md)). This is the first setting a user expects to follow
-  them to every device, so it is built generally rather than as two special
-  columns:
+  reads only the Listen Later ones ([010](010_special_playlists.md)). These
+  are the first settings a user expects to follow them to every device, so
+  the mechanism is general rather than two special columns:
 
   | Setting                 | Values                                    | Default  |
   | ----------------------- | ----------------------------------------- | -------- |
@@ -68,7 +68,7 @@ and every device sees the same one.
   digits, `.`, `_` or `-`; at most 1,000 settings of 4 KB each per user,
   not counting those set back to `null` ([016](016_speed_and_pitch.md)).
 
-**What the apps do** (Android first; macOS and web the same way):
+**What the apps do** (every app the same way):
 
 - When a file at least `longFiles.minMinutes` long starts and has a resume
   point, it continues from there (`auto`) or offers to (`ask`). Every
@@ -106,9 +106,8 @@ mistaken Previous could cost the owner their place hours into a book. So:
 - **Chapters only on the screen.** A headset, the notification and the
   lock screen go by file, Next as well as Previous: a chapter skip moves
   the place within the file just as a restart does. Now playing and the
-  mini players still go by chapter, and Previous there never restarts the
-  chapter playing in a long file. Since 2026-10-17 they go by file
-  everywhere (below).
+  mini players went by chapter until 2026-10-17, when they too went by
+  file (below).
 
 Rejected: ignoring Previous in long files everywhere (a button on screen
 that does nothing looks broken), and an undo after a restart (the place is
@@ -213,7 +212,8 @@ row asking the database.
 
 1. Server: migration `0005`, the three operations, and the pull fields.
    Done.
-2. Android: the behaviour above, and the two settings in the app's settings.
-   Built ([011](011_android_app.md)).
-3. macOS and web: the same, with the settings read from the sync.
-4. Previous: built on Android, macOS and the web.
+2. Android: the behaviour above, and the settings. Built
+   ([011](011_android_app.md)).
+3. macOS, web and Linux: the same, with the settings read from the sync.
+   Built ([024](024_macos_app.md), [030](030_web_client.md),
+   [039](039_linux_app.md)).

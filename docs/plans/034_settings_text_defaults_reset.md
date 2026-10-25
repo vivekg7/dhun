@@ -15,24 +15,24 @@ The owner asked for three changes (2026-10-18):
    changed, nothing shows what it was, and putting a page back means
    remembering every value.
 3. **More things could be settings.** Several are hardcoded in the
-   clients. Whether each is worth a setting is part of this plan.
+   clients; whether each is worth a setting is part of this plan.
 
 What we have now:
 
 - **Android** already moved each explanation from the row into its
-  dialog ([018](018_settings_layout.md)). The dialog notes are still
-  paragraphs, though (three sentences for "Previous in one"). Titles and
-  choice labels are sentences ("Going on after a pause", "Previous file,
-  keep my place"). And every synced row ends in "· on all your devices",
-  eleven times on one page.
+  dialog ([018](018_settings_layout.md)), but the notes are still
+  paragraphs (three sentences for "Previous in one"), titles and choice
+  labels are sentences ("Going on after a pause", "Previous file, keep my
+  place"), and every synced row ends in "· on all your devices", eleven
+  times on one page.
 - **macOS and the web** show the explanations on the page itself, as
-  section footers and group notes. The footer under Long files is six
-  sentences long.
-- **Each default is a literal at every place the setting is read**:
+  section footers and group notes; the one under Long files is six
+  sentences.
+- **Each default is a literal wherever the setting is read**:
   `longFiles.seekBack`'s 10 appears 13 times across Kotlin, Swift and JS,
-  and the server reads the Listen Later defaults too. They agree today.
-  Nothing makes them keep agreeing, and nothing could mark the default or
-  reset to it.
+  and the server reads the Listen Later defaults too. They agree today, but
+  nothing keeps them agreeing, and nothing could mark the default or reset
+  to it.
 
 ## Options
 
@@ -42,9 +42,9 @@ What we have now:
   Settings stay one short line each. The guide also has room for what is
   not a setting at all: queues against playlists, Downloads against the
   cache, what follows the user to other devices.
-- **Tooltips everywhere.** Android has no hover, and a long-press tooltip
-  is one nobody finds. On the Mac `.help()` is native and costs a line, so
-  we use it there as well. It cannot be the only place the text lives.
+- **Tooltips everywhere.** Android has no hover, and nobody finds a
+  long-press tooltip. On the Mac `.help()` is native and costs a line, so
+  we use it there as well, but it cannot be the only place the text lives.
 - **An ⓘ on every row.** The same clutter, in icon form. Rejected.
 
 **How the three clients get the guide**
@@ -67,22 +67,22 @@ What we have now:
 
 **Reset**
 
-- **One "Reset to defaults" per page, after asking** (chosen). It sits in
-  the page's ⋮ menu on Android, a "Reset to Defaults…" button at the foot
-  of each Settings tab on the Mac (the platform's place for it), and a
-  button at the end of each page on the web.
-- **One reset for everything**, from the main Settings list. That's a big
-  action to take by mistake, and nobody asked for it. Rejected for now.
+- **One "Reset to defaults" per page, after asking** (chosen): in the
+  page's ⋮ menu on Android, a "Reset to Defaults…" button at the foot of
+  each Settings tab on the Mac (the platform's place for it), and a button
+  at the end of each page on the web.
+- **One reset for everything**, from the main Settings list. A big action
+  to take by mistake, and nobody asked for it. Rejected for now.
 - **A reset per row.** Picking the option marked Default does the same.
   Rejected.
 
 **Saying what syncs**
 
 - **One line at the top of Playback:** "These follow you to all your
-  devices" (proposed). Every synced setting is on that page and no other
-  page has one, so one line says it all. This replaces 018's per-row
-  suffix.
-- Keep the suffix on every row: eleven repeats of the same words.
+  devices" (chosen). Every synced setting is on that page and no other
+  page has one, so one line says it all. It replaces 018's per-row suffix.
+- **Keep the suffix on every row:** eleven repeats of the same words.
+  Rejected.
 
 ## Decision
 
@@ -94,22 +94,21 @@ The owner decided (2026-10-18):
   row of the Settings list on every client.
 - **The default option is marked** in every list of options.
 - **Every settings page with preferences can be reset to its defaults.**
-- **At most 20 queues stays fixed.** Making it a setting adds nothing,
-  and a list longer than twenty is hard to scroll anyway. This confirms
-  the product rule in `CLAUDE.md` and [020](020_queue_screen.md).
+- **At most 20 queues stays fixed.** A setting would add nothing, and a
+  list longer than twenty is hard to scroll anyway. This confirms the
+  product rule in `AGENTS.md` and [020](020_queue_screen.md).
 
-The owner also accepted the wording table, the sync line and the
-verdicts on new settings below, and said no to all three settings that
-were left as questions (2026-10-18): when a queue ends Dhun stops, playback
-does not resume when a headset connects, and Shuffle shuffles the whole
-queue.
+The owner also accepted the wording table, the sync line and the verdicts
+on new settings below, and said no to the three settings left as
+questions: when a queue ends Dhun stops, playback does not resume when a
+headset connects, and Shuffle shuffles the whole queue.
 
 ### The wording
 
-Titles and values. Synced settings keep their names in storage;
-only the labels change.
+Titles and values. Synced settings keep their names in storage; only the
+labels change.
 
-| Today (title → value)                           | Proposed                                                                               | Note kept in the dialog                                     |
+| Before (title → value)                          | Proposed                                                                               | Note kept in the dialog                                     |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | Previous → Restart the song first               | Previous → Restart song first / Previous song                                          | —                                                           |
 | Continue long files → 15 minutes and longer     | Remember position → 15 min and longer                                                  | "For audiobooks, podcasts and mixes."                       |
@@ -125,47 +124,47 @@ only the labels change.
 | Downloads limit (note)                          | Storage limit → 10 GB                                                                  | "At the limit, downloads stop. Nothing is deleted."         |
 | Wi-Fi only · Downloads wait for Wi-Fi           | Wi-Fi only                                                                             | —                                                           |
 
-The rows under the Long files heading can drop "long files" from their
-titles, because the heading already says it. The Downloads note stays
-because it answers the question people actually have ("will it delete my
-songs?"). macOS and the web take the same words, and their section
-footers go.
+The rows under the Long files heading drop "long files" from their
+titles, since the heading says it. The Downloads note stays because it
+answers the question people actually have ("will it delete my songs?").
+macOS and the web take the same words, and their section footers go.
 
 ### How it works
 
 - **One source, `docs/GUIDE.md`**: one section per settings page, plus
   Queues, Downloads and the cache, and what syncs. Written for a family
-  member, not a maintainer. Like any doc, it changes in the same commit as
-  the behaviour it describes.
+  member, not a maintainer, and changed in the same commit as the
+  behaviour it describes.
 - **Each app carries a committed copy**, because Gradle's assets, SwiftPM
   and `go:embed` each read only their own folders: Android's in its
   assets, the web's beside `index.html`, and the Mac's as a Swift string
   (a SwiftPM resource would need a resource bundle copied into the app by
-  hand). `scripts/guide.sh` writes the three from `docs/GUIDE.md`;
-  `make fmt` runs it, and `make check` fails when a copy is out of date.
+  hand); the Linux app's, since [039](039_linux_app.md), in `linux/app/src`.
+  `scripts/guide.sh` writes them from `docs/GUIDE.md`; `make fmt` runs it,
+  and `make check` fails when a copy is out of date.
 - **Markdown limited to headings, paragraphs, lists and bold.** Each client
   renders that in about twenty lines (on the Mac, `AttributedString` per
   paragraph), with no Markdown library.
 - **The ⓘ goes only on settings whose guide section says more than their
   dialog does**: Remember position, Previous button, Next button, the
   cache, and on Android the mini player (its Floating style is not obvious
-  from the name). On Android it sits in the dialog's title; on the Mac and the web
-  it's beside the row, with `.help()` or `title` holding the one-line note.
-  It opens the guide at that setting's section.
+  from the name). On Android it sits in the dialog's title; on the Mac and
+  the web beside the row, with `.help()` or `title` holding the one-line
+  note. It opens the guide at that setting's section.
 
 ### Defaults and reset
 
-- **One table of settings per platform**, listing each key, its default
-  and its options. `Settings.kt`, `Playback.kt` and the rest read from it,
-  with no literals. The dialog's "Default" mark and the reset both come
-  from it. The table is written one key to a line, so a small `make check`
-  script can compare the synced keys and their defaults across Kotlin,
-  Swift, JS and the server's `readSetting` calls. If they disagree, the
-  same user's phone and Mac behave differently, which is what the check
-  catches.
+- **One table of synced settings per platform** (`Synced.kt`,
+  `Synced.swift`, `synced.js`), listing each key, its default and its
+  options. Every read goes through it, with no literals, and the dialog's
+  "Default" mark and the reset both come from it. It is written one key to
+  a line, so `scripts/check-settings.sh`, in `make check`, can compare the
+  keys and defaults across Kotlin, Swift, JS and the server's
+  `readSetting` calls: where they disagree, the same user's phone and Mac
+  behave differently.
 - **Resetting a synced setting writes `null`.** The server's `readSetting`
-  and both apps already treat `null` as missing, so no server change is
-  needed. Because the key is unset, not pinned to today's value, a later
+  and both apps already treat `null` as missing, so the server needs no
+  change. Because the key is unset, not pinned to today's value, a later
   change of default reaches it. A device-local setting removes its stored
   key.
 - **What resets per page**:
@@ -217,20 +216,20 @@ A setting is worth adding only if it passes all three tests:
 | Lyrics text size                                                                | No: follows the system's font size                                                                                                                                                                                                              |
 | Equalizer, ReplayGain, crossfade                                                | Not settings but features, already on the Later list in `REQUIREMENTS.md`                                                                                                                                                                       |
 
-So the answer to "is adding more customisations worth it" is **mostly
-no**. Dhun's hardcoded values are either decisions already made or
-internals, and turning them into settings would bring back the clutter
-point 1 removes. The settings worth having are Musicolet behaviours we
-don't have yet, and of those the owner wants only the sleep timer's.
+So "is adding more customisations worth it" is **mostly no**. Dhun's
+hardcoded values are decisions already made or internals, and settings for
+them would bring back the clutter point 1 removes. The settings worth
+having are Musicolet behaviours we lack, and of those the owner wants only
+the sleep timer's.
 
 ## Plan
 
 In this order, because the table makes the rest cheap:
 
 1. **The settings table on each platform**, the drift check in
-   `make check`, and every read site moved onto the table. Nothing changes
-   for the user. This step can fail if a read site is missed; grepping
-   for each key in quotes finds them all.
+   `make check`, and every read site moved onto the table, with no change
+   for the user. **Can fail** if a read site is missed; grepping for each
+   key in quotes finds them all.
 2. **The "Default" mark and Reset to defaults**, on Android, the Mac and
    the web.
 3. **The wording pass and the sync line**, on all three, with 018's
@@ -242,5 +241,4 @@ In this order, because the table makes the rest cheap:
 
 ## Open questions
 
-None. The three questions this plan asked were answered no (owner,
-2026-10-18; see the table above).
+None: the three this plan asked were answered no (owner, 2026-10-18).

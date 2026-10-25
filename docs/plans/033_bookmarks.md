@@ -9,8 +9,8 @@ A podcast or a book has moments worth coming back to: a recommendation,
 a passage to quote, a chapter to play to someone. The resume point
 ([009](009_resume_long_files.md)) remembers only where the listener
 stopped, and the chapters only where the author put them. Musicolet keeps
-bookmarks per song in a side file on one phone. Dhun's would have to
-follow the user to every device, as everything else they mark does.
+bookmarks per song in a side file on one phone; Dhun's must follow the user
+to every device, as everything else they mark does.
 
 What a bookmark is (owner, 2026-10-17):
 
@@ -27,13 +27,13 @@ What a bookmark is (owner, 2026-10-17):
 ## Options
 
 **A. Store them in a synced setting** (`bookmarks.<song>`, a JSON list).
-No server change. But a setting is one value where the later change
-wins: two devices adding a bookmark to the same file while one is
-offline would lose one of them, and a setting is capped at 4 KB.
+No server change, but a setting is one value where the later change wins:
+two devices adding a bookmark to the same file while one is offline would
+lose one, and a setting is capped at 4 KB.
 
 **B. A table of bookmarks, one row each,** with a client-made ID, synced
 like resume points. Each bookmark merges on its own, so adding on two
-devices keeps both. Costs a migration, two operations and a field in the
+devices keeps both, for a migration, two operations and a field in the
 pull.
 
 ## Decision
@@ -70,12 +70,11 @@ pull.
   instead, so a long music file (a DJ mix), which keeps Shuffle where a
   book has its Chapters and notes button, still reaches them.
 
-**The server goes out first.** An older server refuses the whole push
-that carries a bookmark, not just that operation: it reads the request
-strictly, and `bookmark` is a field it does not know. Nothing is lost,
-since the operations stay in the outbox, but nothing else from that
-device syncs either, its queues and resume points included, until the
-server is updated. Then it all goes up at once.
+**The server goes out first.** An older server reads the request strictly
+and refuses the whole push that carries a bookmark, a field it does not
+know. Nothing is lost, since the operations stay in the outbox, but nothing
+else from that device syncs either, queues and resume points included,
+until the server is updated; then it all goes up at once.
 
 ## Rejected
 

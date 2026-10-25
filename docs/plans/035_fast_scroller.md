@@ -5,37 +5,35 @@
 
 ## Problem
 
-No list on Android had a scrollbar (owner, 2026-10-19). Compose's lazy lists
-draw none by default, and nothing in the app added one. With about 7,000
-songs, a few hundred artists and albums, and podcast feeds hundreds of
-episodes long, flinging was the only way to cross a list. Musicolet has a
-thumb you can drag, and our feature inventory never listed it, so it was
-missed.
-
-The Mac and web clients already have one: SwiftUI's `List` and the
-browser's scrollbars are both draggable.
+No list on Android had a scrollbar (owner, 2026-10-19): Compose's lazy
+lists draw none by default, and nothing in the app added one. With about
+7,000 songs, a few hundred artists and albums, and podcast feeds hundreds
+of episodes long, flinging was the only way to cross a list. Musicolet has
+a thumb you can drag, but our feature inventory never listed it, so it was
+missed. The Mac's `List` and the browser's scrollbars are already
+draggable.
 
 ## Options
 
 **Where the thumb comes from**
 
 - **Material3's scrollbar.** Not in the stable Material3 in our BOM (1.4).
-  Waiting for it leaves the gap open, and an alpha artifact is a dependency
-  we would have to track.
-- **A library.** Several exist. Each is a dependency for about a hundred
-  lines of code, against the rule on dependencies.
+  Waiting leaves the gap open, and an alpha artifact is a dependency to
+  track.
+- **A library.** Several exist, each a dependency for about a hundred lines
+  of code, against the rule on dependencies.
 - **Our own, on foundation's `scrollIndicatorState`** (chosen). Foundation
   1.12 gives every lazy list and grid a scroll offset, a content size and a
-  viewport size. That covers the hard part, which is where to draw the
-  thumb. What is left is drawing it and the drag.
+  viewport size, which is the hard part, where to draw the thumb. What is
+  left is drawing it and the drag.
 
 **What a drag does**
 
 - **Scroll by pixels.** It works with any `ScrollableState`, but a jump
   across 7,000 rows by pixels lays out every row in between.
 - **Jump to an item** (chosen). A drag maps the thumb's place to an item
-  index and calls `scrollToItem`. That needs the list or grid state itself,
-  so there is one overload for each.
+  index and calls `scrollToItem`, which needs the list or grid state
+  itself, so there is one overload for each.
 
 **Which lists get the letter bubble**
 
@@ -51,12 +49,12 @@ results by relevance, Favorites by when a song was added.
 - **It shows only on a long list**, one that holds more than three screens.
   A shorter list scrolls well enough by hand.
 - **It shows only while the list moves**, and fades out 1.5 s after it
-  stops. A thumb that is always there would cover the rows' menu buttons.
-  While it is hidden, it takes no touches.
-- **Dragging the thumb jumps through the list.** While you drag, the thumb
-  follows your finger, not the list's estimate of its position, which
-  changes as rows of different heights are laid out and would make the
-  thumb twitch.
+  stops: a thumb always there would cover the rows' menu buttons. Hidden,
+  it takes no touches.
+- **Dragging the thumb jumps through the list.** While dragging, the thumb
+  follows the finger, not the list's estimate of its position, which
+  changes as rows of different heights are laid out and would make it
+  twitch.
 - **On a list in name order, a bubble beside the thumb shows the letter of
   the row at the top.** A digit or a sign shows as `#`. Devanagari shows
   its own letter, since the natural sort puts it after Z.

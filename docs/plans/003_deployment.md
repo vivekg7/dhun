@@ -1,14 +1,14 @@
 # 003 — Deployment on the NAS with Docker Compose
 
-**Status:** `RELEASED` — `server-v0.1.5` running on the owner's NAS since 2026-10-08
+**Status:** `RELEASED` — on the owner's NAS since `server-v0.1.5` (2026-10-08)
 **Started:** 2026-10-06 · **Revised:** 2026-10-07 (safety review before the first install)
 
 ## Problem
 
 The backend ([001](001_own_backend_in_go.md)) runs on a Synology NAS next
-to the household's other self-hosted apps. The `Music` folder is a collection built
-over years and must not be put at risk: Dhun has to use it in place, be
-unable to damage it, and be reachable only by the family.
+to the household's other self-hosted apps. The `Music` folder is a
+collection built over years: Dhun has to use it in place, be unable to
+damage it, and be reachable only by the family.
 
 The owner runs every container the same way: a project folder per app in
 the `docker` shared folder (`/volume1/docker/<app>/`), holding the compose
@@ -33,8 +33,8 @@ project folder.**
 - **Read-only Music.** In v1 Dhun never changes audio, so it should not be
   able to: a bug, a bad upgrade or an attacker inside the container cannot
   delete, rename or rewrite a song. Jellyfin mounts the same folder `:ro`.
-  When the admin panel's moves and upgrades arrive ([004](004_curation_workflow.md)),
-  that plan decides how much write access they get.
+  The admin panel's moves and upgrades ([004](004_curation_workflow.md))
+  will decide how much write access they need.
 - **`Playlists/` writable, and every change kept.** Before Dhun rewrites,
   renames or deletes a playlist file, it copies it to
   `data/playlists/history/<date>/` (the day's first version) or
@@ -45,13 +45,13 @@ project folder.**
   Mac mounts over SMB), deleting the Container Manager project keeps it, and
   the music folder holds only music.
 - **Port `8585` on the home network, plain HTTP, like DSM (5001) and
-  other apps on a NAS.** At home the apps connect directly; away,
+  other apps on a NAS.** `8585` avoids Jellyfin (8096), Immich (2283) and
+  Subsonic servers (4040, 4533). At home the apps connect directly; away,
   over Tailscale to the same port. The owner's decision (2026-10-07): the
-  home network is trusted. What protects the server on it is its own login
-  (argon2 passwords, guessing slowed per name, device tokens) rather than
-  the network. The trade-off: on the home Wi-Fi the password at sign-in and
-  the device token travel unencrypted. Optional HTTPS needs no change to
-  Dhun:
+  home network is trusted, and what protects the server on it is its own
+  login (argon2 passwords, guessing slowed per name, device tokens). The
+  trade-off: on the home Wi-Fi the password at sign-in and the device token
+  travel unencrypted. Optional HTTPS needs no change to Dhun:
 
   ```sh
   tailscale serve --bg --https=8586 http://127.0.0.1:8585
@@ -62,20 +62,20 @@ project folder.**
   shell, no package manager) and runs as `nobody` unless told otherwise.
   Compose adds: `user: 1026:100` (the owner, so files Dhun writes stay
   editable over SMB), `read_only: true`, `cap_drop: [ALL]`,
-  `no-new-privileges`, `mem_limit: 512m` and `pids_limit`. The image sets
+  `no-new-privileges`, `mem_limit: 512m` and `pids_limit: 200`. The image sets
   `GOMEMLIMIT=192MiB`, so the Go collector works towards the 256 MB target
   of [plan 036](036_fast_at_100k.md) and `mem_limit` is only the kill
   switch; the [baseline](../research/performance-baseline.md) has the
   measured figures.
 - **`latest`, pulled on every Build** (`pull_policy: always`): upgrading is
   Stop → Build in Container Manager, with no file to edit. Each release is
-  also published under its own tag (`server-vX.Y.Z`), so staying on one,
-  or rolling back, is putting that tag in the compose file. The first
-  version of this plan pinned a fixed tag, so that an upgrade happened only
-  when the owner edited it, never on a pull; the owner chose `latest` on
-  2026-10-07, because he publishes every release himself and editing the
-  tag each time was a chore. What is lost: a Build always takes the newest
-  release, so a release is published only when it is meant to run.
+  also tagged `server-vX.Y.Z`, so staying on one, or rolling back, is
+  putting that tag in the compose file. The first version of this plan
+  pinned a tag, so an upgrade happened only when the owner edited it; the
+  owner chose `latest` on 2026-10-07, because he publishes every release
+  himself and editing the tag each time was a chore. The cost: a Build
+  always takes the newest release, so a release is published only when it
+  is meant to run.
 - **The admin from the environment** (as Immich and Navidrome seed their
   first account). The server refuses to start with no users and no admin
   configured, so a fresh install is never left open. The variables are read
@@ -83,8 +83,6 @@ project folder.**
   should be deleted, and changing them never resets an account.
 - **`restart: unless-stopped`** (Jellyfin) and **`/etc/localtime` plus `TZ`**
   (Immich): play history is time-of-day data.
-- **Port `8585`** avoids Jellyfin (8096), Immich (2283) and Subsonic servers
-  (4040, 4533).
 
 **Safety nets in the server**, independent of the mounts:
 
@@ -100,8 +98,7 @@ project folder.**
 ## Install
 
 On Synology DSM 7 with Container Manager. It takes about 10 minutes; the
-first scan of 7,000 songs took 3.5 of them. Until the web app ships, two steps use `curl` from
-the Mac.
+first scan of 7,000 songs took 3.5 of them.
 
 1. **Find your user and group IDs.** Dhun runs as you, so the files it
    writes stay yours. Enable SSH for a moment (Control Panel → Terminal &
@@ -120,8 +117,8 @@ the Mac.
    The share's ACL grants write access through the `administrators`
    group. The container runs with your user and the `users` group only, so
    it is refused (`data folder /data is not writable` in the log, and the
-   container restarts in a loop). Other apps' working folders
-   have plain permissions too. `ls -lnd` should show
+   container restarts in a loop). Other apps' folders have plain
+   permissions too. `ls -lnd` should show
    `drwxr-xr-x … 1026 100`, with no `+`. (`sudo` on Synology needs full
    paths: `/usr/local/bin/docker`, `/usr/syno/bin/synoacltool`.)
 
@@ -148,12 +145,8 @@ the Mac.
      `scan done … failed=0`. Over SSH:
      `sudo /usr/local/bin/docker logs --tail 20 dhun`.
    - **Health:** `http://<nas>:8585/healthz` answers `ok`.
-   - **Sign-in:** this returns a token.
-
-     ```sh
-     curl -s http://<nas>:8585/api/v1/login -H 'Content-Type: application/json' \
-       -d '{"username":"<you>","password":"<password>","device":"Mac"}'
-     ```
+   - **Sign-in:** `http://<nas>:8585/` opens the web client; sign in as
+     the admin.
 
    If the page does not load and the DSM firewall is on, allow TCP `8585`
    from the local network (Control Panel → Security → Firewall).
@@ -161,24 +154,14 @@ the Mac.
 6. **Remove the password from the compose file.** Delete the
    `DHUN_ADMIN_PASSWORD` line, then Project → `dhun` → Stop → Build. The
    account stays; the line is only read while there are no users.
-7. **Add the family** from the Android app, signed in as the admin:
-   Settings → Account → Family members
-   ([023](023_users_on_android.md)). Without the app, with the token from
-   step 5:
+7. **Add the family** from Settings → Family members, signed in as the
+   admin, in any of the apps or the web client
+   ([023](023_users_on_android.md)). Their playlists go in
+   `Music/Playlists/<name>/`.
 
-   ```sh
-   curl -s http://<nas>:8585/api/v1/admin/users -H 'Authorization: Bearer <token>' \
-     -H 'Content-Type: application/json' -d '{"name":"<name>","password":"<password>"}'
-   ```
-
-   Their playlists go in `Music/Playlists/<name>/`. Sign the Mac out
-   afterwards (`POST /api/v1/logout` with the same header), so the token
-   stops working.
-
-**Upgrading:** Stop → Build: it pulls the newest release. If Container
-Manager reuses the image it already has, delete `ghcr.io/vivekg7/dhun:latest`
-under Image first.
-Database migrations run on start. The database is backed up nightly to
+**Upgrading:** Stop → Build pulls the newest release. If Container Manager
+reuses the image it already has, delete `ghcr.io/vivekg7/dhun:latest` under
+Image first. Database migrations run on start. The database is backed up nightly to
 `data/backups/`, keeping 14 days. **Backing up Dhun** means backing up
 `docker/dhun` (Hyper Backup); everything Dhun knows is in there, apart from
 the playlists in `Music/Playlists/`. **Removing it:** delete the project;
@@ -200,6 +183,6 @@ off.
   (proposed in the safety review). HTTPS everywhere and nothing on the LAN,
   but every family device would need Tailscale running even at home, unlike
   the NAS's other apps. Kept as an option above.
-- **Postgres** and **a native Synology package**: 3–4 users and about 7,000
-  songs don't need a database server, and Container Manager is already how
-  the other apps run.
+- **Postgres** and **a native Synology package**: 3–4 users and even
+  100,000 songs don't need a database server, and Container Manager is
+  already how the other apps run.

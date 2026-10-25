@@ -10,7 +10,7 @@ metadata:
 
 The owner made a Dhun account on the production NAS for testing (2026-10-11).
 Its credentials are in `local/test_account`, which is git-ignored. Sign in with
-it to test the web, Android and macOS apps, and never use the owner's own
+it to test the web client or any app, and never use the owner's own
 account. Playing anything on the owner's account writes listens, queues
 (evicting one at the 20-queue limit), played marks and settings to their real
 data.

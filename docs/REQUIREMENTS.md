@@ -1,15 +1,14 @@
 # Requirements
 
-What the system must do. Decided items come from the owner. The reasoning
-behind each architectural decision is in a numbered plan under
-[`plans/`](plans/README.md). The [v1 scope](#v1-scope) is confirmed, and
-anything undecided is under [Open questions](#open-questions).
+What the system must do, as the owner decided it. Why each part is built
+the way it is: the numbered [plans](plans/README.md). Anything undecided
+goes under [Open questions](#open-questions).
 
 ## Context
 
 - **The goal** (owner, 2026-10-19): a lightweight, fast way for one family
-  to play a large and growing audio archive on the NAS, music, podcasts
-  and audiobooks, offline too. The bar is Musicolet for music and
+  to play a large and growing audio archive on the NAS (music, podcasts
+  and audiobooks), offline too. The bar is Musicolet for music and
   Audiobookshelf for long-form audio. Playback is in daily use; the hard
   part now is the size of the collection.
 - **About 30,000 songs and growing** (owner, 2026-10-19), up from about
@@ -17,8 +16,8 @@ anything undecided is under [Open questions](#open-questions).
   longer lives on the phone at all. New songs arrive from the owner's own
   downloader, `music-project`, which also does the curation for now.
   Design and test for **100,000 songs**, so growth stays cheap.
-- Musicolet has been the daily player for 10+ years. No existing streaming
-  client matches it, which is why this project exists. See
+- Musicolet has been the daily player for 10+ years. No streaming client
+  matches it, which is why this project exists. See
   [research/musicolet-feature-inventory.md](research/musicolet-feature-inventory.md)
   and [research/existing-options.md](research/existing-options.md).
 - **NAS:** a recent x86-64 Synology (4 cores, 8 GB RAM, no integrated GPU)
@@ -35,13 +34,14 @@ anything undecided is under [Open questions](#open-questions).
   - `_inbox/`, `_meta/` and `_trash/` belong to an existing curation workflow.
     It imports from downloaders into `_inbox`, deduplicates and upgrades
     files, fetches lyrics, and logs each action to `_meta/*.jsonl`.
-- Remote access is over **Tailscale**, which already works reliably for the NAS's other apps.
+- Remote access is over **Tailscale**, which already works for the NAS's
+  other apps.
 - **Users:** the owner and close family, 3–4 people. All fully trusted.
 - Named **Dhun** (धुन, "tune"). Open source under **GPL-3.0**, hosted at
-  GitHub `vivekg7/dhun`. Distributed through **GitHub Releases** only. The Play Store
-  is considered only if other people ask for it. An app goes into a GitHub
+  GitHub `vivekg7/dhun`. Distributed through **GitHub Releases** only; the
+  Play Store only if other people ask for it. An app goes into a GitHub
   release only after a few days or weeks of daily use on the owner's own
-  devices; until then it is installed by hand (owner, 2026-10-08).
+  devices, and is installed by hand until then (owner, 2026-10-08).
 
 ## Decided
 
@@ -59,20 +59,20 @@ anything undecided is under [Open questions](#open-questions).
 - **Deployed with Docker Compose** on the NAS, like the owner's other apps:
   one project folder in the `docker` share holds the compose file and all of
   Dhun's own data. **The collection must be safe from Dhun:** `Music` is
-  mounted read-only except `Playlists/`, and every playlist Dhun changes or deletes is kept as a copy —
-  [plans/003](plans/003_deployment.md).
+  mounted read-only except `Playlists/`, and every playlist Dhun changes or
+  deletes is kept as a copy — [plans/003](plans/003_deployment.md).
 - **Server is the source of truth, per user.** Playlists (as `.m3u8` files),
   favorites, queues and play counts live on the server, separately for each
-  user. Each client
-  keeps a **working copy** so it works offline, records changes made offline,
-  and pushes them on reconnect — [plans/002](plans/002_sync_and_handoff.md).
+  user. Each client keeps a **working copy** so it works offline, records
+  changes made offline, and pushes them on reconnect —
+  [plans/002](plans/002_sync_and_handoff.md).
 
 ### Users and the library
 
 - **Roles:** one admin (the owner) and family members.
   - The admin account is created from `docker-compose.yml` on first start.
-    Family members are added from the Android app, by the admin; there is
-    no sign-up.
+    The admin adds family members, from Settings in any app or the web
+    client; there is no sign-up.
 - **Everyone sees the whole main collection** — every folder under `Music/`
   except the curation workflow's own `_`-prefixed folders (`_inbox`, `_meta`,
   `_trash`), which hold unreviewed and deleted files.
@@ -88,16 +88,15 @@ anything undecided is under [Open questions](#open-questions).
     accident.
   - Entries keep the existing format: `#EXTINF` lines and paths relative to
     the playlist file, so the files stay usable in any other player.
-  - There will only ever be 3–4 users, so this stays simple: no sharing
-    permissions, no generic multi-tenant layout.
+  - With only 3–4 users this stays simple: no sharing permissions, no
+    generic multi-tenant layout.
 - Queues, favorites, listening history and hand-off state are per user and
   private, stored in Dhun's own data folder (outside `Music`).
-- **Uploads:** each user can upload their own local collection to the NAS.
-  Uploads go to a **per-user staging area**, separate from the main
-  collection, until the admin reviews them (quality check, deduplication) and
-  decides whether to move each one into the main collection. While waiting
-  for review, an upload can be played **only by the person who uploaded it**.
-- **Uploads come after v1.**
+- **Uploads, after v1:** each user can upload their own local collection to
+  a **per-user staging area**, separate from the main collection, until the
+  admin reviews them (quality check, deduplication) and decides whether to
+  move each one in. Until then, an upload plays **only for the person who
+  uploaded it**.
 - **All curation happens in Dhun's admin panel.** That covers moving files,
   upgrading a song to a better-quality copy, removing files, and reviewing
   what arrives in `_inbox/`. It replaces the current curation tool, so Dhun
@@ -108,8 +107,9 @@ anything undecided is under [Open questions](#open-questions).
   replaced or removed file goes to `_trash/`, every action is logged in
   `_meta/`, and emptying the trash is a separate, explicit admin action.
 - Outside the admin panel, the app writes only `.m3u8` playlists (keeping a
-  copy of each before changing it) and its own data folder. Songs are streamed and downloaded as **original files**.
-  No transcoding is needed, so the NAS having no GPU doesn't matter.
+  copy of each before changing it) and its own data folder. Songs are
+  streamed and downloaded as **original files**; with no transcoding, the
+  NAS's missing GPU doesn't matter.
 
 ### Cross-device playback
 
@@ -141,8 +141,8 @@ anything undecided is under [Open questions](#open-questions).
 
 Owner, 2026-10-19: staying lightweight and fast is a goal of its own, not
 a side effect. These targets hold at **100,000 songs**, on the owner's
-phone for the apps and on the NAS for the server. The numbers are defaults
-the owner can change. Where Dhun stands is in
+phone for the apps and on the NAS for the server, and the owner may change
+the numbers. Where Dhun stands:
 [research/performance-baseline.md](research/performance-baseline.md).
 
 - **Search answers each keystroke in under 50 ms.**
@@ -158,8 +158,8 @@ the owner can change. Where Dhun stands is in
 ### Queues
 
 - **Queues are separate from playlists**, and this is the most important
-  feature. A queue is a temporary playlist that is being played right now.
-  At most **20**, which is Musicolet's limit, confirmed from its APK.
+  feature. A queue is a temporary list being played right now. At most
+  **20**, Musicolet's limit, confirmed from its APK.
 - **The Queues tab is Musicolet's** (owner, 2026-10-08;
   [plan 020](plans/020_queue_screen.md)): queues are **numbered in a fixed
   order**, a new one last, reordered by dragging; a 21st removes the first.
@@ -243,7 +243,8 @@ Owner, 2026-10-10; how it is built is in
 ### Offline storage: Downloads and Cache
 
 Two independent local stores, each with its **own storage limit** set by the
-user (example: Downloads 10 GB, Cache 3 GB).
+user: 10 GB for Downloads and 3 GB for the cache by default, in Settings →
+Downloads.
 
 |                 | Downloads                                 | Cache                                           |
 | --------------- | ----------------------------------------- | ----------------------------------------------- |
@@ -256,14 +257,12 @@ user (example: Downloads 10 GB, Cache 3 GB).
 
 - Downloading a song that is already cached **moves** it from Cache to
   Downloads instead of fetching it again.
-- Smart cache strategies: cache what is played, pre-fetch the next songs of
-  the current queue, and later predict from listening history. The first
-  two are fixed rules rather than separate settings; the one setting is
-  the cache's size, or off.
-- **Downloads and the cache are both in v1** (the cache since plan 019).
-- The cache is **3 GB by default**, set in Settings → Downloads. It keeps every song played, plus the
-  next two songs of the queue on any network and the next ten on Wi-Fi. Full, it drops the songs played longest ago, never one in the
-  queue ahead (owner, 2026-10-07; [plan 019](plans/019_networking_and_caching.md)).
+- **Downloads and the cache are both in v1.** The cache keeps every song
+  played, plus the next two songs of the queue on any network and the next
+  ten on Wi-Fi; predicting from listening history comes later. These are
+  fixed rules, not settings: the one setting is the cache's size, or off.
+  Full, it drops the songs played longest ago, never one in the queue ahead
+  (owner, 2026-10-07; [plan 019](plans/019_networking_and_caching.md)).
 - **A long file is cached as a window, not whole** (owner, 2026-10-20;
   [plan 037](plans/037_long_file_cache_window.md)): the minutes past the
   playing position that **Cache ahead** sets, 30 by default or the whole
@@ -284,8 +283,8 @@ user (example: Downloads 10 GB, Cache 3 GB).
   automatic views cannot be downloaded (owner, 2026-10-07;
   [plan 012](plans/012_downloads.md)).
 - Downloads use **Wi-Fi only** by default, with a setting to allow mobile
-  data. At the storage limit (10 GB by default) they **stop and say so**;
-  nothing downloaded is deleted to make room.
+  data. At the storage limit they **stop and say so**; nothing downloaded
+  is deleted to make room.
 - Downloaded songs carry a mark, and a **Downloads** card sits in the
   Playlists tab. **Offline**, songs not on the phone (downloaded or
   cached) are dimmed; the player waits for the network rather than skip
@@ -424,9 +423,9 @@ since 0.13.0. Anything else waits for a later release.
   or seek back instead, or Previous act as with songs (owner, 2026-10-11
   and 2026-10-17); another makes Next from a headset seek forward. Now
   playing, the notification and the lock screen have **seek buttons** for
-  a long file, back 10 s and forward 30 s. **Going on after a pause** of 5 minutes or more
-  starts 10 s before where the file stopped, so a sentence cut off is
-  heard again. All four numbers are settings that follow the user
+  a long file, back 10 s and forward 30 s. **Going on after a pause** of 5
+  minutes or more starts 10 s before where the file stopped, so a sentence
+  cut off is heard again. All four numbers are settings that follow the user
   (owner, 2026-10-17; [plans/009](plans/009_resume_long_files.md)).
 - **Downloads** with a storage limit.
 - **Settings are terse:** a short title and its value, a one-line note
@@ -436,9 +435,9 @@ since 0.13.0. Anything else waits for a later release.
   20-queue cap stays fixed, not a setting (owner, 2026-10-18;
   [plan 034](plans/034_settings_text_defaults_reset.md)).
 - **Family members (admin only):** under Settings → Account, list the
-  users, add a member and reset a member's forgotten password. Moved here
-  from the web client (owner, 2026-10-08;
-  [plan 023](plans/023_users_on_android.md)).
+  users, add a member and reset a member's forgotten password (owner,
+  2026-10-08; [plan 023](plans/023_users_on_android.md)). The other apps
+  and the web client have the same.
 - **Open audio files from other apps:** Dhun is offered in "Open with",
   and the file plays in a small dialog over that app, never opening Dhun.
   It makes no queue (the playing one pauses where it is), is not logged,
@@ -461,9 +460,9 @@ plan for an Android feature also says what the Mac does —
 
 **Linux** — everything the Android app has, offline included, as far as
 Linux allows; a feature the Mac lacks is built here if Linux can do it
-(owner, 2026-10-23). A sidebar window that narrows to one pane and the phone's mini bar, a
-tray icon, a mini window, the desktop's media controls (MPRIS), and Open
-With from the file manager. No local library: it plays NAS songs. Closing
+(owner, 2026-10-23). A sidebar window that narrows to one pane and the
+phone's mini bar, a tray icon, a mini window, the desktop's media controls
+(MPRIS), and Open With from the file manager. No local library: it plays NAS songs. Closing
 the window keeps the music playing. Voice search and the assistant are
 left out, for want of either on Linux. A Flatpak, or a native install. A
 plan for an Android feature also says what Linux does —
@@ -488,12 +487,13 @@ plan for an Android feature also says what Linux does —
 A plan for an Android feature also says what the web does —
 [plan 030](plans/030_web_client.md).
 
-**Later (not v1)** — The web admin panel (moves, upgrades, `_inbox` review;
-the current curation tool runs until then), uploads into that review, live hand-off ("Play
-here"), predicting songs to cache from history, the Subsonic-compatible API, Android Auto,
-Musicolet backup import, equalizer, ReplayGain, crossfade, A-B repeat,
-widgets, most-played stats, lyrics editor, tag editor, audio cutter,
-and the rest of the inventory.
+**Later (not v1)** — The web admin panel (moves, upgrades, `_inbox`
+review; the current curation tool runs until then), uploads into that
+review, live hand-off ("Play here"), predicting songs to cache from
+history, the Subsonic-compatible API, Android Auto, Musicolet backup
+import, equalizer, ReplayGain, crossfade, A-B repeat, widgets, most-played
+stats, lyrics editor, tag editor, audio cutter, and the rest of the
+inventory.
 
 ## Open questions
 

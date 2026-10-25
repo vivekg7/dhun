@@ -1,6 +1,6 @@
 # 006 — API and sync
 
-**Status:** `RELEASED` — implemented in `server/`, contract in `api/openapi.yaml`; running on the NAS as `server-v0.1.5` since 2026-10-08
+**Status:** `RELEASED` — in `server/`, contract in `api/openapi.yaml`; on the NAS since `server-v0.1.5` (2026-10-08)
 **Started:** 2026-10-06
 
 ## Problem
@@ -8,8 +8,8 @@
 The API is the only boundary between the backend and the clients (`AGENTS.md`).
 It has to:
 
-- let the Android app work offline: browse, search, edit queues and
-  playlists, record plays;
+- let the apps work offline: browse, search, edit queues and playlists,
+  record plays;
 - merge those offline changes without losing any of them
   ([002](002_sync_and_handoff.md));
 - support resume-style hand-off;
@@ -44,17 +44,17 @@ It has to:
 
 ### The library is synced to the client, not browsed remotely
 
-The whole catalogue (about 7,000 songs × roughly 300 bytes ≈ 2 MB of JSON,
-under 0.5 MB gzipped) is small enough for each client to **keep a full copy**:
+The whole catalogue (at 7,000 songs, about 300 bytes each ≈ 2 MB of JSON,
+under 0.5 MB gzipped) is small enough for each client to **keep a full
+copy**, and still is at 100,000 ([036](036_fast_at_100k.md)):
 
 - `GET /api/v1/library?since=<cursor>` returns new, changed and removed songs
   since the client's cursor. The first call returns everything.
-- The Android app then **browses folders, albums, artists and genres, and
-  searches, entirely locally**. Every screen works offline and opens
-  instantly, and the server needs no paging, sorting or search endpoints.
-  This is the biggest simplification in the design. The one exception is
-  lyrics, which only the NAS holds:
-  `GET /api/v1/search/lyrics?q=` ([029](029_search.md)).
+- The apps then **browse folders, albums, artists and genres, and search,
+  entirely locally**. Every screen works offline and opens instantly, and
+  the server needs no paging, sorting or search endpoints: the biggest
+  simplification in the design. The one exception is lyrics, which only the
+  NAS holds: `GET /api/v1/search/lyrics?q=` ([029](029_search.md)).
 - Cover art (`GET /api/v1/art/{song_id}?size=…`) and lyrics
   (`GET /api/v1/lyrics/{song_id}`, from a `.lrc` file or embedded) are
   fetched on demand and cached.
@@ -115,8 +115,8 @@ Operations and how each merges:
 | `play`                                                  | Append only; never conflicts. One per listen, skips included; fields in [008](008_listening_history.md).                                                |
 | `playback.state`                                        | Updates `now_playing` if newer. Sent on play and pause, on each new song, and every 30 s while playing; one kept in the outbox ([017](017_handoff.md)). |
 
-Clients apply their own operations locally at once (optimistic), keep them in
-an **outbox** until the server confirms them, and replace the local copy with
+Clients apply their own operations locally at once, keep them in an
+**outbox** until the server confirms them, and replace the local copy with
 the server's version after each sync. An offline trip just means a longer
 outbox.
 
@@ -147,7 +147,6 @@ rescan; curation and uploads come after v1 ([004](004_curation_workflow.md)).
   until there is a need: their playlists, queues and plays would need a
   decision. `dhun user passwd` remains as the way back in for an admin who
   forgets their own password, since nobody else can reset it.
-
 - `GET /api/v1/plays` returns per-song play counts and last-played times,
   so clients can sort by most or recently played without receiving the raw
   play log. Only listens of at least half the song count

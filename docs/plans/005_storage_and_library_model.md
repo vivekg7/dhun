@@ -1,13 +1,14 @@
 # 005 — Storage and library model
 
-**Status:** `RELEASED` — implemented in `server/` (migrations 0001–0008); running on the NAS as `server-v0.1.5` since 2026-10-08
+**Status:** `RELEASED` — in `server/`, schema in `server/internal/store/migrations/`; on the NAS since `server-v0.1.5` (2026-10-08)
 **Started:** 2026-10-06
 
 ## Problem
 
 The backend ([001](001_own_backend_in_go.md)) has to:
 
-- index about 7,000 files under `Music/`, excluding `_`-prefixed folders;
+- index the files under `Music/` (about 7,000 then, 30,000 now), excluding
+  `_`-prefixed folders;
 - keep each user's queues, favorites, play history and now-playing state;
 - read and write `.m3u8` playlists that remain the source of truth for
   playlists;
@@ -21,8 +22,8 @@ container, the project folder on the NAS; [003](003_deployment.md)).
 
 ### Database: SQLite, pure-Go driver
 
-- **SQLite in WAL mode** at `data/dhun.db`. A few users and a few thousand
-  rows need no database server.
+- **SQLite in WAL mode** at `data/dhun.db`. A few users and even 100,000
+  songs need no database server.
 - **`modernc.org/sqlite`** (pure Go) rather than `mattn/go-sqlite3` (cgo).
   With no cgo the binary stays static and the Docker image can be `scratch`
   or distroless. (Search runs on the clients, over their copy of the
@@ -41,7 +42,7 @@ container, the project folder on the NAS; [003](003_deployment.md)).
   All user data references it, never a path.
 - A song row records its current `path`, plus `size`, `mtime` and a
   **quick hash**: SHA-256 of the size, the first 64 KB and the last 64 KB.
-  Hashing every file (~50 GB) on each scan would be slow on HDDs; the quick hash
+  Hashing every file on each scan would be slow on HDDs; the quick hash
   identifies the same file at a new path with no meaningful collision risk at
   this scale.
 - **Changes made through Dhun** (admin moves and upgrades, after v1) update
@@ -64,9 +65,11 @@ container, the project folder on the NAS; [003](003_deployment.md)).
 Tags read on scan: title, artist(s), album, album artist, composer, genre(s),
 year, track and disc numbers, duration, codec, bitrate, sample rate, plus
 embedded-art and lyrics flags (embedded or a sibling `.lrc`). There are no
-separate artist or album tables: at 7,000 rows, grouping songs by
-`album_artist, album` is instant, and a table that only mirrors grouped
-columns would go stale. Multi-value tags (`Artist A, Artist B`) are stored
+separate artist or album tables: the clients group songs by
+`album_artist, album` from their copy of the catalogue
+([006](006_api_and_sync.md)), fast enough at 100,000
+([036](036_fast_at_100k.md)), and a table that only mirrors grouped columns
+would go stale. Multi-value tags (`Artist A, Artist B`) are stored
 both raw and split, so browsing by artist works.
 
 Folders are not stored. A folder view comes from the path prefixes.
@@ -79,14 +82,15 @@ in.
 
 **Tag reader:** taglib through a pure-Go WebAssembly build
 (`go.senan.xyz/taglib`, by the author of Gonic). It covers MP3, M4A, Opus and
-FLAC, including duration, without cgo. To verify at implementation time; the
-fallback is `dhowden/tag` for tags plus our own duration parsing.
+FLAC, including duration, without cgo; its durations were checked to within
+50 ms of ffprobe. The fallback, not needed, was `dhowden/tag` for tags plus
+our own duration parsing.
 
 **Matroska and WebM** are read by a small EBML parser of our own
 (`server/internal/library/matroska.go`). YouTube downloaders save WebM with
 Opus inside under an `.opus` name, and several hundred of the owner's songs
 are like that ([024](024_macos_app.md)). taglib picks its parser by the file
-extension, and the build in use (v0.14.0, the latest) has no Matroska parser
+extension, and the build in use (v0.14.0, the latest then) has no Matroska parser
 under any name, so those songs were indexed with no format, no codec, a
 duration of 0 and the file name as title. The scanner now decides by the
 first four bytes (EBML's `1A 45 DF A3`), never by the name. The parser reads
@@ -104,7 +108,7 @@ and mtime are unchanged is never read again. Migration
 with no format, so the next scan re-reads just those files, keeping their
 IDs. The rows get a new library version, so the apps fetch them in the
 usual delta. This is the way to re-read songs after a reader change: a
-migration that marks the affected rows, not a full rescan of ~50 GB.
+migration that marks the affected rows, not a full rescan.
 
 ### Per-user data
 
@@ -171,16 +175,15 @@ migration that marks the affected rows, not a full rescan of ~50 GB.
   object records the version it last changed at, which answers "what changed
   since N?" without a second table that has to stay consistent with the
   first.
-- **The duration accuracy of the taglib WebAssembly library is confirmed**:
-  within 50 ms of ffprobe for MP3, M4A, Opus and FLAC.
 
 ## Rejected
 
 - **Postgres:** a second container to run and back up, for no gain at this
   scale.
 - **Path as identity:** every move or upgrade would orphan play counts.
-- **Full content hash:** reading ~50 GB on every scan of an HDD array, to beat a
-  collision risk that the quick hash already makes negligible.
+- **Full content hash:** reading the whole collection on every scan of an
+  HDD array, to beat a collision risk the quick hash already makes
+  negligible.
 - **Artist and album tables:** they duplicate what grouping already gives us.
   Revisit if we ever need per-artist metadata, such as images or bios.
 - **Playlists only in the database:** the owner wants them as files that are

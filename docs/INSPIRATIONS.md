@@ -4,11 +4,11 @@ Projects this one learns from. Credit goes here **in the same commit** as the
 idea or code it covers. Code copied from a GPL-3.0 project also keeps its
 original copyright notice in the file it lands in.
 
-This list doubles as the watch list for the `upstream-watch` skill
-(`.agents/skills/upstream-watch/`). That skill reviews these projects
-regularly for new features, issues and bugs worth acting on. `Last reviewed`
-is the date of the latest review. The findings of each review go to
-[`upstream/`](upstream/).
+The list doubles as the watch list for the `upstream-watch` skill
+(`.agents/skills/upstream-watch/`), which reviews these projects for new
+features, issues and bugs worth acting on and writes its findings to
+`docs/upstream/YYYY-MM-DD.md`. `Last reviewed` is the date of the latest
+review.
 
 ## Credited
 

@@ -1,40 +1,39 @@
 # Dhun
 
 Self-hosted music, podcasts and audiobooks for a family: a lightweight Go
-server for a NAS, and native clients for Android (full-featured, primary), macOS and the web — with
-**multiple named queues**, offline downloads and synced lyrics. Inspired by
-Musicolet, the offline Android player, rebuilt for a music collection that
-lives on a NAS.
+server for a NAS, and native clients for Android (full-featured, primary),
+macOS and Linux, plus a web client, with **multiple named queues**, offline
+downloads and synced lyrics. Inspired by Musicolet, the offline Android
+player, rebuilt for a music collection that lives on a NAS.
 
-**Status:** the server runs on the owner's NAS (`server-v0.16.0`). It covers the library
-scan, streaming, offline sync of queues and playlists (`.m3u8` files), a log
-of every listen, resume points for long files, and Favorites and Listen
-Later. The Android app (`android/`, [plan 011](docs/plans/011_android_app.md))
-runs on the owner's phone as 0.16.2, with downloads, playlist editing, the
-sleep timer, lyrics, speed and pitch, hand-off, settings grouped as in
-Musicolet, a song cache, playback that waits out a network drop
-([plan 019](docs/plans/019_networking_and_caching.md)), Musicolet's
-Queues tab ([plan 020](docs/plans/020_queue_screen.md)), audio files opened
-from other apps ([plan 021](docs/plans/021_open_from_other_apps.md)), a
-choice of mini player ([plan 022](docs/plans/022_mini_player_styles.md))
-and, for the admin, managing family members
-([plan 023](docs/plans/023_users_on_android.md)), and songs already on the
-phone beside the NAS songs ([plan 025](docs/plans/025_phone_local_songs.md)),
-playable without signing in, with downloads kept through a sign-out
-([plan 026](docs/plans/026_without_an_account.md)).
-The macOS app (`macos/`, [plan 024](docs/plans/024_macos_app.md))
-is built to the Android app's level, offline included, with a menu bar
-control, a floating mini player and Open With from Finder; 0.16.1 is in
-daily use on the owner's Mac. The web client
-(`server/web/`, [plan 030](docs/plans/030_web_client.md)) is served by the
-server itself, at `http://<nas>:8585/`: the apps' features in a browser,
-online-only, on a computer or a phone. The Linux app (`linux/`,
-[plan 039](docs/plans/039_linux_app.md)) is built to the Android app's
-level in Rust and GTK, offline included, with a tray icon, a mini window,
-the desktop's media controls and Open With from the file manager.
-All four are in the
-[0.17.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.17.0):
-the APK, the Mac app, the Linux Flatpak and the server image.
+**Status:** every platform is in the
+[0.17.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.17.0): the
+APK, the Mac app, the Linux Flatpak and the server image.
+
+- **Server** (`server/`), on the owner's NAS as `server-v0.16.0`: the library
+  scan, streaming, offline sync of queues and playlists (`.m3u8` files), a
+  log of every listen, resume points for long files, Favorites and Listen
+  Later.
+- **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.16.2
+  on the owner's phone: downloads, playlist editing, the sleep timer,
+  lyrics, speed and pitch, hand-off, a song cache, playback that waits out a
+  network drop ([019](docs/plans/019_networking_and_caching.md)),
+  Musicolet's Queues tab ([020](docs/plans/020_queue_screen.md)), files
+  opened from other apps ([021](docs/plans/021_open_from_other_apps.md)), a
+  choice of mini player ([022](docs/plans/022_mini_player_styles.md)),
+  managing family members ([023](docs/plans/023_users_on_android.md)), and
+  songs already on the phone ([025](docs/plans/025_phone_local_songs.md)),
+  playable without signing in ([026](docs/plans/026_without_an_account.md)).
+- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.16.1 on
+  the owner's Mac: the Android app's level, offline included, with a menu
+  bar control, a floating mini player and Open With from Finder.
+- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.17.1 on
+  the owner's laptop, in Rust and GTK: the same level, with a tray icon, a
+  mini window, the desktop's media controls and Open With from the file
+  manager.
+- **Web** (`server/web/`, [plan 030](docs/plans/030_web_client.md)), served
+  by the server at `http://<nas>:8585/`: the apps' features in a browser,
+  online only, on a computer or a phone.
 
 ## Run the server
 
@@ -56,42 +55,42 @@ On the NAS (Synology Container Manager or any Docker host):
    admin, in any of the apps or the web client. Their playlists go in
    `Music/Playlists/<name>/`.
 
-Every step in detail, for Synology:
+Every step in detail for Synology, why it is set up this way and what
+protects the collection:
 [`docs/plans/003_deployment.md#install`](docs/plans/003_deployment.md#install).
-
-Why it is set up this way, and what protects the collection: the same plan.
 
 Forgot the admin password? `docker exec -it dhun /dhun user passwd <name>`.
 
 ## Develop
 
-`make init` once per clone, then `make check` (formatting, `go vet`, ktlint,
-Android lint, swift-format, tests), `make fmt`, and `make image`. The API
-contract is [`api/openapi.yaml`](api/openapi.yaml). The Android app needs a
-JDK (Android Studio's is found on its own) and `android/local.properties`
-pointing at an Android SDK with platform 37. The macOS app needs Xcode for
-its toolchain only: it is a Swift package, built from the command line.
-The web client needs nothing to build: it is plain HTML, CSS and
-JavaScript, embedded in the server. While working on it, run the server
-with `DHUN_WEB_DIR=server/web`, so a reload shows an edit without a
-rebuild; `make test-web` runs its tests with Node's own runner. The Linux
-app needs Rust and the GTK 4, libadwaita, GStreamer and SQLite `-dev`
-packages, or else only Flatpak: without `cargo` on the PATH the Makefile
-runs it inside the GNOME SDK (`scripts/sdk.sh`, which says what to install
-once).
-`DHUN_SCREENSHOT=<png>` with `DHUN_OPEN` draws its window to a file and
-quits, for checking a change with no one at the screen
-([plan 039](docs/plans/039_linux_app.md)). A Mac
-build under test takes `DHUN_DATA=<folder>`, so it keeps its own library
-and sign-in instead of opening the installed app's, as does a Linux build.
-The apps log how long the catalogue takes, for the speed targets
+`make init` once per clone, then `make check` (formatting, linters, tests),
+`make fmt`, and `make image`. The API contract is
+[`api/openapi.yaml`](api/openapi.yaml).
+
+- **Android** needs a JDK (Android Studio's is found on its own) and
+  `android/local.properties` pointing at an Android SDK with platform 37.
+- **macOS** needs Xcode for its toolchain only: the app is a Swift package,
+  built from the command line.
+- **Linux** needs Rust and the GTK 4, libadwaita, GStreamer and SQLite
+  `-dev` packages, or else only Flatpak: without `cargo` on the PATH the
+  Makefile runs it inside the GNOME SDK (`scripts/sdk.sh` says what to
+  install once). `DHUN_SCREENSHOT=<png>` with `DHUN_OPEN` draws the window
+  to a file and quits, for checking a change with no one at the screen
+  ([plan 039](docs/plans/039_linux_app.md)).
+- **Web** needs nothing to build: plain HTML, CSS and JavaScript, embedded
+  in the server. Run the server with `DHUN_WEB_DIR=server/web` so a reload
+  shows an edit without a rebuild; `make test-web` runs its tests with
+  Node's own runner.
+
+A Mac or Linux build under test takes `DHUN_DATA=<folder>`, so it keeps its
+own library and sign-in instead of the installed app's. The apps log how long
+the catalogue takes, for the speed targets
 ([performance-baseline](docs/research/performance-baseline.md)).
 
 ### Versions
 
-The server, the Android app and the Mac app share **one sequence of
-version numbers**. The web client is part of the server and takes the
-server's number:
+The server and every app share **one sequence of version numbers**; the web
+client is part of the server and takes its number:
 
 - A release that changes only some platforms takes the next **patch**
   number, for those platforms alone. The others skip that number for
@@ -100,13 +99,13 @@ server's number:
 - A **minor** or **major** release is for every platform together, all
   taking the same new number.
 
-So a number belongs to one release only, and a server and an app with
-the same number came out together.
+So a number belongs to one release only, and builds with the same number
+came out together.
 
-Until 0.12.0 each platform counted on its own: the server reached
-`server-v0.1.5`, the Android app 0.11.0 and the Mac app 0.3.0, and the
-numbers said nothing about which builds went together. All three jumped
-to 0.12.0, the first number none had used (owner, 2026-10-10).
+Until 0.12.0 each platform counted on its own (the server reached
+`server-v0.1.5`, the Android app 0.11.0, the Mac app 0.3.0), and the numbers
+said nothing about which builds went together. All three jumped to 0.12.0,
+the first number none had used (owner, 2026-10-10). Linux joined at 0.17.0.
 
 The Android version is in `android/app/build.gradle.kts` (raise
 `versionCode` too), the Mac's in `macos/Info.plist` (raise

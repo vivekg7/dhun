@@ -18,9 +18,9 @@ Where they show, what a tap does, offline and the screen are the owner's
 ### In place of the cover
 
 **A tap on the cover swaps it for the lyrics**, in the same space, as in
-Musicolet; a lyrics button on Now playing, next to the speed button, does the same
-and brings the cover back. The button is dimmed for a song with no lyrics.
-The lyrics stay up from song to song until turned off. Rejected: a
+Musicolet; a lyrics button on Now playing, next to the speed button, does
+the same and brings the cover back, and is dimmed for a song with none. The
+lyrics stay up from song to song until turned off. Rejected: a
 separate full-screen page, which would hide the controls.
 
 ### Synced lyrics follow the song
@@ -32,8 +32,8 @@ separate full-screen page, which would hide the controls.
   cover back.
 - Scrolling by hand stops the follow for 4 s, to read ahead.
 - The position is read every 200 ms while the lyrics show, paused or not,
-  so a tap on a line while paused moves the highlight too. For the same
-  reason the seek bar now follows the position while paused as well.
+  so a tap on a line while paused moves the highlight too; the seek bar
+  follows it while paused for the same reason.
 
 ### The parser
 
@@ -51,8 +51,8 @@ Every copy fetched is kept in Room (`lyrics` table), so lyrics show without
 the server for:
 
 - **Downloaded songs**: the download run fetches the lyrics of every
-  downloaded song that has some and is not kept yet, so songs downloaded
-  before this, or that gain an `.lrc` later, catch up. Lyrics are a few
+  downloaded song that has some not yet kept, so songs downloaded before
+  this, or that gain an `.lrc` later, catch up. Lyrics are a few
   kilobytes, so this runs on mobile data too, Wi-Fi-only or not, and a
   failure never stops the files.
 - **Any song whose lyrics were viewed.** They are kept when the song is no

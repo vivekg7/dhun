@@ -39,21 +39,23 @@ downloads). Saying so on the row, or not at all.
 The owner chose (2026-10-07):
 
 - **Categories, then screens:** Appearance, Playback, Downloads, Account and
-  About. Each row on the first screen shows what is set where that is
-  short ("Dark · Teal", "10 GB · Wi-Fi only", "alex on my-nas"), so
-  most questions are answered without opening anything. Icons appear on
-  this list only; inside a category, rows are text, so titles line up.
+  About. Songs on this phone ([025](025_phone_local_songs.md)) and How it
+  works ([034](034_settings_text_defaults_reset.md)) joined them later, and
+  Family members opens from Account ([023](023_users_on_android.md)). Each
+  row on the first screen shows what is set where that is short ("Dark ·
+  Teal", "10 GB · Wi-Fi only", "alex on my-nas"), so most questions are
+  answered without opening anything. Icons appear on this list only; inside
+  a category, rows are text, so titles line up.
 - **A row and a dialog** for every choice. Picking a value applies it and
   closes the dialog; Cancel leaves it. A note that explains a setting ("At
   the limit, downloads stop. Nothing is deleted to make room.") moves into
-  its dialog, off the page. ([034](034_settings_text_defaults_reset.md) cut
-  those notes to one line, where one is needed at all, and moved the rest to
-  How it works.) On/off settings are a row with a switch.
-- **Synced settings say so:** "· on all your devices" after the value. A
-  change that shows up on the laptop is then no surprise. Settings of this
-  phone say nothing, as the default. (Since
-  [034](034_settings_text_defaults_reset.md), one line at the top of
-  Playback says it instead: every synced setting is on that page.)
+  its dialog, off the page; 034 later cut those notes to one line, where
+  needed at all, and moved the rest to How it works. On/off settings are a
+  row with a switch.
+- **Synced settings say so:** "· on all your devices" after the value, so a
+  change that shows up on the laptop is no surprise. Settings of this phone,
+  the default, say nothing. Since 034 one line at the top of Playback says
+  it instead: every synced setting is on that page.
 
 Details decided while building:
 
@@ -69,10 +71,9 @@ Details decided while building:
 
 ## Every dialog the same way
 
-Set as part of this plan, at the owner's request (2026-10-07): the sleep
-timer and speed dialogs had grown their own looks (chips, headings indented
-twice, sliders with a dot per step, a text box in the middle of the
-options). Every dialog now has a title, perhaps one line saying what it
+Set in this plan at the owner's request (2026-10-07): the sleep timer and
+speed dialogs had grown their own looks (chips, headings indented twice,
+sliders with a dot per step, a text box in the middle of the options). Every dialog now has a title, perhaps one line saying what it
 does or what is set, one-line rows flush with the title, and text buttons
 below. The pieces are in `ui/Dialogs.kt`; a new dialog uses them rather than
 its own layout. Where a value is set rather than picked from a list, the

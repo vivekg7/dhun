@@ -10,11 +10,10 @@ actually listens to: "Tum Hi Ho at 10 AM today", and also the song left after
 a few seconds. A recommender cannot be trained on history that was never
 recorded, so the log has to be complete from the first day Dhun is used.
 
-The first version of `plays` stored one row per play: user, song, device, a
-time and the milliseconds played. That is enough for play counts but loses
-what a recommender learns most from: how a listen ended, which part was
-heard, the local time of day, and whether the song was chosen or arrived by
-shuffle.
+The first `plays` stored one row per play: user, song, device, a time and
+the milliseconds played. Enough for play counts, but it loses what a
+recommender learns most from: how a listen ended, which part was heard, the
+local time of day, and whether the song was chosen or arrived by shuffle.
 
 ## Options
 
@@ -80,4 +79,4 @@ offline is uploaded later with the phone's own times.
 
 ## Open questions
 
-- None about recording. The recommender's design is its own plan.
+None about recording; the recommender gets its own plan.

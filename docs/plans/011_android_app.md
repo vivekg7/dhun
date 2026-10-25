@@ -27,26 +27,27 @@ The owner set four constraints (2026-10-07):
 Musicolet has one row of icon-only tabs at the bottom: Queues, Now playing,
 Folders, Albums, Artists, Genres, Playlists, then Search and the menu. You
 swipe between tabs, every list has its own search box, rows are flat and
-dense, and the accent colour marks only the current song and the active tab.
-Dhun keeps that structure tab for tab. Each tab keeps its place: a page
-opened in it (an album, an artist), and the search and scroll of whatever
-that page covers, until you go back. Rotation or Android reclaiming the app
-loses none of it. Albums, Artists, Genres and Playlists have their search
-box at the top. Every folder, and every page a tab opens (an album, an
-artist, a genre, a playlist, Favorites, Listen Later, the automatic lists
-and Downloads), has it at the bottom, as the queue does. The bottom box
-shows only when the list has more than 12 rows, as in Musicolet, because a
-shorter list fits on about one screen and needs no search (owner,
-2026-10-10). A song found there still plays the whole list from that song.
-Every box matches the same way, forgiving spelling, script and word order
-([029](029_search.md)).
-While a playlist is being searched, its songs cannot be dragged: moving one
-among the matches would drop it in the wrong place in the full playlist.
-Every icon-only control, the tabs included, shows its name
-when long-pressed ("Add to Favorites"), the same words TalkBack reads, as
-Android's own icon buttons do (the owner's request, 2026-10-07). Plain bottom navigation (four or five
+dense, and the accent marks only the current song and the active tab. Dhun
+keeps that structure tab for tab. Plain bottom navigation (four or five
 labelled tabs) was rejected because it would hide Folders and Genres, which
 the owner uses daily.
+
+Each tab keeps its place (a page opened in it, and that page's search and
+scroll) until you go back, through rotation and Android reclaiming the app.
+Albums, Artists, Genres and Playlists have their search box at the top;
+every folder, and every page a tab opens (an album, an artist, a genre, a
+playlist, Favorites, Listen Later, the automatic lists, Downloads), has it
+at the bottom, as the queue does. The bottom box shows only past 12 rows, as
+in Musicolet: a shorter list fits on about one screen (owner, 2026-10-10). A
+song found there still plays the whole list from that song. Every box
+matches the same way, forgiving spelling, script and word order
+([029](029_search.md)). A playlist being searched cannot be dragged: moving
+a song among the matches would drop it in the wrong place in the full
+playlist.
+
+Every icon-only control, the tabs included, shows its name when
+long-pressed ("Add to Favorites"), the words TalkBack reads, as Android's
+own icon buttons do (owner, 2026-10-07).
 
 Where Dhun departs from Musicolet, by the owner's choice:
 
@@ -91,12 +92,12 @@ of vivid Musicolet-like colours.
 | Olive       | `8F9152` | `ADAF6F`     |
 | Sand        | `B59E73` | `CBB68C`     |
 
-Dull Orange is the default. A palette sets only the accent. The neutral
-greys are the same for every palette, so each new palette costs one line
-and not a hand-tuned scheme of 30 colours. Text in the accent colour
-(section labels) uses a darker shade on light backgrounds, for contrast.
+Dull Orange is the default. A palette sets only the accent; the neutral
+greys are shared, so a new palette costs one line, not a hand-tuned scheme
+of 30 colours. Text in the accent colour (section labels) uses a darker
+shade on light backgrounds, for contrast.
 
-The theme belongs to **the device and is not synced**. A phone can be dark
+The theme belongs to **the device and is not synced**: a phone can be dark
 while the web app is light.
 
 ### The icon
@@ -109,19 +110,18 @@ Android 13's themed icons.
 
 ### Keeping it light
 
-The rule from AGENTS.md is that each dependency must earn its place. For the
-app:
+Each dependency must earn its place (AGENTS.md):
 
 | Need            | Choice                                                                                                                                             | Rejected, and why                                                                                                                                                                                               |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Icons           | Our own ~40 vector paths (Material Symbols, Apache 2.0)                                                                                            | `material-icons-extended`: thousands of icons we don't use                                                                                                                                                      |
+| Icons           | Our own vector paths, about 60 (Material Symbols, Apache 2.0)                                                                                      | `material-icons-extended`: thousands of icons we don't use                                                                                                                                                      |
 | Album art       | A small loader of our own: files by the server's art key ([019](019_networking_and_caching.md)), an in-memory `LruCache`, and a downsampled decode | Coil: a framework for a single endpoint that already serves resized JPEGs (`/art/{id}?size=`)                                                                                                                   |
 | Navigation      | A tab pager plus a small back stack of our own                                                                                                     | Navigation Compose / Navigation 3: the app is nine tabs and a few detail pages                                                                                                                                  |
 | Preferences     | `SharedPreferences` for device settings (theme, token)                                                                                             | DataStore: a library for half a dozen values                                                                                                                                                                    |
 | Database        | Room 3 with the framework SQLite driver                                                                                                            | Room's bundled SQLite: about 1 MB of native code per ABI for nothing we need                                                                                                                                    |
 | Background sync | A debounced coroutine with retry, plus a "network is back" callback, while the app or its playback service runs                                    | WorkManager, which 007 planned: it depends on Room 2, so the APK carried two copies of Room. What it adds, syncing with the app fully closed, is not needed: the outbox is on disk and goes with the next start |
 | Fonts           | The system font (Roboto)                                                                                                                           | A bundled font                                                                                                                                                                                                  |
-| DI              | `AppGraph`, as in 007                                                                                                                              | Hilt                                                                                                                                                                                                            |
+| DI              | The `App` class, building each long-lived object once (007)                                                                                        | Hilt                                                                                                                                                                                                            |
 
 Release builds use R8 with resource shrinking, keep only English
 resources, and leave out the dependency metadata blob. The first release
@@ -150,8 +150,8 @@ What the first build contains, in order:
 
 1. The Gradle project, the theme (palettes and modes), the icon, and the tab
    shell with the mini player.
-2. Sign-in (server address, user name, password). The device name is the
-   phone's model.
+2. Sign-in (server address, user name, password); the device is named after
+   the phone's model.
 3. The catalogue in Room (`/library`), and the browsing tabs: Folders,
    Albums, Artists, Genres, Playlists, and Search.
 4. Playback: a `MediaSessionService` with ExoPlayer streaming over OkHttp
@@ -166,16 +166,12 @@ What the first build contains, in order:
    ([008](008_listening_history.md), [009](009_resume_long_files.md),
    [010](010_special_playlists.md)).
 
-Steps 1–5 are built and work against the local server: sign-in, browsing,
-search, playback with the notification, queues, Favorites and Listen Later,
-the automatic views, settings, and listens logged with their end reason.
-Since 2026-10-07 the signed release build (`make apk`) runs on the owner's
-phone against the NAS and the real collection.
-
-Downloads ([012](012_downloads.md)), playlist editing
+Steps 1–5 were built against a local server. Since 2026-10-07 the signed
+release build (`make apk`) runs on the owner's phone against the NAS and the
+real collection. Downloads ([012](012_downloads.md)), playlist editing
 ([013](013_playlist_editing.md)), the sleep timer
-([014](014_sleep_timer.md)), lyrics ([015](015_lyrics.md)), speed and
-pitch ([016](016_speed_and_pitch.md)) and hand-off ([017](017_handoff.md))
+([014](014_sleep_timer.md)), lyrics ([015](015_lyrics.md)), speed and pitch
+([016](016_speed_and_pitch.md)) and hand-off ([017](017_handoff.md))
 followed, each in its own step.
 
 **Testing without the NAS:** a local `dhun` server on the Mac

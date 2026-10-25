@@ -1,6 +1,6 @@
 # 038 — Voice search, "play it on Dhun", and shortcuts on the icon
 
-**Status:** `RELEASED` — in the 0.16.2 GitHub release (2026-10-21); Android only; not yet installed
+**Status:** `RELEASED` — in the 0.16.2 GitHub release (2026-10-21); Android only; 0.16.2 on the owner's phone
 **Started:** 2026-10-21
 
 ## Problem
@@ -16,8 +16,8 @@ in Hindi, and the owner wants to use it (2026-10-21):
   with the app closed, so it opens and plays;
 - and whatever else comes cheap in the same vein.
 
-The constraint is the one the whole project has: **lightweight first**. If
-any of this makes the app heavy, none of it ships.
+The constraint is the project's own: **lightweight first**. If any of this
+makes the app heavy, none of it ships.
 
 ## What it costs
 
@@ -39,9 +39,9 @@ whisper.cpp) would be 40–100 MB and is rejected before it is weighed.
   phone we support gets the same button.
 - **`SpeechRecognizer.createOnDeviceSpeechRecognizer`** (API 31, our
   minimum): our own mic UI with partial results typed live into the box.
-  Needs `RECORD_AUDIO` and an availability check, and gains a nicer
-  animation. Rejected for now: the sheet is the system's and the listener
-  knows it; revisit if the sheet annoys.
+  Needs `RECORD_AUDIO` and an availability check, for a nicer animation.
+  Rejected for now: the sheet is the system's and the listener knows it;
+  revisit if it annoys.
 - **Say it, play it.** Rejected: the recognised text goes into the search
   box, and the listener picks from what it finds, as with a typed search.
   A misheard word then costs a glance, not a wrong song.
@@ -70,51 +70,50 @@ one (AGENTS.md: queues are not playlists). An empty query ("play
 something on Dhun") resumes what was playing, or shuffles the library when
 nothing was.
 
-Media3 would normally take the items the callback returns and set them on
-the player itself. That would bypass the queues. The callback starts the
-queue through `Playback` and returns a failed future: the legacy stub
-treats that as "the session chose to ignore the request" and touches
-nothing, which is exactly right.
+Media3 would normally set the items the callback returns on the player
+itself, bypassing the queues. So the callback starts the queue through
+`Playback` and returns a failed future, which the legacy stub treats as
+"the session chose to ignore the request", touching nothing.
 
 - **Play-published App Actions** (`shortcuts.xml` capabilities). Rejected:
   they need a Play Console listing to deploy, and Dhun is sideloaded.
 - **A `MediaLibraryService` with a browse tree** (Android Auto). Not now:
   more code than everything in this plan together, and still on the
-  deferred list in REQUIREMENTS. The voice half built here is reused by
-  it unchanged.
+  deferred list in REQUIREMENTS. It would reuse the voice half built here
+  unchanged.
 
 **The uncertainty.** Google's own Assistant delivers both halves, and the
 Android docs still describe them. Gemini, which replaced it as the default
 on new phones, documents "play on app" only for Spotify, Pandora and
 iHeartRadio, and nothing says whether it forwards to other apps that
-declare the intent. There is no third-party way around that. The plan is
-built and then tried on the owner's phone; the outcome goes in "What
+declare the intent, and there is no third-party way around that. So it is
+built, then tried on the owner's phone, and the outcome goes in "What
 building it taught" either way.
 
 **What else is cheap**
 
 - **App shortcuts** (chosen): long-press the icon for Search, Resume and
   Shuffle all, as Musicolet offers. A static XML file and three small
-  icons. Each is an action on the main activity, handled with the
-  assistant's intent by the same code.
+  icons, each an action on the main activity, handled by the same code as
+  the assistant's intent.
 - Pause, next, previous and "what's playing" by voice already work through
-  the session. Nothing to do.
+  the session.
 - **The headset button with no player running** (chosen; owner,
   2026-10-21): it opened Musicolet, not Dhun, however much more Dhun was
   used. Android sends the press to the receiver of the last media session
   that registered one, and Media3 registers one only when the app
   declares its `MediaButtonReceiver`; Dhun had none, so the remembered
-  receiver stayed Musicolet's. Declaring it, Dhun becomes the remembered
-  app whenever it played last. The receiver starts the service and Media3
-  asks `onPlaybackResumption` for something to play; Playback restores
-  the last queue on its own, so the callback waits for that and presses
-  Play through the same `resume` as the shortcut, and fails its future so
-  Media3 sets nothing itself.
+  receiver stayed Musicolet's. Declared, Dhun becomes the remembered app
+  whenever it played last. The receiver starts the service and Media3 asks
+  `onPlaybackResumption` for something to play; Playback restores the last
+  queue on its own, so the callback waits for that, presses Play through
+  the same `resume` as the shortcut, and fails its future so Media3 sets
+  nothing itself.
 - **Mac**: dictation already types into the search field (fn fn), so a mic
   of our own adds nothing. Siri App Intents could do "play X in Dhun"
   later; a plan of its own if wanted.
 - **Web**: the browser's speech API is Chrome-only and cloud-backed on a
-  desktop. Not worth a button that works for one browser.
+  desktop: not worth a button that works in one browser.
 
 ## Decision
 
@@ -125,9 +124,9 @@ recogniser and puts the text in the box. The activity declares
 play a new queue named after it. **Three app shortcuts**: Search (the box
 focused), Resume, Shuffle all. A **`MediaButtonReceiver`** in the
 manifest, so the headset button with no player running starts Dhun when
-it played last. Requests from outside the app funnel
-through one small class, `play/Intents.kt`, so the activity, the session
-and the shortcuts share the resolution and the "show Now playing" step.
+it played last. Requests from outside the app funnel through one small
+class, `play/Intents.kt`, so the activity, the session and the shortcuts
+share the resolution and the "show Now playing" step.
 
 How a spoken request is resolved, in order:
 
@@ -172,8 +171,8 @@ How a spoken request is resolved, in order:
   string resource there is not resolved: the system parses the file
   against its own resources, and the shortcut came out aimed at
   `@2131296260`. So each shortcut carries only its action, and the
-  activity has an intent filter for the three. That is also one less
-  place the package name is spelt.
+  activity has an intent filter for the three: one less place the package
+  name is spelt.
 - **Media3 does leave the player alone.** The legacy stub's handler for
   the callback's future says, on failure, "the session is free to ignore
   these requests", and does nothing: a queue started through `Playback`

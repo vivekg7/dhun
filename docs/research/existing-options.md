@@ -78,11 +78,6 @@ our app **GPL-3.0**. Youamp, Sonora, Vibrdrome and flo are MIT; Chora is
 Apache-2.0; Submariner is BSD-3. Reading GPL code for design ideas does not
 impose the licence; copying it does.
 
-> **Update 2026-10-06:** decided to write our own backend instead of using an
-> existing server — see [REQUIREMENTS.md](../REQUIREMENTS.md). The server
-> survey above stays as reference (scanning, lyrics and transcoding approaches
-> worth borrowing).
-
 ## Fork vs build — preliminary assessment
 
 **Leaning: build from scratch** with a shared Kotlin Multiplatform core, a
@@ -92,9 +87,11 @@ Android Auto). Reason: the features that justify the project are
 architectural, and the forkable candidates are either mostly Java or
 single-maintainer.
 
-Not decided — depends on the open questions in
-[REQUIREMENTS.md](../REQUIREMENTS.md), especially licence choice and how
-much effort is acceptable before a usable v1.
+> **Outcome:** we build our own, server included
+> ([plan 001](../plans/001_own_backend_in_go.md)), under GPL-3.0, with no
+> shared Kotlin Multiplatform core: each client is native on its own
+> ([plan 007](../plans/007_client_architecture.md)). The surveys above stay
+> as reference for scanning, lyrics and offline designs worth borrowing.
 
 ## Not verified
 

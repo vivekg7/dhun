@@ -14,27 +14,27 @@ the server at 346 MB steady at 100k, the web client at 1.6 s to build its
 catalogue, 2.3 s to its first search and 105 ms at the worst keystroke.
 Android and the Mac share the web's design (plan 029) and were not measured.
 
-A review of all four code bases against the targets (2026-10-20) found
-that the misses have a few shared causes, not many separate ones, and a
-handful of correctness bugs next to them:
+A review of all four code bases against the targets (2026-10-20) found a
+few shared causes, not many separate ones, and a handful of correctness
+bugs beside them:
 
 - **The three clients sort with a comparator that allocates on every
-  comparison.** `natural()` turns both strings into arrays per call. A sort
-  of n titles makes about n log n calls; at 100k that is half the catalogue
+  comparison.** `natural()` turns both strings into arrays per call, and a
+  sort of n titles makes about n log n calls: at 100k, half the catalogue
   build. The Mac's version also lowercases one character at a time through
   `String`.
 - **The three clients build the search index lazily, on the main thread,
-  at the first keystroke.** The "first search ready as soon as the library"
-  target cannot be met that way.
+  at the first keystroke**, which cannot meet the "first search ready as
+  soon as the library" target.
 - **The index keeps more than it reads.** Eight strings per song in `texts`
   and eight more in `runs`, when only the title text and the year are ever
   read back, and a run only matters for a field of two or more words. At
   100k songs that is 1.6 million strings and about 160 MB of heap in the
   browser.
 - **The server builds the whole `/library` response in memory twice**: a
-  slice of every row, then one `json.Encode` buffer over it. Measured on a
-  100k replica: 67 MB live and 240 MB allocated for one response. No Go
-  memory limit is set, so the runtime keeps it.
+  slice of every row, then one `json.Encode` buffer over it: on a 100k
+  replica, 67 MB live and 240 MB allocated for one response. No Go memory
+  limit is set, so the runtime keeps it.
 - **Correctness, found on the way:** the server's `/library` loop never
   checks `rows.Err()`, so a query that fails midway sends a partial
   catalogue with a valid cursor, and the client never fetches the rest.
@@ -53,19 +53,19 @@ handful of correctness bugs next to them:
   start.
 
 The comments in all three clients still justify the in-memory design with
-"about 7,000 songs group in a few milliseconds". That premise is gone.
+"about 7,000 songs group in a few milliseconds", a premise that is gone.
 
 ## Options
 
 **How the clients get fast**
 
 - **An incremental catalogue**: apply each changed song to the existing
-  sorted lists and indexes instead of rebuilding. Removes the rebuild cost
-  entirely, but every grouping, every sort and every index needs an update
-  path, with its own bugs, in three code bases. Rejected for now: the
-  measurements say a whole rebuild fits the targets once the comparator
-  and the index stop allocating. Revisit if a rebuild at 100k is still
-  seconds on the phone after this plan.
+  sorted lists and indexes instead of rebuilding. No rebuild cost at all,
+  but every grouping, sort and index needs an update path, with its own
+  bugs, in three code bases. Rejected for now: the measurements say a whole
+  rebuild fits the targets once the comparator and the index stop
+  allocating. Revisit if a rebuild at 100k is still seconds on the phone
+  after this plan.
 - **Paging through SQL** instead of a catalogue in memory, as the first
   Android design considered. Rejected in plan 011 and again here: the
   search of plan 029 needs the whole index in memory anyway, and the
@@ -74,14 +74,14 @@ The comments in all three clients still justify the in-memory design with
   the index built eagerly off the main thread right after the catalogue,
   the index slimmed to what is read, and the same strings folded once
   rather than once per song that shares them. Each is a local change with
-  a test, and the same change three times.
+  a test, made three times.
 
 **Where the index is built**
 
-- **A Web Worker or a separate process.** Moves the cost off the main thread
-  entirely, but the index must then be transferred, and Android and the Mac
-  already have background threads. Not needed once the build is under half
-  a second; kept as the next step if a phone measurement says otherwise.
+- **A Web Worker or a separate process.** Takes the cost off the main
+  thread entirely, but the index must then be transferred, and Android and
+  the Mac already have background threads. Not needed once the build is
+  under half a second; the next step if a phone measurement says otherwise.
 - **Right after the catalogue, on the catalogue's own background task**
   (chosen). On Android that is the `combine` that builds the `Catalog`; on
   the Mac the detached task in `reloadSongs`; on the web idle time after
@@ -91,19 +91,20 @@ The comments in all three clients still justify the in-memory design with
 
 - **Pages** (`?after=<id>&limit=`). Bounded memory per request and
   resumable, but the clients' cursor is a version, not an id, and a sync
-  that straddles a scan would need both. More protocol for the same bytes.
+  that straddles a scan would need both: more protocol for the same bytes.
+  Rejected.
 - **Streaming one row at a time into the gzip writer** (chosen). Same
   response, same contract; peak memory is one row plus the gzip window. The
-  cost is that an error after the header is written cannot become a 500:
-  the handler aborts the connection instead, so the client sees a truncated
-  body and retries, never a plausible partial catalogue.
+  cost: an error after the header is written cannot become a 500, so the
+  handler aborts the connection, and the client sees a truncated body and
+  retries, never a plausible partial catalogue.
 
 **How the server stays under 256 MB**
 
-- `mem_limit` alone (1 GB today) only kills the process; it does not make
-  the Go collector work harder. A **`GOMEMLIMIT` near the target** does,
-  set in the image so every deployment gets it and the compose file can
-  override it. Taken together with streaming; a limit alone would trade
+- `mem_limit` alone (1 GB then) only kills the process; it does not make
+  the Go collector work harder. A **`GOMEMLIMIT` near the target** does
+  (192 MiB), set in the image so every deployment gets it and the compose
+  file can override it. Taken with streaming: a limit alone would trade
   memory for GC time on the 240 MB encode buffer.
 
 ## Decision
@@ -127,11 +128,12 @@ fixes, as one plan, measured against the baseline when done. In order:
    writes on the Mac; folder counts computed once; "recently added" as a
    top-100 selection on the catalogue; the web shell built before the
    catalogue so the page paints at once, with the sync waiting for the
-   kept copy to land, or it would merge into an empty catalogue; a shared index for lists that hold
-   episodes; the duplications and dead code the review listed.
-5. **Docs.** The nine "7,000 songs" comments say what is true now; plan 003's
-   memory figure matches the baseline; the compose file's limit matches the
-   target.
+   kept copy to land, or it would merge into an empty catalogue; a shared
+   index for lists that hold episodes; the duplications and dead code the
+   review listed.
+5. **Docs.** The nine "7,000 songs" comments say what is true now; plan
+   003's memory figure matches the baseline; the compose file's limit
+   matches the target.
 
 Rerun the baseline on the desktop and add a dated section; the phone and
 Mac measurements the baseline asks for still need the devices.

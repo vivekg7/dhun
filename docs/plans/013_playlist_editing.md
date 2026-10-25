@@ -39,9 +39,9 @@ them by accident. Rejected: asking each time, and always adding.
 ### Shared playlists stay read-only in the app
 
 Shared playlists (top-level `Playlists/`) are edited only by the admin, on
-the server's rules. The owner chose to **keep them read-only in the app**,
-for every user: they are not in the picker and their pages have no edit
-controls. They are edited on the NAS.
+the server's rules. The owner chose to **keep them read-only in the app**
+for every user, the admin included: they are not in the picker, their pages
+have no edit controls, and they are edited on the NAS.
 
 ### Playlists made offline
 
@@ -56,11 +56,10 @@ among the user's own playlists.
 ### Local edits are not overwritten by an older copy
 
 The app edits its copy at once and queues the op, as for queues. A library
-pull skips a playlist with an op still in the outbox, and then **does not
-advance the library cursor**, so the next pull brings that playlist again
-once the op has gone. After pushing playlist ops, the app pulls the library
-again in the same sync, so the server's version (the `.m3u8` as written)
-arrives at once.
+pull skips a playlist with an op still in the outbox and **does not advance
+the library cursor**, so the next pull brings that playlist again once the
+op has gone. After pushing playlist ops, the same sync pulls the library
+again, so the server's version (the `.m3u8` as written) arrives at once.
 
 ### How edits are sent
 

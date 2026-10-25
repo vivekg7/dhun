@@ -20,8 +20,8 @@ are the owner's (2026-10-07).
 ### The offer
 
 **A bar above the mini player, on every tab**: "Continue from MacBook —
-Shiver · 2:13", with **Continue** and **✕**. Seen wherever the app opens,
-blocking nothing. Rejected: on Now playing only (missed when the app opens
+Shiver · 2:13", with **Continue** and **✕**, seen wherever the app opens
+and blocking nothing. Rejected: on Now playing only (missed when the app opens
 elsewhere), and a dialog (in the way).
 
 It is offered when all of these hold:
@@ -72,5 +72,6 @@ sync with no news leaves the last one in place instead of clearing it.
 
 ## Open questions
 
-None for v1. Live transfer ("Play here", H2) and phone-local songs in a
-handed-off queue come with those features.
+None for v1. Live transfer ("Play here", H2) is after v1. Phone-local
+songs are settled by [025](025_phone_local_songs.md): while one plays the
+phone reports nothing, and other devices see the queue without them.

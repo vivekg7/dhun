@@ -59,9 +59,8 @@ first**, which renumbers every queue on each switch.
 
 - A second row, as Musicolet's: **Play/Pause** (or **Resume** for a queue
   not playing), **Sort**, where the queue is (**"4 / 6"** over "9:57 left of
-  19:19"), **Save as playlist**
-  (adds to an existing playlist or makes one, named after the queue) and a
-  menu with **Select multiple** and **Rename**. Shuffle left this row: it is
+  19:19"), **Save as playlist** (adds to an existing playlist or makes one,
+  named after the queue) and a menu with **Select multiple** and **Rename**. Shuffle left this row: it is
   on Now playing, as in Musicolet.
 - **Tapping "4 / 6" brings the current song back**, from anywhere in a
   queue of a thousand songs, to the middle of the list, as in Musicolet. It
@@ -73,9 +72,10 @@ first**, which renumbers every queue on each switch.
   selection.
 - Song rows stay **two lines** (title and artist), the owner's choice over
   Musicolet's three, so more of the queue fits on screen.
-- **A search box at the bottom** (a pill since; see below), "Search in this queue…", filtering by
-  title, artist or album. Dragging waits until it is cleared, since the
-  positions shown are no longer the queue's. How a drag moves (rows
+- **A search box at the bottom**, "Search in this queue…", filtering by
+  title, artist or album; dragging waited until it was cleared, since the
+  positions shown were no longer the queue's. Both changed after release
+  (below). How a drag moves (rows
   sliding aside, scrolling at the edges) is in
   [027](027_motion_and_polish.md).
 
@@ -96,7 +96,7 @@ not playing makes the next one current.
   None, then Play next, Add to a queue…, Add to playlist… or Remove from
   queue. Back leaves it.
 - **Stop after this song**, in the menu of a song in the playing queue: a
-  fifth sleep-timer mode ([014](014_sleep_timer.md)) that pauses where that
+  sleep-timer mode of its own ([014](014_sleep_timer.md)) that pauses where that
   song ends, wherever it is in the queue. The timer shows the song's name;
   choosing it again on that song turns it off.
 
@@ -109,9 +109,9 @@ Not taken from Musicolet for now: swipe to remove, share, export as
   way: the matches drop down over the queue, and a tap scrolls the queue
   to that song, in the middle of the list, and closes the search. The
   list keeps showing the whole queue, so dragging no longer waits for the
-  search to clear. The filter it replaces also stopped updating after
-  the first letter: the reorder helper reads its rows outside Compose's
-  state, and the list was not recomposed once dragging was already off.
+  search. The filter it replaced had also stopped updating after the first
+  letter: the reorder helper reads its rows outside Compose's state, and
+  the list was not recomposed once dragging was already off.
 - **Search moved from a box at the bottom to a pill that opens a floating
   box** (0.14.x). On real phones the keyboard covered the box and its
   matches: the app targets Android 15+, where an edge-to-edge window no

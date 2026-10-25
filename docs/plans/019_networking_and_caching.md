@@ -111,9 +111,10 @@ The owner chose (2026-10-07):
 - **The 500 covers used most recently**, each fetched when first shown.
   The owner first chose every cover, fetched in the background, then
   changed it (2026-10-08): 500 covers hold everything played in a long
-  while, and fetching the whole library at once is work for covers that
-  may never be looked at. Covers of downloaded songs are kept beyond the
+  while, and fetching the whole library is work for covers that may never
+  be looked at. Covers of downloaded songs are kept beyond the
   500, so a downloaded album shows its cover offline.
+- **The fetcher writes the file and the player reads it as it grows.**
 - **A thumbnail of every cover, from the first sync** (owner, 2026-10-08),
   so list rows never wait for art, offline included, and scrolling makes
   no requests. The full covers above are then only for the album grid and
@@ -125,13 +126,10 @@ The owner chose (2026-10-07):
   is four to six times less.
 
   How they travel was decided while building: not inside the song list,
-  where images (which do not compress) would delay the first sync before
-  any song shows, but asked for by key, 50 at a time, for the keys the
-  phone lacks. That needs no cursor on the server, and a new cover is
-  just another missing key. They are fetched on any network, being small.
-
-And, for how a song is fetched: the fetcher writes the file and the player
-reads it as it grows.
+  where images, which do not compress, would delay the first sync, but
+  asked for by key, 50 at a time, for the keys the phone lacks. That needs
+  no cursor on the server, and a new cover is just another missing key.
+  Being small, they are fetched on any network.
 
 ## Plan
 

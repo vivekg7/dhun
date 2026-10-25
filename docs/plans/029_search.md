@@ -6,8 +6,8 @@
 ## Problem
 
 Every search box looked for the query as one substring of the title, the
-artist or the album, with case and accents ignored. That fails in the
-ways this family searches most:
+artist or the album, ignoring case and accents. That fails in the ways
+this family searches most:
 
 - **Words in different fields or out of order.** "arijit tum" found
   nothing, because no single field holds both words.
@@ -30,9 +30,9 @@ The owner asked for all of it (2026-10-10).
 ### One way of matching, everywhere
 
 `data/Search.kt` holds the folding, the query and an index, and every box
-uses them: the Search tab, the top boxes of the tabs, the bottom boxes of
-folders and song pages, Downloads and the queue. A box that matched
-differently from the next would be a bug report waiting to happen.
+uses them: the Search tab, the tabs' top boxes, the bottom boxes of folders
+and song pages, Downloads and the queue. A box that matched differently
+from the next would be a bug report waiting to happen.
 
 **Folding** turns text into lower-case words:
 
@@ -69,7 +69,7 @@ in one of five ways, best first:
 | 4       | a typo: one edit in 4–7 letters, two from 8, by sound |
 
 "Run together" is how "acdc" finds AC/DC. **Typos are tried only for a
-query word that matches nothing better anywhere in the list.** A typo
+query word that matches nothing better anywhere in the list**: a typo
 usually makes a word that matches nothing, while "love" matching "live",
 "lose" and "move" would bury the songs actually called love.
 
@@ -81,43 +81,43 @@ year 4. A title that is the whole query, or starts with it, comes first.
 Among equal scores, favourites and songs played often come first; they
 never jump a better match.
 
-Tab lists and the bottom boxes keep their own order and only filter.
-Only the Search tab ranks.
+Tab lists and the bottom boxes keep their own order and only filter;
+only the Search tab ranks.
 
 ### Speed: an index, built once
 
 Folding all 7,000 songs' fields on every keystroke was most of the old
-search's cost. The catalog now builds an index on first use. It holds
-each distinct word once with its sound key, and each song as the word
-numbers of its fields. A query compares its words against the list of
-distinct words (about twenty thousand) once, and then each song is a few
-array lookups. The index is rebuilt with the catalog when the library
-changes. The pages build a small index of their own list when first
-searched.
+search's cost. The catalog now builds an index, rebuilt with it when the
+library changes: each distinct word once with its sound key, and each
+song as the word numbers of its fields. A query compares its words with
+the distinct words (about twenty thousand) once, and then each song is a
+few array lookups. The pages build a small index of their own list when
+first searched. The index was built at the first keystroke;
+[036](036_fast_at_100k.md) builds it right after the catalogue, off the
+main thread, and slims it to what is read.
 
 ### The Search tab finds more than songs
 
 Results come in sections: **Artists, Albums, Genres, Folders, Playlists,
-Songs and In lyrics**. The sections are ordered by their best match, so
-"arijit" shows Artists first and "tum hi ho" shows Songs first. In lyrics
-always comes last. Each section other than Songs shows three results and
-then "Show all", since one strong song match should not sit under twenty
-albums. A tapped artist, album, genre, folder or playlist opens in the
-Search tab's own stack, so Back returns to the results. Songs play the
-list of songs found, as before, up to the first 300.
+Songs and In lyrics**, ordered by their best match, so "arijit" shows
+Artists first and "tum hi ho" Songs first; In lyrics always comes last.
+Each section but Songs shows three results and then "Show all", since one
+strong song match should not sit under twenty albums. A tapped artist,
+album, genre, folder or playlist opens in the Search tab's own stack, so
+Back returns to the results. A song plays the songs found, up to the
+first 300.
 
 **Chips jump to a section** (owner, 2026-10-18). Below the search box, a
-row of chips names the sections found, in the order they appear: "Artists",
-"Albums" … "Songs", "Lyrics". A tap scrolls the results to the section's
-heading, so the songs under twenty albums, or the lyrics under 300 songs,
-are one tap away rather than a long scroll. The row is shown only when
-there are two sections or more; with one, there is nowhere to jump. It
-stays in view while the results scroll, under the search box, so a second
-jump needs no scrolling back, and the chip of the section at the top is
-selected, which says where you are. The chips hold names only, no counts:
-"Show all" already says how many. "Lyrics" joins the row once the lyrics
-results arrive, not while they are asked for. On the Mac and the web the
-same row sits above the results.
+row of chips names the sections found in their order ("Artists",
+"Albums" … "Songs", "Lyrics"), and a tap scrolls to the section's heading,
+so the songs under twenty albums, or the lyrics under 300 songs, are one
+tap away. The row shows only with two sections or more, as with one there
+is nowhere to jump. It stays in view under the search box while the
+results scroll, so a second jump needs no scrolling back, and the chip of
+the section at the top is selected, saying where you are. Names only, no
+counts: "Show all" already says how many. "Lyrics" joins the row once its
+results arrive. On the Mac and the web the same row sits above the
+results.
 
 ### Filters
 
@@ -132,72 +132,71 @@ wants them; the box never needs them.
 
 When the box is empty, the last ten searches show, each with a ✕, plus
 "Clear". A search is kept when something it found is tapped, not on every
-keystroke; a half-typed "arij" is not history. It is kept on the phone,
-like the rest of the box, and not synced: Musicolet keeps it per device
-too, and a family member's searches are their own phone's business.
+keystroke, as a half-typed "arij" is not history. It stays on the phone,
+not synced: Musicolet keeps it per device too, and a family member's
+searches are their own phone's business.
 
 ### In lyrics: the server, or what the phone kept
 
-Lyrics live on the NAS (`.lrc` files and tags,
-[015](015_lyrics.md)); the phone keeps only those of downloaded songs and
-of songs whose lyrics were shown. So **lyrics search is the server's**:
-`GET /api/v1/search/lyrics?q=` returns songs and the line that matched,
-up to 50. The app asks for it 400 ms after typing stops, for a query of 3
-letters or more. A line matches when every query word matches a word of
-that line by the first four qualities. Typos are left out, because there
-are thousands of lyric lines and a typo would match many of them. Lines
-that hold the whole query as typed come first.
+Lyrics live on the NAS (`.lrc` files and tags, [015](015_lyrics.md)); the
+phone keeps only those of downloaded songs and of songs whose lyrics were
+shown. So **lyrics search is the server's**: `GET /api/v1/search/lyrics?q=`
+returns songs and the line that matched, up to 50. The app asks 400 ms
+after typing stops, for a query of 3 letters or more. A line matches when
+every query word matches a word of it by the first four qualities. Typos
+are left out, as among thousands of lyric lines a typo would match many.
+Lines that hold the whole query as typed come first.
 
 **Offline, or on a server too old for the endpoint,** the app searches the
-lyrics it has kept instead, with the same rules. That is the written
-reason this part of search needs the server: the lyrics themselves do.
+lyrics it has kept, by the same rules. That is the written reason this
+part of search needs the server: the lyrics themselves do.
 
-The server keeps every song's lyrics lines in memory: a few megabytes for
-this library. It refreshes them after each scan. A song is read again only
-when its row changed or its `.lrc` file's size or time did, so a refresh
-costs one directory listing per folder. The first search after a start
-waits for the first refresh.
+The server keeps every song's lyrics lines in memory, a few megabytes for
+this library, refreshed after each scan. A song is read again only when
+its row changed or its `.lrc` file's size or time did, so a refresh costs
+one directory listing per folder. The first search after a start waits
+for the first refresh.
 
-Go, Kotlin and Swift each have their own copy of the folding, about
-eighty lines each. `api/search-fold.tsv` lists inputs with their expected
-words and keys, and **all three test suites read it**, so the copies
-cannot drift apart.
+Each language has its own copy of the folding, about eighty lines: Go,
+Kotlin and Swift here, then JavaScript for the web
+([030](030_web_client.md)) and Rust for Linux ([039](039_linux_app.md)).
+`api/search-fold.tsv` lists inputs with their expected words and keys, and
+**every copy's tests read it**, so the copies cannot drift apart.
 
 ### On the Mac
 
-The Mac app has the same search (owner, 2026-10-10), in
+The Mac app has the same search (owner, 2026-10-10) in
 `DhunKit/Data/Search.swift`, a line-for-line port with the phone's tests.
 Where the window differs from the phone's tabs:
 
-- **The window's search field is the Search tab.** Its results come in
-  the same sections, with three each and "Show all". A click opens an
-  artist, album, genre, folder or playlist over the results, and Back
-  returns to them. Double-click or Return plays a song, as in every Mac
-  list, and the right click has the song menu. Typing again shows the
-  results over any page opened from them.
-- **Recent searches are the field's suggestions** when it is empty, as
-  in Music and Safari, with "Clear Recent Searches". They are this Mac's
-  own, like a phone's.
+- **The window's search field is the Search tab**, with the same sections,
+  three each and "Show all". A click opens an artist, album, genre, folder
+  or playlist over the results, and Back returns to them. Double-click or
+  Return plays a song, as in every Mac list, and the right click has the
+  song menu. Typing again shows the results over any page opened from
+  them.
+- **Recent searches are the field's suggestions** when it is empty, as in
+  Music and Safari, with "Clear Recent Searches", and are this Mac's own.
 - **The filters sit in the toolbar**, as the Mac's tab filters already
-  did, not at the foot of the page. A text field in the page would take
-  the focus, and Space must play and pause. Pages get one past 12 rows,
-  as on the phone. The queue keeps its own field.
-- **A page's songs are filtered through the catalog's index**, not an
-  index of the page: the songs the query finds in the whole library,
-  kept in the page's order. Building an index per page on each keystroke
-  would cost more than it saves. The one difference is that "matches
-  nothing better" for typos is judged over the library, not the page.
+  did, not at the foot of the page: a text field in the page would take
+  the focus, and Space must play and pause. Pages get one past 12 rows, as
+  on the phone. The queue keeps its own field.
+- **A page's songs are filtered through the catalog's index**: the songs
+  the query finds in the whole library, kept in the page's order. An index
+  per page on each keystroke would cost more than it saves. The one
+  difference is that "matches nothing better" for typos is judged over the
+  library, not the page.
 - **Words are compared as bytes** (`memcmp`, `memmem`). With Swift's own
-  string search, one keystroke over 7,000 songs took up to 0.2 s, and
-  the filters run on the main thread. As bytes it takes 1 to 2 ms. Typos
+  string search one keystroke over 7,000 songs took up to 0.2 s, on the
+  main thread where the filters run; as bytes it takes 1 to 2 ms. Typos
   still count letters as the phone does.
 
 ## Rejected
 
 - **A search library** (Lucene, SQLite FTS on the phone). FTS5 does
   prefixes but not sound keys, Devanagari or typos, which are the point
-  here. Lucene is megabytes for 7,000 songs. The index above is about two
-  hundred lines.
+  here, and Lucene is megabytes. The index above is about two hundred
+  lines.
 - **Server-side search for everything.** Search must work offline and on
   phone-local songs, and the phone already has the whole library.
 - **A full phonetic algorithm** (Soundex, Metaphone). They are built for
