@@ -40,22 +40,27 @@ func backToBackSongsJoinWithoutAGap(ext: String, channels: Int) throws {
     }
 
     // Decode at the file's own rate so no resampling blurs the measurement.
-    var out: [Float] = []
-    var right: [Float] = []
-    for url in halves {
-        let d = try openDecoder(try FileBytes(url), format: pcm)
-        let buf = AVAudioPCMBuffer(pcmFormat: pcm, frameCapacity: 4096)!
-        while true {
-            try d.read(into: buf)
-            if buf.frameLength == 0 { break }
-            out += UnsafeBufferPointer(start: buf.floatChannelData![0], count: Int(buf.frameLength))
-            right += UnsafeBufferPointer(start: buf.floatChannelData![1], count: Int(buf.frameLength))
-        }
-    }
-
+    let (out, right) = try decode(halves, pcm)
     #expect(out.count == total)
     #expect(right == out)
     // A 441 Hz sine at 0.5 moves at most 2π·441/44100·0.5 ≈ 0.031 per sample.
     let join = abs(out[cut] - out[cut - 1])
     #expect(join < 0.05, "jump of \(join) at the join")
+}
+
+/// `files` decoded back to back in `format`, each channel on its own.
+func decode(_ files: [URL], _ format: AVAudioFormat) throws -> (left: [Float], right: [Float]) {
+    var left: [Float] = []
+    var right: [Float] = []
+    for url in files {
+        let d = try openDecoder(try FileBytes(url), format: format)
+        let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)!
+        while true {
+            try d.read(into: buf)
+            if buf.frameLength == 0 { break }
+            left += UnsafeBufferPointer(start: buf.floatChannelData![0], count: Int(buf.frameLength))
+            right += UnsafeBufferPointer(start: buf.floatChannelData![1], count: Int(buf.frameLength))
+        }
+    }
+    return (left, right)
 }

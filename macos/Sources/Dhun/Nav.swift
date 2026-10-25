@@ -72,31 +72,22 @@ enum ListKind: String, CaseIterable, Hashable {
 
     @MainActor func songs(_ app: AppModel) -> [Song] {
         let c = app.catalog
-        let stats = app.playStats.values
+        /// The played songs `keep` takes, `first` first, at most a view's worth.
+        func top(_ keep: (PlayStat) -> Bool, _ first: (PlayStat, PlayStat) -> Bool) -> [Song] {
+            let ids = app.playStats.values.filter(keep).sorted(by: first).map(\.song)
+            return Array(c.songsOf(ids).prefix(Catalog.viewSize))
+        }
         switch self {
         case .favorites: return c.songsOf(app.favorites.map(\.song))
         case .listenLater: return c.songsOf(app.listenLater.map(\.song))
         case .continueListening: return c.songsOf(app.resumes.map(\.song))
         case .recentlyAdded: return c.recentlyAdded
-        case .recentlyPlayed:
-            return Array(
-                c.songsOf(
-                    stats.filter { $0.lastPlayedAt > 0 }.sorted { $0.lastPlayedAt > $1.lastPlayedAt }.map(
-                        \.song)
-                )
-                .prefix(Catalog.viewSize))
-        case .mostPlayed:
-            return Array(
-                c.songsOf(stats.filter { $0.count > 0 }.sorted { $0.count > $1.count }.map(\.song)).prefix(
-                    Catalog.viewSize))
+        case .recentlyPlayed: return top({ $0.lastPlayedAt > 0 }, { $0.lastPlayedAt > $1.lastPlayedAt })
+        case .mostPlayed: return top({ $0.count > 0 }, { $0.count > $1.count })
         case .notLately:
             // Played at least 3 times, and not in the last 90 days: favourites you have drifted away from.
             let cutoff = nowMs() - 90 * 86_400_000
-            return Array(
-                c.songsOf(
-                    stats.filter { $0.count >= 3 && $0.lastPlayedAt < cutoff }.sorted { $0.count > $1.count }
-                        .map(\.song)
-                ).prefix(Catalog.viewSize))
+            return top({ $0.count >= 3 && $0.lastPlayedAt < cutoff }, { $0.count > $1.count })
         }
     }
 }
@@ -129,4 +120,11 @@ final class Nav {
     }
 
     func goToArtist(_ s: Song) { open(.artists, .artist(s.artists.first ?? s.displayArtist)) }
+
+    /// The right-hand panel on `tab`. `toggling`, as Now playing's buttons do, hides it if it shows that tab.
+    func show(_ tab: InspectorTab, toggling: Bool = false) {
+        let showing = inspector && inspectorTab == tab
+        inspectorTab = tab
+        inspector = !(toggling && showing)
+    }
 }

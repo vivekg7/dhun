@@ -24,8 +24,7 @@ struct QueuesView: View {
                             Text(q.name).lineLimit(1)
                             // Counted by ID: a song no longer in the library is still in the queue.
                             let ms = app.catalog.songsOf(q.songs).reduce(0) { $0 + $1.durationMs }
-                            Text("\(count(q.songs.count)) · \(clock(Double(ms) / 1000))").font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text(summary(q.songs.count, ms)).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         if q.id == app.playback.activeId {
@@ -36,10 +35,7 @@ struct QueuesView: View {
                 }
                 .contextMenu { QueueMenu(queue: q) }
             }
-            .onMove { from, to in
-                guard let f = from.first else { return }
-                app.playback.moveQueue(from: f, to: to > f ? to - 1 : to)
-            }
+            .onMove { moved($0, $1) { app.playback.moveQueue(from: $0, to: $1) } }
         }
         .listStyle(.plain)  // as a queue's, for the drop above the first row
         .padding(.horizontal, 8)
@@ -53,6 +49,12 @@ struct QueuesView: View {
         }
         .navigationTitle("Queues")
     }
+}
+
+/// A list's drag as one row's index and where it lands, counted once it has left its place.
+func moved(_ from: IndexSet, _ to: Int, _ move: (Int, Int) -> Void) {
+    guard let f = from.first else { return }
+    move(f, to > f ? to - 1 : to)
 }
 
 struct QueueMenu: View {
@@ -177,10 +179,7 @@ struct QueueSongs: View {
                         .id(s.id)
                         .tag(s.id)
                     }
-                    .onMove { from, to in
-                        guard let f = from.first else { return }
-                        app.playback.moveIn(queue.id, from: f, to: to > f ? to - 1 : to)
-                    }
+                    .onMove { moved($0, $1) { app.playback.moveIn(queue.id, from: $0, to: $1) } }
                 }
                 .contextMenu(forSelectionType: Int.self) { chosen in
                     let picked = songs.filter { chosen.contains($0.id) }
@@ -267,9 +266,8 @@ struct QueueMenuButton: View {
 
 /// How a queue can be sorted: Musicolet's Randomize and Reverse, then by what a song's tags say.
 enum QueueSort: CaseIterable {
-    case randomize, reverse, title, titleDesc, artist, artistDesc, album, albumDesc, folder, year, yearDesc,
-        shortest,
-        longest, added
+    case randomize, reverse, title, titleDesc, artist, artistDesc, album, albumDesc, folder, year, yearDesc
+    case shortest, longest, added
 
     var label: String {
         switch self {
@@ -389,10 +387,7 @@ struct PlaylistPage: View {
                     // in the wrong place in the whole playlist.
                     .onMove(
                         perform: editable && query.isEmpty
-                            ? { from, to in
-                                guard let f = from.first else { return }
-                                app.store.moveInPlaylist(p, from: f, to: to > f ? to - 1 : to)
-                            } : nil)
+                            ? { moved($0, $1) { app.store.moveInPlaylist(p, from: $0, to: $1) } } : nil)
                 }
                 .contextMenu(forSelectionType: Int.self) { rows in
                     let picked = rows.sorted().compactMap { app.catalog.byId[p.songs[$0]] }

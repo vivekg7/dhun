@@ -137,7 +137,6 @@ public final class SQLite: @unchecked Sendable {
             switch a {
             case nil: rc = sqlite3_bind_null(st, n)
             case .int(let v): rc = sqlite3_bind_int64(st, n, Int64(v))
-            case .double(let v): rc = sqlite3_bind_double(st, n, v)
             case .text(let v):
                 // By length, not up to a NUL: an album's id holds one, and a
                 // C string would cut it there (a pin then matched no album).
@@ -159,7 +158,6 @@ public final class SQLite: @unchecked Sendable {
         let st: OpaquePointer
         public func int(_ i: Int32) -> Int { Int(sqlite3_column_int64(st, i)) }
         public func bool(_ i: Int32) -> Bool { sqlite3_column_int64(st, i) != 0 }
-        public func double(_ i: Int32) -> Double { sqlite3_column_double(st, i) }
         public func text(_ i: Int32) -> String {
             guard let p = sqlite3_column_text(st, i) else { return "" }
             return String(
@@ -176,22 +174,14 @@ public final class SQLite: @unchecked Sendable {
 
 public enum SQLValue: Sendable {
     case int(Int)
-    case double(Double)
     case text(String)
     case blob(Data)
-}
-
-extension SQLValue: ExpressibleByIntegerLiteral, ExpressibleByStringLiteral {
-    public init(integerLiteral v: Int) { self = .int(v) }
-    public init(stringLiteral v: String) { self = .text(v) }
 }
 
 public protocol SQLBindable { var sql: SQLValue { get } }
 extension Int: SQLBindable { public var sql: SQLValue { .int(self) } }
 extension Bool: SQLBindable { public var sql: SQLValue { .int(self ? 1 : 0) } }
 extension String: SQLBindable { public var sql: SQLValue { .text(self) } }
-extension Double: SQLBindable { public var sql: SQLValue { .double(self) } }
-extension Data: SQLBindable { public var sql: SQLValue { .blob(self) } }
 
 /// `[a, b].sql` for `run` and `query` arguments.
 extension Array where Element == any SQLBindable {

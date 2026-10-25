@@ -58,8 +58,15 @@ public struct Song: Identifiable, Hashable, Sendable {
     public var displayArtist: String {
         !artist.isEmpty ? artist : !albumArtist.isEmpty ? albumArtist : "Unknown artist"
     }
-    public var fileExtension: String { (path as NSString).pathExtension.lowercased() }
+    /// Its file in Downloads or the cache: "123.mp3", by the format when the path has no extension.
+    var fileName: String {
+        let ext = (path as NSString).pathExtension.lowercased()
+        return "\(id).\(ext.isEmpty ? format : ext)"
+    }
 }
+
+/// The song a file named by `Song.fileName` holds, or its part or window.
+func songOf(file name: String) -> Int? { Int(name.prefix { $0 != "." }) }
 
 /// Where a chapter of an episode or a book's file starts.
 public struct Chapter: Codable, Hashable, Sendable {

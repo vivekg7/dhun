@@ -129,7 +129,7 @@ public final class Downloads {
         // A part kept for resuming whose song is no longer wanted.
         let resumable = Set(todo.map(\.id))
         for f in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where f.hasSuffix(".part") {
-            if let id = Int(f.prefix { $0 != "." }), resumable.contains(id) { continue }
+            if let id = songOf(file: f), resumable.contains(id) { continue }
             try? fm.removeItem(at: dir.appendingPathComponent(f))
         }
         update(.idle, songs.count, used, have)
@@ -183,9 +183,8 @@ public final class Downloads {
     /// half-written file is never played; nil if the server no longer has
     /// it. A part left by a broken try is carried on with a range request.
     private func fetch(_ s: Song) async throws -> URL? {
-        let ext = s.fileExtension.isEmpty ? s.format : s.fileExtension
-        let file = dir.appendingPathComponent("\(s.id).\(ext)")
-        let part = dir.appendingPathComponent("\(s.id).\(ext).part")
+        let file = dir.appendingPathComponent(s.fileName)
+        let part = dir.appendingPathComponent(s.fileName + ".part")
         let result = try await fetchFile(app.api, app.api.streamURL(s.id), to: part) { [weak self] p in
             Task { @MainActor in self?.status.progress = p }
         }
@@ -230,10 +229,8 @@ public func covered(_ pins: [Pin], _ c: Catalog, _ playlists: [Playlist], _ favs
         case Downloads.song: Int(p.ref).map(add)
         case Downloads.album: c.albumsById[p.ref]?.songs.forEach { add($0.id) }
         case Downloads.folder: c.folders[p.ref]?.allSongs().forEach { add($0.id) }
-        case Downloads.artist:
-            c.artists.first { $0.name.lowercased() == p.ref.lowercased() }?.songs.forEach { add($0.id) }
-        case Downloads.genre:
-            c.genres.first { $0.name.lowercased() == p.ref.lowercased() }?.songs.forEach { add($0.id) }
+        case Downloads.artist: c.artists.named(p.ref)?.songs.forEach { add($0.id) }
+        case Downloads.genre: c.genres.named(p.ref)?.songs.forEach { add($0.id) }
         case Downloads.playlist: playlists.first { String($0.id) == p.ref }?.songs.forEach(add)
         case Downloads.list: (p.ref == Store.fav ? favs : later).forEach { add($0.song) }
         case Downloads.shelf: c.shelves[p.ref]?.items.forEach { add($0.id) }

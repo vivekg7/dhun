@@ -100,18 +100,22 @@ struct RouteView: View {
         switch route {
         case .album(let id):
             if let a = app.catalog.albumsById[id] {
-                AlbumPage(album: a)
+                SongsPage(
+                    title: a.name,
+                    subtitle: dotted([a.artist, a.year > 0 ? String(a.year) : ""]) + " · " + summary(a.songs),
+                    songs: a.songs, source: "album:\(a.id)", pin: (Downloads.album, a.id), showTrack: true,
+                    showAlbum: false)
             } else {
                 Missing()
             }
         case .artist(let name):
-            if let g = app.catalog.artists.first(where: { $0.name.lowercased() == name.lowercased() }) {
+            if let g = app.catalog.artists.named(name) {
                 ArtistPage(group: g)
             } else {
                 Missing()
             }
         case .genre(let name):
-            if let g = app.catalog.genres.first(where: { $0.name.lowercased() == name.lowercased() }) {
+            if let g = app.catalog.genres.named(name) {
                 SongsPage(
                     title: g.name, subtitle: summary(g.songs), songs: albumOrder(g.songs),
                     source: "genre:\(g.name)",

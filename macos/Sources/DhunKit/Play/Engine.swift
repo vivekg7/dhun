@@ -89,8 +89,6 @@ public final class Engine: @unchecked Sendable {
         set { engine.mainMixerNode.outputVolume = newValue }
     }
 
-    public var isPlaying: Bool { node.isPlaying }
-
     /// Opens `bytes` and starts it at `seconds`, dropping whatever was
     /// scheduled; `paused` leaves it ready but silent. Blocks until the first
     /// audio is decoded.

@@ -478,7 +478,7 @@ struct FamilyMembers: View {
     private func seen(_ m: Member) -> String {
         guard m.devices > 0 else { return "No device signed in" }
         let at = parseTime(m.lastSeenAt)
-        let on = "Signed in on \(m.devices) device\(m.devices == 1 ? "" : "s")"
+        let on = "Signed in on \(count(m.devices, "device"))"
         guard at > 0 else { return on }
         let date = Date(timeIntervalSince1970: Double(at) / 1000)
         let ago =

@@ -36,6 +36,9 @@ public final class Covers: @unchecked Sendable {
     /// A server without art keys (before 0.1.4): one cover per song.
     private func key(_ s: Song) -> String { s.art.isEmpty ? "s\(s.id)" : s.art }
 
+    /// The size fetched for `px`: the smallest that large, else the largest.
+    private static func size(_ px: Int) -> Int { sizes.first { $0 >= px } ?? sizes.last! }
+
     /// The thumbnail, from the database; nil until it has been fetched. Cheap enough for a list row.
     public func thumbnail(_ s: Song) -> NSImage? {
         guard s.hasArt, !s.art.isEmpty else { return nil }
@@ -51,8 +54,7 @@ public final class Covers: @unchecked Sendable {
     public func cached(_ s: Song, px: Int) -> NSImage? {
         guard s.hasArt else { return nil }
         if px <= Covers.thumb { return thumbnail(s) }
-        let size = Covers.sizes.first { $0 >= px } ?? Covers.sizes.last!
-        return memory.object(forKey: "\(key(s))/\(size)" as NSString)
+        return memory.object(forKey: "\(key(s))/\(Covers.size(px))" as NSString)
     }
 
     /// The cover at least `px` across where the server has it that large;
@@ -60,7 +62,7 @@ public final class Covers: @unchecked Sendable {
     public func image(_ s: Song, px: Int) async -> NSImage? {
         guard s.hasArt else { return nil }
         if px <= Covers.thumb, let t = thumbnail(s) { return t }
-        let size = Covers.sizes.first { $0 >= px } ?? Covers.sizes.last!
+        let size = Covers.size(px)
         let key = key(s)
         let mem = "\(key)/\(size)" as NSString
         if let i = memory.object(forKey: mem) { return i }
@@ -165,11 +167,5 @@ public final class Covers: @unchecked Sendable {
         for (f, _) in dated.sorted(by: { $0.1 < $1.1 }).prefix(files.count - Covers.keep) {
             try? fm.removeItem(at: f)
         }
-    }
-
-    public func removeAll() {
-        try? FileManager.default.removeItem(at: dir)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        memory.removeAllObjects()
     }
 }

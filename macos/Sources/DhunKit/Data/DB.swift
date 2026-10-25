@@ -81,10 +81,20 @@ public final class DB: @unchecked Sendable {
             """)
     }
 
+    /// A read's rows; one that fails reads as none.
+    private func rows<T>(_ q: String, _ args: [SQLValue?] = [], bulk: Bool = false, _ row: (SQLite.Row) -> T)
+        -> [T]
+    {
+        (try? sql.query(q, args, bulk: bulk, row)) ?? []
+    }
+
+    /// Writes one row, its values in the table's column order.
+    private func put(_ q: String, _ values: [any SQLBindable]) { try? sql.run(q, values.sql) }
+
     // MARK: Songs
 
     public func songs() -> [Song] {
-        (try? sql.query("SELECT * FROM song WHERE missing = 0", bulk: true) { r in
+        rows("SELECT * FROM song WHERE missing = 0", bulk: true) { r in
             Song(
                 id: r.int(0), path: r.text(1), title: r.text(2), artist: r.text(3), artists: split(r.text(4)),
                 album: r.text(5), albumArtist: r.text(6), composer: r.text(7), genres: split(r.text(8)),
@@ -94,7 +104,7 @@ public final class DB: @unchecked Sendable {
                 art: r.text(22), kind: r.text(23), date: r.text(24), notes: r.text(25),
                 chapters: chapters(r.text(26)), groupKey: r.text(27), groupTitle: r.text(28),
                 groupIndex: r.int(29))
-        }) ?? []
+        }
     }
 
     /// In transactions of a couple of thousand rows: the first pull is a
@@ -121,19 +131,18 @@ public final class DB: @unchecked Sendable {
     // MARK: Playlists
 
     public func playlists() -> [Playlist] {
-        (try? sql.query(
-            "SELECT id, name, path, shared, songs, ref FROM playlist ORDER BY shared, name COLLATE NOCASE"
-        ) { r in
+        let q = "SELECT id, name, path, shared, songs, ref FROM playlist ORDER BY shared, name COLLATE NOCASE"
+        return rows(q) { r in
             Playlist(
                 id: r.int(0), name: r.text(1), path: r.text(2), shared: r.bool(3), songs: ids(r.text(4)),
                 ref: r.text(5))
-        }) ?? []
+        }
     }
 
     public func putPlaylist(_ p: Playlist) {
-        try? sql.run(
+        put(
             "INSERT OR REPLACE INTO playlist VALUES (?,?,?,?,?,?)",
-            ([p.id, p.name, p.path, p.shared, join(p.songs), p.ref] as [any SQLBindable]).sql)
+            [p.id, p.name, p.path, p.shared, join(p.songs), p.ref])
     }
 
     public func deletePlaylist(_ id: Int) { try? sql.run("DELETE FROM playlist WHERE id = ?", [.int(id)]) }
@@ -143,19 +152,18 @@ public final class DB: @unchecked Sendable {
     // MARK: Queues
 
     public func queues() -> [QueueRow] {
-        (try? sql.query("SELECT * FROM queue ORDER BY usedAt DESC") { r in
+        rows("SELECT * FROM queue ORDER BY usedAt DESC") { r in
             QueueRow(
                 id: r.text(0), name: r.text(1), songs: ids(r.text(2)), currentSong: r.int(3),
                 positionMs: r.int(4),
                 shuffle: r.bool(5), repeatMode: r.text(6), usedAt: r.int(7))
-        }) ?? []
+        }
     }
 
     public func putQueue(_ q: QueueRow) {
-        try? sql.run(
+        put(
             "INSERT OR REPLACE INTO queue VALUES (?,?,?,?,?,?,?,?)",
-            ([q.id, q.name, join(q.songs), q.currentSong, q.positionMs, q.shuffle, q.repeatMode, q.usedAt]
-                as [any SQLBindable]).sql)
+            [q.id, q.name, join(q.songs), q.currentSong, q.positionMs, q.shuffle, q.repeatMode, q.usedAt])
     }
 
     public func deleteQueue(_ id: String) { try? sql.run("DELETE FROM queue WHERE id = ?", [.text(id)]) }
@@ -163,50 +171,51 @@ public final class DB: @unchecked Sendable {
     // MARK: Favorites, Listen Later, resume points, settings
 
     public func marks(_ kind: String) -> [Mark] {
-        (try? sql.query(
+        rows(
             "SELECT kind, song, at, deleted FROM mark WHERE kind = ? AND deleted = 0 ORDER BY at DESC",
             [.text(kind)]
-        ) { r in Mark(kind: r.text(0), song: r.int(1), at: r.int(2), deleted: r.bool(3)) }) ?? []
+        ) { mark($0) }
     }
 
     public func mark(_ kind: String, _ song: Int) -> Mark? {
-        try? sql.query(
+        rows(
             "SELECT kind, song, at, deleted FROM mark WHERE kind = ? AND song = ?", [.text(kind), .int(song)]
-        ) { r in Mark(kind: r.text(0), song: r.int(1), at: r.int(2), deleted: r.bool(3)) }.first
+        ) { mark($0) }.first
+    }
+
+    private func mark(_ r: SQLite.Row) -> Mark {
+        Mark(kind: r.text(0), song: r.int(1), at: r.int(2), deleted: r.bool(3))
     }
 
     public func putMark(_ m: Mark) {
-        try? sql.run(
-            "INSERT OR REPLACE INTO mark VALUES (?,?,?,?)",
-            ([m.kind, m.song, m.at, m.deleted] as [any SQLBindable]).sql)
+        put("INSERT OR REPLACE INTO mark VALUES (?,?,?,?)", [m.kind, m.song, m.at, m.deleted])
     }
 
     public func resumes() -> [Resume] {
-        (try? sql.query("SELECT song, positionMs, at, deleted FROM resume WHERE deleted = 0 ORDER BY at DESC")
-        { r in
-            Resume(song: r.int(0), positionMs: r.int(1), at: r.int(2), deleted: r.bool(3))
-        }) ?? []
+        rows("SELECT song, positionMs, at, deleted FROM resume WHERE deleted = 0 ORDER BY at DESC") {
+            resume($0)
+        }
     }
 
     public func resume(_ song: Int) -> Resume? {
-        try? sql.query("SELECT song, positionMs, at, deleted FROM resume WHERE song = ?", [.int(song)]) { r in
-            Resume(song: r.int(0), positionMs: r.int(1), at: r.int(2), deleted: r.bool(3))
-        }.first
+        rows("SELECT song, positionMs, at, deleted FROM resume WHERE song = ?", [.int(song)]) { resume($0) }
+            .first
+    }
+
+    private func resume(_ r: SQLite.Row) -> Resume {
+        Resume(song: r.int(0), positionMs: r.int(1), at: r.int(2), deleted: r.bool(3))
     }
 
     public func putResume(_ r: Resume) {
-        try? sql.run(
-            "INSERT OR REPLACE INTO resume VALUES (?,?,?,?)",
-            ([r.song, r.positionMs, r.at, r.deleted] as [any SQLBindable]).sql)
+        put("INSERT OR REPLACE INTO resume VALUES (?,?,?,?)", [r.song, r.positionMs, r.at, r.deleted])
     }
 
     public func bookmarks() -> [Bookmark] {
-        (try? sql.query("SELECT * FROM bookmark WHERE deleted = 0 ORDER BY positionMs") { bookmark($0) })
-            ?? []
+        rows("SELECT * FROM bookmark WHERE deleted = 0 ORDER BY positionMs") { bookmark($0) }
     }
 
     public func bookmark(_ id: String) -> Bookmark? {
-        try? sql.query("SELECT * FROM bookmark WHERE id = ?", [.text(id)]) { bookmark($0) }.first
+        rows("SELECT * FROM bookmark WHERE id = ?", [.text(id)]) { bookmark($0) }.first
     }
 
     private func bookmark(_ r: SQLite.Row) -> Bookmark {
@@ -216,15 +225,15 @@ public final class DB: @unchecked Sendable {
     }
 
     public func putBookmark(_ b: Bookmark) {
-        try? sql.run(
+        put(
             "INSERT OR REPLACE INTO bookmark VALUES (?,?,?,?,?,?)",
-            ([b.id, b.song, b.positionMs, b.note, b.at, b.deleted] as [any SQLBindable]).sql)
+            [b.id, b.song, b.positionMs, b.note, b.at, b.deleted])
     }
 
     public func settings() -> [String: JSON] {
-        let rows =
-            (try? sql.query("SELECT name, value FROM setting") { ($0.text(0), JSON.parse($0.text(1))) }) ?? []
-        return Dictionary(rows, uniquingKeysWith: { a, _ in a })
+        Dictionary(
+            rows("SELECT name, value FROM setting") { ($0.text(0), JSON.parse($0.text(1))) },
+            uniquingKeysWith: { a, _ in a })
     }
 
     public func putSetting(_ name: String, _ value: JSON) {
@@ -238,14 +247,12 @@ public final class DB: @unchecked Sendable {
     // MARK: Outbox
 
     public func outbox(limit: Int = Int.max) -> [OutboxOp] {
-        (try? sql.query("SELECT id, key, json FROM outbox ORDER BY seq LIMIT ?", [.int(limit)]) { r in
+        rows("SELECT id, key, json FROM outbox ORDER BY seq LIMIT ?", [.int(limit)]) { r in
             OutboxOp(id: r.text(0), key: r.text(1), json: r.text(2))
-        }) ?? []
+        }
     }
 
-    public func outboxSize() -> Int {
-        (try? sql.query("SELECT count(*) FROM outbox") { $0.int(0) }.first) ?? 0
-    }
+    public func outboxSize() -> Int { rows("SELECT count(*) FROM outbox") { $0.int(0) }.first ?? 0 }
 
     /// Drops earlier ops with the same key (only the latest matters), then
     /// adds this one. Throws rather than swallowing: an edit the outbox did
@@ -266,11 +273,10 @@ public final class DB: @unchecked Sendable {
     // MARK: Play counts
 
     public func playStats() -> [Int: PlayStat] {
-        let rows =
-            (try? sql.query("SELECT song, count, lastPlayedAt FROM play_stat") {
-                PlayStat(song: $0.int(0), count: $0.int(1), lastPlayedAt: $0.int(2))
-            }) ?? []
-        return Dictionary(rows.map { ($0.song, $0) }, uniquingKeysWith: { a, _ in a })
+        let stats = rows("SELECT song, count, lastPlayedAt FROM play_stat") {
+            PlayStat(song: $0.int(0), count: $0.int(1), lastPlayedAt: $0.int(2))
+        }
+        return Dictionary(stats.map { ($0.song, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
     public func replacePlayStats(_ stats: [PlayStat]) throws {
@@ -285,15 +291,13 @@ public final class DB: @unchecked Sendable {
     // MARK: Downloads (plan 012)
 
     public func pins() -> [Pin] {
-        (try? sql.query("SELECT key, kind, ref, name, at FROM pin ORDER BY at DESC") { r in
+        rows("SELECT key, kind, ref, name, at FROM pin ORDER BY at DESC") { r in
             Pin(key: r.text(0), kind: r.text(1), ref: r.text(2), name: r.text(3), at: r.int(4))
-        }) ?? []
+        }
     }
 
     public func putPin(_ p: Pin) {
-        try? sql.run(
-            "INSERT OR REPLACE INTO pin VALUES (?,?,?,?,?)",
-            ([p.key, p.kind, p.ref, p.name, p.at] as [any SQLBindable]).sql)
+        put("INSERT OR REPLACE INTO pin VALUES (?,?,?,?,?)", [p.key, p.kind, p.ref, p.name, p.at])
     }
 
     public func deletePin(_ key: String) { try? sql.run("DELETE FROM pin WHERE key = ?", [.text(key)]) }
@@ -303,17 +307,14 @@ public final class DB: @unchecked Sendable {
     }
 
     public func downloads() -> [Int: Download] {
-        let rows =
-            (try? sql.query("SELECT song, path, size, at FROM download") {
-                Download(song: $0.int(0), path: $0.text(1), size: $0.int(2), at: $0.int(3))
-            }) ?? []
-        return Dictionary(rows.map { ($0.song, $0) }, uniquingKeysWith: { a, _ in a })
+        let downloads = rows("SELECT song, path, size, at FROM download") {
+            Download(song: $0.int(0), path: $0.text(1), size: $0.int(2), at: $0.int(3))
+        }
+        return Dictionary(downloads.map { ($0.song, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
     public func putDownload(_ d: Download) {
-        try? sql.run(
-            "INSERT OR REPLACE INTO download VALUES (?,?,?,?)",
-            ([d.song, d.path, d.size, d.at] as [any SQLBindable]).sql)
+        put("INSERT OR REPLACE INTO download VALUES (?,?,?,?)", [d.song, d.path, d.size, d.at])
     }
 
     public func deleteDownload(_ song: Int) {
@@ -323,38 +324,31 @@ public final class DB: @unchecked Sendable {
     // MARK: Lyrics and thumbnails
 
     public func lyrics(_ song: Int) -> String? {
-        try? sql.query("SELECT text FROM lyrics WHERE song = ?", [.int(song)]) { $0.text(0) }.first
+        rows("SELECT text FROM lyrics WHERE song = ?", [.int(song)]) { $0.text(0) }.first
     }
 
-    public func lyricsSongs() -> Set<Int> {
-        Set((try? sql.query("SELECT song FROM lyrics") { $0.int(0) }) ?? [])
-    }
+    public func lyricsSongs() -> Set<Int> { Set(rows("SELECT song FROM lyrics") { $0.int(0) }) }
 
     /// Every song's kept lyrics, for searching them offline.
     public func allLyrics() -> [(song: Int, text: String)] {
-        (try? sql.query("SELECT song, text FROM lyrics") { ($0.int(0), $0.text(1)) }) ?? []
+        rows("SELECT song, text FROM lyrics") { ($0.int(0), $0.text(1)) }
     }
 
     public func putLyrics(_ song: Int, _ text: String) {
-        try? sql.run(
-            "INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", [.int(song), .text(text), .int(nowMs())])
+        put("INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", [song, text, nowMs()])
     }
 
     public func deleteLyrics(_ song: Int) { try? sql.run("DELETE FROM lyrics WHERE song = ?", [.int(song)]) }
 
     public func thumb(_ key: String) -> Data? {
-        try? sql.query("SELECT data FROM thumb WHERE key = ?", [.text(key)]) { $0.blob(0) }.first
+        rows("SELECT data FROM thumb WHERE key = ?", [.text(key)]) { $0.blob(0) }.first
     }
 
     public func artKeys() -> [String] {
-        (try? sql.query("SELECT DISTINCT art FROM song WHERE missing = 0 AND hasArt = 1 AND art != ''") {
-            $0.text(0)
-        }) ?? []
+        rows("SELECT DISTINCT art FROM song WHERE missing = 0 AND hasArt = 1 AND art != ''") { $0.text(0) }
     }
 
-    public func thumbKeys() -> Set<String> {
-        Set((try? sql.query("SELECT key FROM thumb") { $0.text(0) }) ?? [])
-    }
+    public func thumbKeys() -> Set<String> { Set(rows("SELECT key FROM thumb") { $0.text(0) }) }
 
     public func putThumbs(_ thumbs: [(String, Data)]) {
         try? sql.runMany(

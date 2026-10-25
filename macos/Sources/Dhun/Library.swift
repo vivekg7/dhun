@@ -87,34 +87,23 @@ struct AlbumsGrid: View {
                                 KeptMark(on: app.downloads.pinned(Downloads.album, a.id))
                             }
                             Text(a.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            Text(
-                                [a.year > 0 ? String(a.year) : "", summary(a.songs)].filter { !$0.isEmpty }
-                                    .joined(separator: " · ")
-                            )
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(dotted([a.year > 0 ? String(a.year) : "", summary(a.songs)]))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .frame(width: 150)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
-                        Button("Play") {
-                            app.playback.play(name: a.name, source: "album:\(a.id)", songs: a.songs, start: 0)
-                        }
-                        SongMenu(songs: a.songs)
-                        PinButton(kind: Downloads.album, ref: a.id, name: a.name)
+                        CollectionMenu(
+                            name: a.name, source: "album:\(a.id)", songs: a.songs,
+                            pin: (Downloads.album, a.id))
                     }
                 }
             }
             .padding(20)
         }
-        .overlay {
-            if albums.isEmpty {
-                Empty()
-            } else if shown.isEmpty {
-                ContentUnavailableView.search(text: filter)
-            }
-        }
+        .emptyOverlay(albums, shown, filter)
         .navigationTitle("Albums")
         .toolbar { FilterField(text: $filter, prompt: "Filter albums") }
     }
@@ -129,6 +118,34 @@ struct Empty: View {
         } else {
             ContentUnavailableView("Nothing here", systemImage: "music.note")
         }
+    }
+}
+
+extension View {
+    /// Over a list a filter narrows: `Empty` while the list is, else nothing found when nothing is `shown`.
+    func emptyOverlay(_ all: some Collection, _ shown: some Collection, _ filter: String) -> some View {
+        overlay {
+            if all.isEmpty {
+                Empty()
+            } else if shown.isEmpty {
+                ContentUnavailableView.search(text: filter)
+            }
+        }
+    }
+}
+
+/// The menu of an album, artist, genre or folder in a list: play it, the song menu for all of it, download it.
+struct CollectionMenu: View {
+    @Environment(AppModel.self) private var app
+    let name: String
+    let source: String
+    let songs: [Song]
+    let pin: (kind: String, ref: String)
+
+    var body: some View {
+        Button("Play") { app.playback.play(name: name, source: source, songs: songs, start: 0) }
+        SongMenu(songs: songs)
+        PinButton(kind: pin.kind, ref: pin.ref, name: name)
     }
 }
 
@@ -153,27 +170,6 @@ extension View {
     /// The filter of a page opened from a list (an album, a folder, a playlist), once it is long (plan 011).
     func filterBox(_ text: Binding<String>, rows: Int, prompt: String = "Filter songs") -> some View {
         toolbar { if rows > filterOver { FilterField(text: text, prompt: prompt) } }
-    }
-}
-
-struct AlbumPage: View {
-    let album: Album
-    @State private var query = ""
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ListHeader(
-                title: album.name,
-                subtitle: [album.artist, album.year > 0 ? String(album.year) : ""].filter { !$0.isEmpty }
-                    .joined(separator: " · ") + " · " + summary(album.songs),
-                songs: album.songs, source: "album:\(album.id)", song: album.songs.first,
-                pin: (Downloads.album, album.id))
-            SongTable(
-                songs: album.songs, name: album.name, source: "album:\(album.id)", showTrack: true,
-                showAlbum: false, query: query)
-        }
-        .navigationTitle(album.name)
-        .filterBox($query, rows: album.songs.count)
     }
 }
 
@@ -228,8 +224,8 @@ func summary(_ songs: Int, _ durationMs: Int) -> String {
     "\(count(songs)) · \(clock(Double(durationMs) / 1000))"
 }
 
-/// "1 song", "12 songs"
-func count(_ n: Int) -> String { n == 1 ? "1 song" : "\(n) songs" }
+/// "1 song", "12 songs", "29 books"
+func count(_ n: Int, _ what: String = "song") -> String { "\(n) \(what)" + (n == 1 ? "" : "s") }
 
 /// The podcasts' and audiobooks' roots take their sidebar icons.
 private func folderIcon(_ path: String) -> String {
@@ -260,6 +256,7 @@ struct GroupsList: View {
             filter.isEmpty
             ? all
             : (kind == .artist ? app.catalog.artistIndex : app.catalog.genreIndex).filter(SearchQuery(filter))
+        let pinKind = kind == .artist ? Downloads.artist : Downloads.genre
         List(shown) { g in
             NavigationLink(value: kind == .artist ? Route.artist(g.name) : Route.genre(g.name)) {
                 HStack(spacing: 10) {
@@ -267,32 +264,19 @@ struct GroupsList: View {
                     VStack(alignment: .leading) {
                         HStack(spacing: 4) {
                             Text(g.name)
-                            KeptMark(
-                                on: app.downloads.pinned(
-                                    kind == .artist ? Downloads.artist : Downloads.genre, g.name))
+                            KeptMark(on: app.downloads.pinned(pinKind, g.name))
                         }
                         Text(summary(g.songs)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             .contextMenu {
-                Button("Play") {
-                    app.playback.play(
-                        name: g.name, source: "\(kind == .artist ? "artist" : "genre"):\(g.name)",
-                        songs: g.songs, start: 0)
-                }
-                SongMenu(songs: g.songs)
-                PinButton(
-                    kind: kind == .artist ? Downloads.artist : Downloads.genre, ref: g.name, name: g.name)
+                CollectionMenu(
+                    name: g.name, source: "\(kind == .artist ? "artist" : "genre"):\(g.name)", songs: g.songs,
+                    pin: (pinKind, g.name))
             }
         }
-        .overlay {
-            if all.isEmpty {
-                Empty()
-            } else if shown.isEmpty {
-                ContentUnavailableView.search(text: filter)
-            }
-        }
+        .emptyOverlay(all, shown, filter)
         .navigationTitle(kind == .artist ? "Artists" : "Genres")
         .toolbar { FilterField(text: $filter, prompt: kind == .artist ? "Filter artists" : "Filter genres") }
     }
@@ -335,12 +319,9 @@ struct FolderView: View {
                             }
                         }
                         .contextMenu {
-                            Button("Play") {
-                                app.playback.play(
-                                    name: c.name, source: "folder:\(c.path)", songs: c.allSongs(), start: 0)
-                            }
-                            SongMenu(songs: c.allSongs())
-                            PinButton(kind: Downloads.folder, ref: c.path, name: c.name)
+                            CollectionMenu(
+                                name: c.name, source: "folder:\(c.path)", songs: c.allSongs(),
+                                pin: (Downloads.folder, c.path))
                         }
                     }
                     .frame(minHeight: 120, idealHeight: f.songs.isEmpty ? .infinity : 220)

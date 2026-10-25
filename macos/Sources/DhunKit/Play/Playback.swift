@@ -112,7 +112,7 @@ public final class Playback {
         return decodedDuration
     }
 
-    var hasNext: Bool { nextIndex(after: currentIndex, repeat: repeatMode == "queue") != nil }
+    var hasNext: Bool { nextIndex(after: currentIndex) != nil }
     private var currentIndex: Int? { current.flatMap { items.firstIndex(of: $0.id) } }
 
     /// "Continue from MacBook": another device's playback, offered while this
@@ -131,9 +131,7 @@ public final class Playback {
         guard let i = currentIndex else { return [] }
         var out = [i]
         var at = i
-        while out.count <= ahead, let n = nextIndex(after: at, repeat: repeatMode == "queue"),
-            !out.contains(n)
-        {
+        while out.count <= ahead, let n = nextIndex(after: at), !out.contains(n) {
             out.append(n)
             at = n
         }
@@ -171,7 +169,7 @@ public final class Playback {
         if !onScreen, let s = current, isLong(s), app.setting(Synced.next) == "seek" {
             return seekForward()
         }
-        guard let i = currentIndex, let n = nextIndex(after: i, repeat: repeatMode == "queue") else { return }
+        guard let i = currentIndex, let n = nextIndex(after: i) else { return }
         jump(to: n, end: "skipped")
     }
 
@@ -261,7 +259,6 @@ public final class Playback {
         }
     }
 
-    /// Plays the song at `index` of the active queue's own order.
     /// Plays `index` of the active queue. A long file already there goes on
     /// from its place: starting it again would lose the place to a click.
     public func playAt(_ index: Int) {
@@ -280,8 +277,7 @@ public final class Playback {
         guard !songs.isEmpty else { return }
         saveActive()
         let first = songs[min(max(start, 0), songs.count - 1)]
-        var seen = Set<Int>()
-        let ids = songs.map(\.id).filter { seen.insert($0).inserted }
+        let ids = distinct(songs.map(\.id))
         let now = nowMs()
         let q: QueueRow
         if var same = app.queues.first(where: { $0.name.lowercased() == name.lowercased() }) {
@@ -641,17 +637,15 @@ public final class Playback {
         let index = songs.firstIndex { $0.id == q.currentSong } ?? 0
         let song = songs[index]
         heardAt = 0
-        var start = position
-        if start != nil { offerResume = nil }
-        if start == nil { start = startPosition(song) }
-        if start == nil { start = song.id == q.currentSong ? q.positionMs : 0 }
+        if position != nil { offerResume = nil }
+        var start = position ?? startPosition(song) ?? (song.id == q.currentSong ? q.positionMs : 0)
         // Saved at the very end (a sleep timer stopped it there): start the song over,
         // as Media3 does on Play, rather than finishing it again at once.
-        if song.durationMs > 0, start! >= song.durationMs - 1000 { start = 0 }
+        if song.durationMs > 0, start >= song.durationMs - 1000 { start = 0 }
         items = songs.map(\.id)
         rebuildOrder(keepingShuffle: false, shuffle: q.shuffle)
         app.store.putQueue(q)
-        self.start(song, at: Double(start!) / 1000, paused: !play)
+        self.start(song, at: Double(start) / 1000, paused: !play)
         if !play { stoppedAt = stoppedSince() }
     }
 
@@ -782,9 +776,9 @@ public final class Playback {
     }
 
     /// The index in `items` of the song after `items[i]` in play order.
-    private func nextIndex(after i: Int?, repeat wrap: Bool) -> Int? {
+    private func nextIndex(after i: Int?) -> Int? {
         guard let i, items.indices.contains(i), let at = order.firstIndex(of: items[i]) else { return nil }
-        let id = at + 1 < order.count ? order[at + 1] : wrap ? order.first : nil
+        let id = at + 1 < order.count ? order[at + 1] : repeatMode == "queue" ? order.first : nil
         return id.flatMap { items.firstIndex(of: $0) }
     }
 
@@ -824,11 +818,7 @@ public final class Playback {
         if ticks % 40 == 0 { saveListen() }
         if ticks % 120 == 0, let q = active, let s = current {
             let pos = Int(position * 1000)
-            var row = q
-            row.currentSong = s.id
-            row.positionMs = pos
-            app.store.setCurrent(row)
-            saveResume(s, pos)
+            savePlace(q, s, pos)
             report(q, s, pos, true)
         }
     }
@@ -864,17 +854,15 @@ public final class Playback {
         if let s, isLong(s) { app.store.resume(s.id, nil) }
         let bySleep = upcomingState.pauseAfterSong != nil && sleep.mode != nil
         setPlaying(false)
-        if bySleep, let s, let i = items.firstIndex(of: s.id),
-            let n = nextIndex(after: i, repeat: repeatMode == "queue"),
+        sleep.onPausedAtEnd()
+        if bySleep, let s, let i = items.firstIndex(of: s.id), let n = nextIndex(after: i),
             let next = app.catalog.byId[items[n]]
         {
             // Paused where the song ended; Play goes on with the next one.
-            sleep.onPausedAtEnd()
             start(next, at: 0, paused: true)
             afterSongChange(next, startMs: 0)
             return
         }
-        sleep.onPausedAtEnd()
         ended = true
     }
 
@@ -883,7 +871,7 @@ public final class Playback {
     private func songFailed(_ song: Int, _ error: Error) {
         failures += 1
         guard song == current?.id, failures < max(1, items.count), let i = currentIndex,
-            let n = nextIndex(after: i, repeat: repeatMode == "queue")
+            let n = nextIndex(after: i)
         else { return }
         jump(to: n, end: "skipped")
     }
@@ -1112,7 +1100,8 @@ public final class Playback {
     }
 }
 
-private func distinct(_ ids: [Int]) -> [Int] {
+/// `ids` without repeats, each where it first comes.
+func distinct(_ ids: [Int]) -> [Int] {
     var seen = Set<Int>()
     return ids.filter { seen.insert($0).inserted }
 }

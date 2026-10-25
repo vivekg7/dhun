@@ -51,11 +51,6 @@ public enum JSON: Codable, Equatable, Sendable {
         (try? JSONDecoder().decode(JSON.self, from: Data(text.utf8))) ?? .null
     }
 
-    public subscript(key: String) -> JSON? {
-        if case .object(let o) = self { return o[key] }
-        return nil
-    }
-
     public var int: Int? { if case .number(let n) = self { return Int(n) } else { return nil } }
     public var double: Double? { if case .number(let n) = self { return n } else { return nil } }
     public var bool: Bool? { if case .bool(let b) = self { return b } else { return nil } }
@@ -63,14 +58,7 @@ public enum JSON: Codable, Equatable, Sendable {
     public var array: [JSON]? { if case .array(let a) = self { return a } else { return nil } }
 }
 
-extension JSON: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, ExpressibleByBooleanLiteral,
-    ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral, ExpressibleByFloatLiteral
-{
-    public init(stringLiteral v: String) { self = .string(v) }
-    public init(integerLiteral v: Int) { self = .number(Double(v)) }
-    public init(floatLiteral v: Double) { self = .number(v) }
-    public init(booleanLiteral v: Bool) { self = .bool(v) }
-    public init(arrayLiteral v: JSON...) { self = .array(v) }
+extension JSON: ExpressibleByDictionaryLiteral {
     public init(dictionaryLiteral v: (String, JSON)...) {
         self = .object(Dictionary(uniqueKeysWithValues: v))
     }
@@ -78,8 +66,6 @@ extension JSON: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, Express
 
 extension JSON {
     public init(_ v: Int) { self = .number(Double(v)) }
-    public init(_ v: String) { self = .string(v) }
-    public init(_ v: Bool) { self = .bool(v) }
     public init(_ ids: [Int]) { self = .array(ids.map { JSON($0) }) }
 }
 

@@ -86,41 +86,25 @@ public final class SparseFile: Bytes, @unchecked Sendable {
         if retired >= 0 { close(retired) }
     }
 
-    public var complete: Bool {
-        cond.lock()
-        defer { cond.unlock() }
-        return have.count == 1 && have[0] == 0..<size
-    }
+    public var complete: Bool { cond.withLock { have.count == 1 && have[0] == 0..<size } }
 
-    public func arrived(from offset: Int64) -> Int64 {
-        cond.lock()
-        defer { cond.unlock() }
-        return end(from: offset)
-    }
+    public func arrived(from offset: Int64) -> Int64 { cond.withLock { end(from: offset) } }
 
     /// Where the first bytes held start, or nil while none has arrived.
-    public var firstStart: Int64? {
-        cond.lock()
-        defer { cond.unlock() }
-        return have.first?.lowerBound
-    }
+    public var firstStart: Int64? { cond.withLock { have.first?.lowerBound } }
 
     /// Where the next run after `offset` starts, or nil: a fetch from `offset` stops there.
     public func nextStart(after offset: Int64) -> Int64? {
-        cond.lock()
-        defer { cond.unlock() }
-        return have.first { $0.lowerBound > offset }?.lowerBound
+        cond.withLock { have.first { $0.lowerBound > offset }?.lowerBound }
     }
 
     public func write(_ offset: Int64, _ data: Data) {
-        cond.lock()
-        let fd = fd
-        cond.unlock()
+        let fd = cond.withLock { self.fd }
         data.withUnsafeBytes { _ = pwrite(fd, $0.baseAddress, data.count, off_t(offset)) }
-        cond.lock()
-        add(offset..<offset + Int64(data.count))
-        cond.broadcast()
-        cond.unlock()
+        cond.withLock {
+            add(offset..<offset + Int64(data.count))
+            cond.broadcast()
+        }
     }
 
     /// Copies the bytes from `keepFrom` on into a fresh file that takes this
@@ -162,25 +146,21 @@ public final class SparseFile: Bytes, @unchecked Sendable {
     }
 
     public func interrupt() {
-        cond.lock()
-        interrupts += 1
-        cond.broadcast()
-        cond.unlock()
+        cond.withLock {
+            interrupts += 1
+            cond.broadcast()
+        }
     }
 
     /// The fetch failed and is waiting to try again: the player says it is waiting.
     public private(set) var failing = false
-    public func setFailing(_ f: Bool) {
-        cond.lock()
-        failing = f
-        cond.unlock()
-    }
+    public func setFailing(_ f: Bool) { cond.withLock { failing = f } }
 
     public func fail(_ error: Error) {
-        cond.lock()
-        failure = error
-        cond.broadcast()
-        cond.unlock()
+        cond.withLock {
+            failure = error
+            cond.broadcast()
+        }
     }
 
     public func read(_ offset: Int64, _ count: Int, into: UnsafeMutableRawPointer) throws -> Int {

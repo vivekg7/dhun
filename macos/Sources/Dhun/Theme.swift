@@ -57,6 +57,14 @@ struct Themed: ViewModifier {
 
 extension View {
     func themed(_ app: AppModel) -> some View { modifier(Themed(app: app)) }
+
+    /// An icon button's tooltip, and its name for VoiceOver.
+    func tip(_ text: String) -> some View { help(text).accessibilityLabel(text) }
+}
+
+extension ShapeStyle where Self == AnyShapeStyle {
+    /// The app's colour while `on`, as a mark or the current row is; else the text's own.
+    static func tint(if on: Bool) -> AnyShapeStyle { on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary) }
 }
 
 /// "3:07", "1:02:45"
@@ -67,3 +75,9 @@ func clock(_ seconds: Double) -> String {
     let s = t % 60
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
 }
+
+/// A song's length in its row; blank when the tags have none.
+func duration(_ s: Song) -> String { s.durationMs > 0 ? clock(Double(s.durationMs) / 1000) : "" }
+
+/// "Artist · 2013": the parts that are there, with a dot between.
+func dotted(_ parts: [String]) -> String { parts.filter { !$0.isEmpty }.joined(separator: " · ") }

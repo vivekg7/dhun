@@ -9,20 +9,10 @@ import Testing
 /// (plan 024), any of which shifts or gaps the join when wrong.
 @Test func webmHalvesJoinIntoTheOriginalTone() throws {
     let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
-    var out: [Float] = []
-    var right: [Float] = []
-    for n in 1...2 {
-        let url = Bundle.module.url(
-            forResource: "sweep-\(n)", withExtension: "webm", subdirectory: "Fixtures")!
-        let d = try openDecoder(try FileBytes(url), format: format)
-        let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)!
-        while true {
-            try d.read(into: buf)
-            if buf.frameLength == 0 { break }
-            out += UnsafeBufferPointer(start: buf.floatChannelData![0], count: Int(buf.frameLength))
-            right += UnsafeBufferPointer(start: buf.floatChannelData![1], count: Int(buf.frameLength))
-        }
+    let halves = (1...2).map {
+        Bundle.module.url(forResource: "sweep-\($0)", withExtension: "webm", subdirectory: "Fixtures")!
     }
+    let (out, right) = try decode(halves, format)
     #expect(out.count == 48000)
     #expect(right == out, "a mono song must play in both ears")
 

@@ -20,12 +20,9 @@ import SwiftUI
     }
 }
 
-/// "29 books", "1 show"
-func count(_ n: Int, _ what: String) -> String { "\(n) \(what)" + (n == 1 ? "" : "s") }
-
 /// A book's or a show's line under its title, in lists.
 @MainActor private func detail(_ s: Shelf, _ heard: Heard) -> String {
-    if s.isBook { return [s.author, heard.progress(s)].filter { !$0.isEmpty }.joined(separator: " · ") }
+    if s.isBook { return dotted([s.author, heard.progress(s)]) }
     let new = s.items.count { !heard.played.contains($0.id) }
     return count(s.items.count, "episode") + (new > 0 ? " · \(new) not played" : "")
 }
@@ -100,19 +97,7 @@ struct ShelfPage: View {
         VStack(spacing: 0) {
             header(heard, hidePlayed)
             Table(of: Song.self, selection: $selection) {
-                TableColumn("Title") { s in
-                    HStack(spacing: 8) {
-                        Thumb(app: app, song: s, size: 22)
-                        Text(s.title).lineLimit(1)
-                        KeptMark(on: app.downloaded[s.id] != nil)
-                        if app.playback.current?.id == s.id {
-                            Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
-                                .foregroundStyle(.tint).font(.caption)
-                        }
-                    }
-                    .opacity(playable(app, s) ? 1 : 0.4)
-                }
-                .width(min: 160, ideal: 360)
+                TableColumn("Title") { s in TitleCell(app: app, song: s) }.width(min: 160, ideal: 360)
                 if !shelf.isBook {
                     TableColumn("Date") { s in Text(s.day).monospacedDigit().foregroundStyle(.secondary) }
                         .width(84)
@@ -125,11 +110,8 @@ struct ShelfPage: View {
                 }
                 TableColumn("Heard") { s in Text(heard.state(s)).foregroundStyle(.secondary).lineLimit(1) }
                     .width(min: 70, ideal: 100)
-                TableColumn("Time") { s in
-                    Text(s.durationMs > 0 ? clock(Double(s.durationMs) / 1000) : "").monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-                .width(64)
+                TableColumn("Time") { s in Text(duration(s)).monospacedDigit().foregroundStyle(.secondary) }
+                    .width(64)
             } rows: {
                 ForEach(rows) { s in
                     TableRow(s).itemProvider { NSItemProvider(object: String(s.id) as NSString) }
@@ -172,7 +154,7 @@ struct ShelfPage: View {
             Cover(song: shelf.cover ?? shelf.items[0], size: 96)
             VStack(alignment: .leading, spacing: 4) {
                 Text(shelf.title).font(.title2.weight(.semibold)).lineLimit(2)
-                Text(facts.filter { !$0.isEmpty }.joined(separator: " · ")).foregroundStyle(.secondary)
+                Text(dotted(facts)).foregroundStyle(.secondary)
                 HStack(spacing: 8) {
                     Button(heard.begun(shelf) ? "Continue" : "Play", systemImage: "play.fill") {
                         playShelf(app, shelf)
@@ -233,14 +215,13 @@ struct ChaptersPanel: View {
         return VStack(alignment: .leading, spacing: 4) {
             Text(song.title).font(.headline).lineLimit(2).padding(.bottom, 6)
             if !marks.isEmpty {
-                Text("Bookmarks").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                heading("Bookmarks")
                 ForEach(marks) { b in
                     if editing == b.id { noteEditor(b) } else { row(b) }
                 }
             }
             if !song.chapters.isEmpty {
-                Text("Chapters").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    .padding(.top, marks.isEmpty ? 0 : 8)
+                heading("Chapters").padding(.top, marks.isEmpty ? 0 : 8)
                 ForEach(Array(song.chapters.enumerated()), id: \.offset) { i, ch in
                     Button {
                         p.seek(to: Double(ch.startMs) / 1000)
@@ -251,10 +232,7 @@ struct ChaptersPanel: View {
                                 .secondary
                             )
                             .frame(width: 64, alignment: .leading)
-                            Text(ch.name.isEmpty ? "Chapter \(i + 1)" : ch.name)
-                                .foregroundStyle(
-                                    i == now ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
-                                )
+                            Text(chapterTitle(i)).foregroundStyle(.tint(if: i == now))
                                 .fontWeight(i == now ? .semibold : .regular)
                             Spacer(minLength: 0)
                         }
@@ -265,8 +243,7 @@ struct ChaptersPanel: View {
                 }
             }
             if !song.notes.isEmpty {
-                Text("Notes").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(
-                    .top, 8)
+                heading("Notes").padding(.top, 8)
                 Text(song.notes).textSelection(.enabled)
             }
         }
@@ -274,13 +251,19 @@ struct ChaptersPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func heading(_ title: String) -> some View {
+        Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+    }
+
+    /// Chapter `i`'s name, or "Chapter 3": the same in a bookmark's line and in the list.
+    private func chapterTitle(_ i: Int) -> String {
+        song.chapters[i].name.isEmpty ? "Chapter \(i + 1)" : song.chapters[i].name
+    }
+
     /// Its time, its note or else the chapter it falls in, and a menu to
     /// write the note or delete it.
     private func row(_ b: Bookmark) -> some View {
-        // Named as the list below names it, so an untitled one is "Chapter 3" in both.
-        let i = song.chapters.lastIndex { $0.startMs <= b.positionMs }
-        let chapter =
-            i.map { song.chapters[$0].name.isEmpty ? "Chapter \($0 + 1)" : song.chapters[$0].name } ?? ""
+        let chapter = song.chapters.lastIndex { $0.startMs <= b.positionMs }.map(chapterTitle) ?? ""
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Button {
                 app.playback.seek(to: Double(b.positionMs) / 1000)
@@ -378,11 +361,8 @@ struct SpokenDownloads: View {
             }
             .width(min: 160, ideal: 300)
             TableColumn("Book or show") { s in Text(s.groupTitle).foregroundStyle(.secondary).lineLimit(1) }
-            TableColumn("Time") { s in
-                Text(s.durationMs > 0 ? clock(Double(s.durationMs) / 1000) : "").monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .width(64)
+            TableColumn("Time") { s in Text(duration(s)).monospacedDigit().foregroundStyle(.secondary) }
+                .width(64)
         }
         .contextMenu(forSelectionType: Int.self) { ids in
             SongMenu(songs: songs.filter { ids.contains($0.id) }).environment(app).environment(nav)

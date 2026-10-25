@@ -259,6 +259,14 @@ public struct Group: Identifiable, Hashable, Sendable {
     public var id: String { name.lowercased() }
 }
 
+extension [Group] {
+    /// The artist or genre a link or a download names: case does not count.
+    public func named(_ name: String) -> Group? {
+        let id = name.lowercased()
+        return first { $0.id == id }
+    }
+}
+
 /// An audiobook or a podcast show (plan 031): a book's files in reading
 /// order, a show's episodes oldest first.
 public struct Shelf: Identifiable, Hashable, Sendable {

@@ -36,21 +36,12 @@ struct SongTable: View {
                 .width(28)
             }
             TableColumn("Title", value: \.title) { s in
-                HStack(spacing: 8) {
-                    Thumb(app: app, song: s, size: 22)
-                    Text(s.title).lineLimit(1)
-                    KeptMark(on: app.downloaded[s.id] != nil)
-                    if app.playback.current?.id == s.id {
-                        Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
-                            .foregroundStyle(.tint).font(.caption)
+                TitleCell(app: app, song: s)
+                    // The rows are one line, so the bar runs along the cell's foot, past the cover.
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .bottom) {
+                        ResumeBar(positionMs: resumeAt[s.id], song: s).padding(.leading, 30).offset(y: 3)
                     }
-                }
-                .opacity(playable(app, s) ? 1 : 0.4)
-                // The rows are one line, so the bar runs along the cell's foot, past the cover.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(alignment: .bottom) {
-                    ResumeBar(positionMs: resumeAt[s.id], song: s).padding(.leading, 30).offset(y: 3)
-                }
             }
             .width(min: 160, ideal: 300)
             TableColumn("Artist", value: \.displayArtist) { s in Text(s.displayArtist).lineLimit(1) }
@@ -60,8 +51,7 @@ struct SongTable: View {
                     min: 90, ideal: 170)
             }
             TableColumn("Time", value: \.durationMs) { s in
-                Text(s.durationMs > 0 ? clock(Double(s.durationMs) / 1000) : "").monospacedDigit()
-                    .foregroundStyle(.secondary)
+                Text(duration(s)).monospacedDigit().foregroundStyle(.secondary)
             }
             .width(52)
         } rows: {
@@ -91,17 +81,31 @@ struct SongTable: View {
             }
             app.playback.play(name: name, source: source, songs: all, start: i)
         }
-        .overlay {
-            if songs.isEmpty {
-                Empty()
-            } else if rows.isEmpty {
-                ContentUnavailableView.search(text: query)
-            }
-        }
+        .emptyOverlay(songs, rows, query)
         // A table of its own per list: reusing one for another list's rows is
         // where the environment went missing, and selection and sort are the
         // list's own.
         .id(source + "\u{0}" + name)
+    }
+}
+
+/// A song table's title cell: its cover, the title, the downloaded mark and,
+/// on the song playing, a speaker. Dimmed when it cannot play now.
+struct TitleCell: View {
+    let app: AppModel
+    let song: Song
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Thumb(app: app, song: song, size: 22)
+            Text(song.title).lineLimit(1)
+            KeptMark(on: app.downloaded[song.id] != nil)
+            if app.playback.current?.id == song.id {
+                Image(systemName: app.playback.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
+                    .foregroundStyle(.tint).font(.caption)
+            }
+        }
+        .opacity(playable(app, song) ? 1 : 0.4)
     }
 }
 
@@ -141,14 +145,13 @@ struct SongRow: View {
             Thumb(app: app, song: song, size: size)
             VStack(alignment: .leading, spacing: 1) {
                 Text(song.title).lineLimit(1).fontWeight(current ? .semibold : .regular)
-                    .foregroundStyle(current ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                    .foregroundStyle(.tint(if: current))
                 Text(detail ?? song.displayArtist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 if let resumeAt { ResumeBar(positionMs: resumeAt, song: song) }
             }
             Spacer()
             KeptMark(on: app.downloaded[song.id] != nil)
-            Text(song.durationMs > 0 ? clock(Double(song.durationMs) / 1000) : "").font(.caption)
-                .monospacedDigit().foregroundStyle(.secondary)
+            Text(duration(song)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
         }
         .opacity(playable(app, song) ? 1 : 0.4)
     }
@@ -374,20 +377,24 @@ struct PinButton: View {
     }
 }
 
-/// A plain page of songs with a header.
+/// A plain page of songs with a header: an album, a genre.
 struct SongsPage: View {
     let title: String
     var subtitle = ""
     let songs: [Song]
     let source: String
     var pin: (String, String)?
+    var showTrack = false
+    var showAlbum = true
     @State private var query = ""
 
     var body: some View {
         VStack(spacing: 0) {
             ListHeader(
                 title: title, subtitle: subtitle, songs: songs, source: source, song: songs.first, pin: pin)
-            SongTable(songs: songs, name: title, source: source, query: query)
+            SongTable(
+                songs: songs, name: title, source: source, showTrack: showTrack, showAlbum: showAlbum,
+                query: query)
         }
         .navigationTitle(title)
         .filterBox($query, rows: songs.count)
@@ -408,18 +415,14 @@ enum Prompt {
         alert.window.initialFirstResponder = field
         while alert.runModal() == .alertFirstButtonReturn {
             let n = field.stringValue.trimmingCharacters(in: .whitespaces)
-            if isReserved(n) {
+            // The two lists' names cannot name a queue or playlist, as on the phone.
+            if ["favorites", "listen later"].contains(n.lowercased()) {
                 alert.informativeText = "“\(n)” is the name of one of your lists."
                 continue
             }
             if !n.isEmpty { done(n) }
             return
         }
-    }
-
-    /// The two lists' names cannot name a queue or playlist, as on the phone.
-    static func isReserved(_ name: String) -> Bool {
-        ["favorites", "listen later"].contains(name.lowercased())
     }
 
     static func confirm(_ title: String, _ detail: String = "", action: String) -> Bool {

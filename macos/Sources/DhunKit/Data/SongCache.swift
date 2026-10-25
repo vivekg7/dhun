@@ -65,7 +65,7 @@ public final class SongCache {
     /// A cached song's whole file, marked as just played; nil if it is not all here.
     func complete(_ song: Int) -> URL? {
         guard let s = app.catalog.byId[song] else { return nil }
-        let f = dir.appendingPathComponent(name(s))
+        let f = dir.appendingPathComponent(s.fileName)
         guard FileManager.default.fileExists(atPath: f.path) else { return nil }
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: f.path)
         return f
@@ -133,7 +133,7 @@ public final class SongCache {
     private func start(_ s: Song) -> Fetch? {
         guard s.size > 0 else { return nil }
         let (ahead, behind) = window(for: s)
-        let part = dir.appendingPathComponent(name(s) + (ahead > 0 ? ".window" : ".part"))
+        let part = dir.appendingPathComponent(s.fileName + (ahead > 0 ? ".window" : ".part"))
         try? FileManager.default.removeItem(at: part)
         guard let file = try? SparseFile(part, size: Int64(s.size)) else { return nil }
         let e = Fetch(
@@ -161,11 +161,10 @@ public final class SongCache {
         guard entries[s.id] === e else { return }
         entries[s.id] = nil
         // The reader keeps its descriptor across the rename.
-        try? FileManager.default.moveItem(at: e.file.url, to: dir.appendingPathComponent(name(s)))
+        let whole = dir.appendingPathComponent(s.fileName)
+        try? FileManager.default.moveItem(at: e.file.url, to: whole)
         // With the cache off, a song is fetched only to play it.
-        if app.prefs.cacheLimitGb == 0 {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name(s)))
-        }
+        if app.prefs.cacheLimitGb == 0 { try? FileManager.default.removeItem(at: whole) }
         measure()
         poke()
     }
@@ -190,7 +189,7 @@ public final class SongCache {
         else { return }
         var rest: [(URL, Date, Int)] = []
         for f in files where Self.isWhole(f.lastPathComponent) {
-            guard let id = Int(f.lastPathComponent.prefix { $0 != "." }) else { continue }
+            guard let id = songOf(file: f.lastPathComponent) else { continue }
             let windowed = app.catalog.byId[id].map { window(for: $0).ahead > 0 } ?? false
             if app.downloads.file(id) != nil || (windowed && !keep.contains(id)) {
                 try? fm.removeItem(at: f)
@@ -218,14 +217,10 @@ public final class SongCache {
         }
         songs = Set(
             files.filter { Self.isWhole($0.lastPathComponent) }.compactMap {
-                Int($0.lastPathComponent.prefix { $0 != "." })
+                songOf(file: $0.lastPathComponent)
             })
     }
 
     /// A file by its final name, not a part, a window or a roll in progress.
     private static func isWhole(_ name: String) -> Bool { !partial.contains { name.hasSuffix($0) } }
-
-    private func name(_ s: Song) -> String {
-        "\(s.id).\(s.fileExtension.isEmpty ? s.format : s.fileExtension)"
-    }
 }

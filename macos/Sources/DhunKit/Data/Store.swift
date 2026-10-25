@@ -80,27 +80,20 @@ public struct Store {
     }
 
     public func createQueue(_ q: QueueRow) {
-        db.putQueue(q)
-        record(
-            "queue.create", queue: q.id,
+        put(
+            q, "queue.create",
             [
-                "queue": .string(q.id), "name": .string(q.name), "songs": JSON(q.songs),
-                "song": JSON(q.currentSong),
+                "name": .string(q.name), "songs": JSON(q.songs), "song": JSON(q.currentSong),
                 "positionMs": JSON(q.positionMs),
             ])
-        app.reloadQueues()
     }
 
     public func replaceQueue(_ q: QueueRow) {
-        db.putQueue(q)
-        record("queue.replace", key: "replace:\(q.id)", ["queue": .string(q.id), "songs": JSON(q.songs)])
-        app.reloadQueues()
+        put(q, "queue.replace", key: "replace:\(q.id)", ["songs": JSON(q.songs)])
     }
 
     public func renameQueue(_ q: QueueRow) {
-        db.putQueue(q)
-        record("queue.rename", key: "rename:\(q.id)", ["queue": .string(q.id), "name": .string(q.name)])
-        app.reloadQueues()
+        put(q, "queue.rename", key: "rename:\(q.id)", ["name": .string(q.name)])
     }
 
     public func deleteQueue(_ id: String) {
@@ -111,38 +104,35 @@ public struct Store {
 
     /// The queue's current song and position; only the latest is worth sending.
     public func setCurrent(_ q: QueueRow) {
-        db.putQueue(q)
-        record(
-            "queue.set_current", key: "current:\(q.id)",
-            ["queue": .string(q.id), "song": JSON(q.currentSong), "positionMs": JSON(q.positionMs)])
-        app.reloadQueues()
+        put(
+            q, "queue.set_current", key: "current:\(q.id)",
+            ["song": JSON(q.currentSong), "positionMs": JSON(q.positionMs)])
     }
 
     public func setMode(_ q: QueueRow) {
-        db.putQueue(q)
-        record(
-            "queue.set_mode", key: "mode:\(q.id)",
-            ["queue": .string(q.id), "shuffle": .bool(q.shuffle), "repeat": .string(q.repeatMode)])
-        app.reloadQueues()
+        put(
+            q, "queue.set_mode", key: "mode:\(q.id)",
+            ["shuffle": .bool(q.shuffle), "repeat": .string(q.repeatMode)])
     }
 
     public func insertIntoQueue(_ q: QueueRow, _ songs: [Int], after: Int?) {
-        db.putQueue(q)
-        var f: [String: JSON] = ["queue": .string(q.id), "songs": JSON(songs)]
+        var f: [String: JSON] = ["songs": JSON(songs)]
         if let after { f["after"] = JSON(after) }
-        record("queue.insert", queue: q.id, f)
-        app.reloadQueues()
+        put(q, "queue.insert", f)
     }
 
     public func removeFromQueue(_ q: QueueRow, _ songs: [Int]) {
-        db.putQueue(q)
-        record("queue.remove", queue: q.id, ["queue": .string(q.id), "songs": JSON(songs)])
-        app.reloadQueues()
+        put(q, "queue.remove", ["songs": JSON(songs)])
     }
 
     public func moveInQueue(_ q: QueueRow, song: Int, after: Int) {
+        put(q, "queue.move", ["song": JSON(song), "after": JSON(after)])
+    }
+
+    /// Writes `q` and records an op on it, its `queue` field added.
+    private func put(_ q: QueueRow, _ type: String, key: String? = nil, _ fields: [String: JSON]) {
         db.putQueue(q)
-        record("queue.move", queue: q.id, ["queue": .string(q.id), "song": JSON(song), "after": JSON(after)])
+        record(type, key: key, queue: q.id, fields.merging(["queue": .string(q.id)]) { a, _ in a })
         app.reloadQueues()
     }
 
@@ -151,10 +141,9 @@ public struct Store {
     /// A new playlist of the user's own; a negative id until the server answers with the same ref.
     @discardableResult
     public func createPlaylist(_ name: String, _ songs: [Int]) -> Playlist {
-        var seen = Set<Int>()
         let p = Playlist(
             id: -Int.random(in: 1..<Int.max), name: name, path: "", shared: false,
-            songs: music(songs).filter { seen.insert($0).inserted }, ref: UUID().uuidString.lowercased())
+            songs: distinct(music(songs)), ref: UUID().uuidString.lowercased())
         db.putPlaylist(p)
         record(
             "playlist.create", playlist: p.id,
@@ -167,17 +156,14 @@ public struct Store {
     @discardableResult
     public func addToPlaylist(_ p: Playlist, _ songs: [Int]) -> Int {
         let have = Set(p.songs)
-        var seen = Set<Int>()
-        let distinct = music(songs).filter { seen.insert($0).inserted }
-        let adding = distinct.filter { !have.contains($0) }
+        let unique = distinct(music(songs))
+        let adding = unique.filter { !have.contains($0) }
         if !adding.isEmpty {
             var q = p
             q.songs += adding
-            db.putPlaylist(q)
-            record("playlist.insert", playlist: p.id, ["playlist": .string(p.target), "songs": JSON(adding)])
-            app.reloadPlaylists()
+            put(q, "playlist.insert", ["songs": JSON(adding)])
         }
-        return distinct.count - adding.count
+        return unique.count - adding.count
     }
 
     /// Playlists hold music only: each is an `.m3u8` in Music, which cannot
@@ -191,11 +177,7 @@ public struct Store {
         let occurrence = p.songs[..<index].filter { $0 == song }.count
         var q = p
         q.songs.remove(at: index)
-        db.putPlaylist(q)
-        record(
-            "playlist.remove", playlist: p.id,
-            ["playlist": .string(p.target), "song": JSON(song), "occurrence": JSON(occurrence)])
-        app.reloadPlaylists()
+        put(q, "playlist.remove", ["song": JSON(song), "occurrence": JSON(occurrence)])
     }
 
     /// Moves the entry at `from` to `to`, both indexes into the playlist's own list.
@@ -207,36 +189,31 @@ public struct Store {
         list.insert(list.remove(at: from), at: to)
         var q = p
         q.songs = list
-        db.putPlaylist(q)
-        defer { app.reloadPlaylists() }
         let after = to == 0 ? 0 : list[to - 1]
-        if to > 0 && after == 0 {
-            // An unmatched entry cannot be named as "after" (0 means the start): send the order.
-            record("playlist.replace", playlist: p.id, ["playlist": .string(p.target), "songs": JSON(list)])
-            return
-        }
-        var f: [String: JSON] = [
-            "playlist": .string(p.target), "song": JSON(song), "occurrence": JSON(occurrence),
-            "after": JSON(after),
-        ]
+        // An unmatched entry cannot be named as "after" (0 means the start): send the order.
+        if to > 0 && after == 0 { return put(q, "playlist.replace", ["songs": JSON(list)]) }
+        var f: [String: JSON] = ["song": JSON(song), "occurrence": JSON(occurrence), "after": JSON(after)]
         if to > 0 { f["afterOccurrence"] = JSON(list[..<(to - 1)].filter { $0 == after }.count) }
-        record("playlist.move", playlist: p.id, f)
+        put(q, "playlist.move", f)
     }
 
     /// The whole order at once (a sort or reverse).
     public func replacePlaylist(_ p: Playlist, _ songs: [Int]) {
         var q = p
         q.songs = songs
-        db.putPlaylist(q)
-        record("playlist.replace", playlist: p.id, ["playlist": .string(p.target), "songs": JSON(songs)])
-        app.reloadPlaylists()
+        put(q, "playlist.replace", ["songs": JSON(songs)])
     }
 
     public func renamePlaylist(_ p: Playlist, _ name: String) {
         var q = p
         q.name = name
-        db.putPlaylist(q)
-        record("playlist.rename", playlist: p.id, ["playlist": .string(p.target), "name": .string(name)])
+        put(q, "playlist.rename", ["name": .string(name)])
+    }
+
+    /// Writes `p` and records an op on it, its `playlist` field added.
+    private func put(_ p: Playlist, _ type: String, _ fields: [String: JSON]) {
+        db.putPlaylist(p)
+        record(type, playlist: p.id, fields.merging(["playlist": .string(p.target)]) { a, _ in a })
         app.reloadPlaylists()
     }
 

@@ -57,8 +57,7 @@ private func find(
         section(.albums, c.albumIndex) {
             Row(
                 id: "album/\($0.id)", title: $0.name,
-                detail: [$0.artist, $0.year > 0 ? String($0.year) : ""].filter { !$0.isEmpty }.joined(
-                    separator: " · "),
+                detail: dotted([$0.artist, $0.year > 0 ? String($0.year) : ""]),
                 song: $0.songs.first, route: .album($0.id))
         },
         section(.genres, c.genreIndex) {
@@ -81,7 +80,7 @@ private func find(
         section(.books, c.bookIndex) {
             Row(
                 id: "shelf/\($0.id)", title: $0.title,
-                detail: [$0.author, heard.progress($0)].filter { !$0.isEmpty }.joined(separator: " · "),
+                detail: dotted([$0.author, heard.progress($0)]),
                 song: $0.cover ?? $0.items[0], route: .shelf($0.id))
         },
         section(.shows, c.showIndex) {
@@ -93,13 +92,12 @@ private func find(
         section(.episodes, c.episodeIndex) {
             Row(
                 id: "e/\($0.id)", title: $0.title,
-                detail: [$0.groupTitle, $0.day].filter { !$0.isEmpty }.joined(separator: " · "), song: $0)
+                detail: dotted([$0.groupTitle, $0.day]), song: $0)
         },
         section(.songs, c.songIndex, boost: boost) {
             Row(
                 id: "s/\($0.id)", title: $0.title,
-                detail: [$0.displayArtist, $0.album].filter { !$0.isEmpty }.joined(separator: " · "), song: $0
-            )
+                detail: dotted([$0.displayArtist, $0.album]), song: $0)
         },
     ]
     // Stable, so a tie keeps the order above.

@@ -54,30 +54,24 @@ struct NowPlayingBar: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 4) {
-                FavoriteButton()
-                LaterButton()
+                MarkButton(mark: Store.fav)
+                MarkButton(mark: Store.later)
                 BookmarkButton()
                 SpeedButton()
                 SleepButton()
                 Button {
-                    let showing = nav.inspector && nav.inspectorTab == .lyrics
-                    nav.inspectorTab = .lyrics
-                    nav.inspector = !showing
+                    nav.show(.lyrics, toggling: true)
                 } label: {
                     Image(systemName: "quote.bubble")
                 }
                 // An episode's transcript comes as its lyrics (plan 031).
-                .help(app.playback.current?.spoken == true ? "Transcript" : "Lyrics")
-                .accessibilityLabel(app.playback.current?.spoken == true ? "Transcript" : "Lyrics")
+                .tip(app.playback.current?.spoken == true ? "Transcript" : "Lyrics")
                 Button {
-                    let showing = nav.inspector && nav.inspectorTab == .queue
-                    nav.inspectorTab = .queue
-                    nav.inspector = !showing
+                    nav.show(.queue, toggling: true)
                 } label: {
                     Image(systemName: "list.bullet")
                 }
-                .help("Playing queue")
-                .accessibilityLabel("Playing queue")
+                .tip("Playing queue")
             }
             .buttonStyle(.borderless)
             .frame(width: 230, alignment: .trailing)
@@ -194,8 +188,7 @@ struct Transport: View {
                 } label: {
                     Image(systemName: "list.bullet.indent")
                 }
-                .help("Chapters and notes")
-                .accessibilityLabel("Chapters and notes")
+                .tip("Chapters and notes")
                 .disabled(
                     s.chapters.isEmpty && s.notes.isEmpty && !app.bookmarks.contains { $0.song == s.id }
                 )
@@ -218,7 +211,7 @@ struct Transport: View {
             } label: {
                 Image(systemName: "backward.fill")
             }
-            .help("Previous").accessibilityLabel("Previous")
+            .tip("Previous")
             .contextMenu { ChapterItems(next: false) }
             // A long file steps back and on within itself (plan 009).
             let long = !compact && p.current.map(p.isLong) == true
@@ -232,15 +225,14 @@ struct Transport: View {
                 .foregroundStyle(.tint)
                 .contentTransition(.symbolEffect(.replace))
             }
-            .help(p.isPlaying ? "Pause" : "Play")
-            .accessibilityLabel(p.isPlaying ? "Pause" : "Play")
+            .tip(p.isPlaying ? "Pause" : "Play")
             if long { SeekButton(forward: true) }
             Button {
                 p.next(onScreen: true)
             } label: {
                 Image(systemName: "forward.fill")
             }
-            .help("Next").accessibilityLabel("Next")
+            .tip("Next")
             .contextMenu { ChapterItems(next: true) }
             if !compact {
                 Button {
@@ -284,8 +276,7 @@ struct SeekButton: View {
                 systemName: NSImage(systemSymbolName: numbered, accessibilityDescription: nil) == nil
                     ? base : numbered)
         }
-        .help(label)
-        .accessibilityLabel(label)
+        .tip(label)
     }
 }
 
@@ -325,11 +316,10 @@ struct BookmarkButton: View {
                 added = "Bookmark at \(clock(Double(ms) / 1000))"
             } label: {
                 Image(systemName: added == nil ? "bookmark" : "bookmark.fill")
-                    .foregroundStyle(added == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+                    .foregroundStyle(.tint(if: added != nil))
                     .contentTransition(.symbolEffect(.replace))
             }
-            .help("Add a Bookmark")
-            .accessibilityLabel("Add a Bookmark")
+            .tip("Add a Bookmark")
             .popover(
                 isPresented: Binding(get: { added != nil }, set: { if !$0 { added = nil } }), arrowEdge: .top
             ) {
@@ -372,21 +362,27 @@ struct Seeker: View {
     }
 }
 
-struct FavoriteButton: View {
+/// Favorites or Listen Later for the song playing, as the phone's Now playing has.
+struct MarkButton: View {
     @Environment(AppModel.self) private var app
+    /// `Store.fav` or `Store.later`.
+    let mark: String
+
     var body: some View {
+        let fav = mark == Store.fav
+        let (icon, add, remove) =
+            fav
+            ? ("heart", "Add to Favorites", "Remove from Favorites")
+            : ("clock", "Listen Later", "Remove from Listen Later")
         let s = app.playback.current
-        let on = s.map { id in app.favorites.contains { $0.song == id.id } } ?? false
+        let on = s.map { s in (fav ? app.favorites : app.listenLater).contains { $0.song == s.id } } ?? false
         Button {
-            if let s { app.store.mark(Store.fav, s.id, !on) }
+            if let s { app.store.mark(mark, s.id, !on) }
         } label: {
-            Image(systemName: on ? "heart.fill" : "heart").foregroundStyle(
-                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
-            )
-            .toggled(on, of: s?.id)
+            Image(systemName: on ? icon + ".fill" : icon).foregroundStyle(.tint(if: on))
+                .toggled(on, of: s?.id)
         }
-        .help(on ? "Remove from Favorites" : "Add to Favorites")
-        .accessibilityLabel(on ? "Remove from Favorites" : "Add to Favorites")
+        .tip(on ? remove : add)
         .disabled(s == nil)
     }
 }
@@ -419,26 +415,6 @@ private struct Toggled: ViewModifier {
     }
 }
 
-/// Listen Later for the song playing, as the phone's Now playing has.
-struct LaterButton: View {
-    @Environment(AppModel.self) private var app
-    var body: some View {
-        let s = app.playback.current
-        let on = s.map { id in app.listenLater.contains { $0.song == id.id } } ?? false
-        Button {
-            if let s { app.store.mark(Store.later, s.id, !on) }
-        } label: {
-            Image(systemName: on ? "clock.fill" : "clock").foregroundStyle(
-                on ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)
-            )
-            .toggled(on, of: s?.id)
-        }
-        .help(on ? "Remove from Listen Later" : "Listen Later")
-        .accessibilityLabel(on ? "Remove from Listen Later" : "Listen Later")
-        .disabled(s == nil)
-    }
-}
-
 /// Speed and pitch (plan 016), for the song playing or as this Mac's everyday one.
 struct SpeedButton: View {
     @Environment(AppModel.self) private var app
@@ -454,8 +430,7 @@ struct SpeedButton: View {
                 Image(systemName: "gauge.with.dots.needle.33percent")
             }
         }
-        .help("Speed and pitch")
-        .accessibilityLabel("Speed and pitch")
+        .tip("Speed and pitch")
         .popover(isPresented: $open, arrowEdge: .top) { SpeedPanel().padding(16).frame(width: 300) }
     }
 }
@@ -529,13 +504,10 @@ struct SleepButton: View {
             open = true
         } label: {
             Image(systemName: app.playback.sleep.mode == nil ? "moon.zzz" : "moon.zzz.fill")
-                .foregroundStyle(
-                    app.playback.sleep.mode == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint)
-                )
+                .foregroundStyle(.tint(if: app.playback.sleep.mode != nil))
                 .contentTransition(.symbolEffect(.replace))
         }
-        .help(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
-        .accessibilityLabel(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
+        .tip(app.playback.sleep.label.map { "Sleep \($0)" } ?? "Sleep timer")
         .popover(isPresented: $open, arrowEdge: .top) {
             SleepPanel { open = false }.padding(16).frame(width: 260)
         }

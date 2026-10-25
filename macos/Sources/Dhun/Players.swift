@@ -51,7 +51,7 @@ struct MenuBarPlayer: View {
                 }
                 .menuStyle(.borderlessButton)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                FavoriteButton().buttonStyle(.borderless)
+                MarkButton(mark: Store.fav).buttonStyle(.borderless)
                 Button("Mini Player", systemImage: "pip") { openWindow(id: "mini") }
                     .labelStyle(.iconOnly).buttonStyle(.borderless).help("Mini player")
                 Button("Open Dhun", systemImage: "macwindow") {
@@ -297,16 +297,14 @@ struct Commands: SwiftUI.Commands {
     let nav: Nav
 
     var body: some SwiftUI.Commands {
+        let p = app.playback
         CommandMenu("Controls") {
-            Button(app.playback.isPlaying ? "Pause" : "Play") { app.playback.toggle() }
-                .keyboardShortcut(.space, modifiers: [])
-            Button("Next") { app.playback.next(onScreen: true) }.keyboardShortcut(
-                .rightArrow, modifiers: .command)
-            Button("Previous") { app.playback.previous(onScreen: true) }.keyboardShortcut(
-                .leftArrow, modifiers: .command)
+            Button(p.isPlaying ? "Pause" : "Play") { p.toggle() }.keyboardShortcut(.space, modifiers: [])
+            Button("Next") { p.next(onScreen: true) }.keyboardShortcut(.rightArrow, modifiers: .command)
+            Button("Previous") { p.previous(onScreen: true) }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
             // A long file's own moves (plan 009). A chapter is never a click of
             // Next or Previous, which go by file, so it has keys of its own.
-            let p = app.playback
             let long = p.current.map(p.isLong) == true
             Button("Skip Forward \(app.setting(Synced.seekForward)) Seconds") { p.seekForward() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .shift]).disabled(!long)
@@ -317,29 +315,16 @@ struct Commands: SwiftUI.Commands {
             Button("Previous Chapter") { p.chapterBack() }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option]).disabled(!p.hasChapters)
             Divider()
-            Button("Shuffle") { app.playback.toggleShuffle() }.keyboardShortcut(
-                "s", modifiers: [.command, .option])
-            Button("Repeat") { app.playback.cycleRepeat() }.keyboardShortcut(
-                "r", modifiers: [.command, .option])
+            Button("Shuffle") { p.toggleShuffle() }.keyboardShortcut("s", modifiers: [.command, .option])
+            Button("Repeat") { p.cycleRepeat() }.keyboardShortcut("r", modifiers: [.command, .option])
             Divider()
-            Button("Go to Current Song") { if let s = app.playback.current { nav.goToAlbum(s, app) } }
+            Button("Go to Current Song") { if let s = p.current { nav.goToAlbum(s, app) } }
                 .keyboardShortcut("l", modifiers: .command)
-            Button("Show Queue") {
-                nav.inspectorTab = .queue
-                nav.inspector = true
-            }
-            .keyboardShortcut("u", modifiers: [.command, .option])
-            Button("Show Lyrics") {
-                nav.inspectorTab = .lyrics
-                nav.inspector = true
-            }
-            .keyboardShortcut("l", modifiers: [.command, .option])
+            Button("Show Queue") { nav.show(.queue) }.keyboardShortcut("u", modifiers: [.command, .option])
+            Button("Show Lyrics") { nav.show(.lyrics) }.keyboardShortcut("l", modifiers: [.command, .option])
         }
         CommandGroup(after: .textEditing) {
-            Button("Find") {
-                nav.findRequests += 1
-            }
-            .keyboardShortcut("f", modifiers: .command)
+            Button("Find") { nav.findRequests += 1 }.keyboardShortcut("f", modifiers: .command)
         }
         CommandGroup(after: .newItem) {
             Button("Sync Now") { Task { await app.sync.now() } }.keyboardShortcut("r", modifiers: .command)

@@ -11,22 +11,22 @@ final class MediaKeys {
     init(playback: Playback) {
         self.playback = playback
         let c = MPRemoteCommandCenter.shared()
-        c.playCommand.addTarget { [weak self] _ in self?.run { $0.play() } ?? .commandFailed }
-        c.pauseCommand.addTarget { [weak self] _ in self?.run { $0.pause() } ?? .commandFailed }
-        c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.run { $0.toggle() } ?? .commandFailed }
-        c.nextTrackCommand.addTarget { [weak self] _ in
-            self?.run { $0.next(onScreen: false) } ?? .commandFailed
-        }
-        c.previousTrackCommand.addTarget { [weak self] _ in
-            self?.run { $0.previous(onScreen: false) } ?? .commandFailed
-        }
+        on(c.playCommand) { $0.play() }
+        on(c.pauseCommand) { $0.pause() }
+        on(c.togglePlayPauseCommand) { $0.toggle() }
+        on(c.nextTrackCommand) { $0.next(onScreen: false) }
+        on(c.previousTrackCommand) { $0.previous(onScreen: false) }
         // A long file's Control Center seeks either side of Play, as Now playing does (plan 009).
-        c.skipBackwardCommand.addTarget { [weak self] _ in self?.run { $0.seekBack() } ?? .commandFailed }
-        c.skipForwardCommand.addTarget { [weak self] _ in self?.run { $0.seekForward() } ?? .commandFailed }
+        on(c.skipBackwardCommand) { $0.seekBack() }
+        on(c.skipForwardCommand) { $0.seekForward() }
         c.changePlaybackPositionCommand.addTarget { [weak self] e in
             guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             return self?.run { $0.seek(to: e.positionTime) } ?? .commandFailed
         }
+    }
+
+    private func on(_ command: MPRemoteCommand, _ f: @escaping @MainActor (Playback) -> Void) {
+        command.addTarget { [weak self] _ in self?.run(f) ?? .commandFailed }
     }
 
     private func run(_ f: (Playback) -> Void) -> MPRemoteCommandHandlerStatus {
