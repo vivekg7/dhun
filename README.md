@@ -75,9 +75,10 @@ The web client needs nothing to build: it is plain HTML, CSS and
 JavaScript, embedded in the server. While working on it, run the server
 with `DHUN_WEB_DIR=server/web`, so a reload shows an edit without a
 rebuild; `make test-web` runs its tests with Node's own runner. The Linux
-app needs Rust and the GTK 4, libadwaita and SQLite `-dev` packages, or
-else only Flatpak: without `cargo` on the PATH the Makefile runs it inside
-the GNOME SDK (`scripts/sdk.sh`, which says what to install once).
+app needs Rust and the GTK 4, libadwaita, GStreamer and SQLite `-dev`
+packages, or else only Flatpak: without `cargo` on the PATH the Makefile
+runs it inside the GNOME SDK (`scripts/sdk.sh`, which says what to install
+once).
 `DHUN_SCREENSHOT=<png>` with `DHUN_OPEN` draws its window to a file and
 quits, for checking a change with no one at the screen
 ([plan 039](docs/plans/039_linux_app.md)). A Mac

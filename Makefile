@@ -113,8 +113,9 @@ mac:
 linux:
 	scripts/build-linux.sh
 
-# Against the system's GTK, libadwaita and SQLite (the -dev packages) and a
-# Rust from rustup; ~/.local/bin must be on the PATH for the launcher.
+# Against the system's GTK, libadwaita, GStreamer and SQLite (the -dev
+# packages) and a Rust from rustup; ~/.local/bin must be on the PATH for the
+# launcher.
 linux-install:
 	cd linux && cargo build --release --locked -p dhun
 	install -Dm755 linux/target/release/dhun $(PREFIX)/bin/dhun
