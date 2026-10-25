@@ -28,13 +28,18 @@ func setup(t *testing.T) (*Scanner, func(fixture, rel string)) {
 	s := &Scanner{DB: db, Root: root, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	put := func(fixture, rel string) {
 		t.Helper()
-		data, err := os.ReadFile(filepath.Join("testdata", fixture))
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeFile(t, filepath.Join(root, rel), data)
+		copyFixture(t, fixture, filepath.Join(root, rel))
 	}
 	return s, put
+}
+
+func copyFixture(t *testing.T, fixture, abs string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, abs, data)
 }
 
 func writeFile(t *testing.T, abs string, data []byte) {

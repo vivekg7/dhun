@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -126,13 +127,8 @@ type recentLines []string
 // fresh says whether l is worth writing: not empty, and not among the last
 // three lines written. It remembers l when it is.
 func (r *recentLines) fresh(l string) bool {
-	if l == "" {
+	if l == "" || slices.Contains(*r, l) {
 		return false
-	}
-	for _, x := range *r {
-		if x == l {
-			return false
-		}
 	}
 	*r = append(*r, l)
 	if len(*r) > 3 {

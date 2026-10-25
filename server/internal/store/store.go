@@ -132,6 +132,30 @@ func migrateOne(ctx context.Context, conn *sql.Conn, n int, body string) (err er
 	return tx.Commit()
 }
 
+// Querier is a *sql.DB or a *sql.Tx.
+type Querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// Rows returns what scan makes of each row query returns. It is never nil,
+// so an empty result encodes as [] in JSON.
+func Rows[T any](ctx context.Context, db Querier, query string, args []any, scan func(*sql.Rows) (T, error)) ([]T, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []T{}
+	for rows.Next() {
+		x, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
 // NextLibraryVersion bumps and returns the library version inside tx.
 func NextLibraryVersion(ctx context.Context, tx *sql.Tx) (int64, error) {
 	var v int64

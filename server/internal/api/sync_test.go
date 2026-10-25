@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,29 +16,20 @@ import (
 	"github.com/vivekg7/dhun/server/internal/library"
 )
 
+type queueResp struct {
+	ID          string
+	Deleted     bool
+	Name        string
+	Songs       []int64
+	CurrentSong int64
+	PositionMS  int64 `json:"positionMs"`
+}
+
 type syncResp struct {
-	Version int64
-	Queues  []struct {
-		ID          string
-		Deleted     bool
-		Name        string
-		Songs       []int64
-		CurrentSong int64
-		PositionMS  int64 `json:"positionMs"`
-	}
-	Favorites []struct {
-		Song    int64
-		Deleted bool
-	}
-	ListenLater []struct {
-		Song    int64
-		Deleted bool
-	}
-	Played []struct {
-		Song    int64
-		Deleted bool
-	}
-	Resume []struct {
+	Version                        int64
+	Queues                         []queueResp
+	Favorites, ListenLater, Played []markJSON
+	Resume                         []struct {
 		Song       int64
 		Deleted    bool
 		PositionMS int64 `json:"positionMs"`
@@ -59,9 +51,7 @@ var opSeq atomic.Int64
 // o builds an operation with a fresh id.
 func o(typ string, fields map[string]any) map[string]any {
 	m := map[string]any{"id": fmt.Sprintf("op-%d", opSeq.Add(1)), "type": typ}
-	for k, v := range fields {
-		m[k] = v
-	}
+	maps.Copy(m, fields)
 	return m
 }
 
@@ -72,21 +62,15 @@ func (e *env) push(token string, since int64, ops ...map[string]any) syncResp {
 	return out
 }
 
-func (e *env) queue(token, id string) (q struct {
-	Name        string
-	Songs       []int64
-	CurrentSong int64
-	PositionMS  int64
-}) {
+func (e *env) queue(token, id string) queueResp {
 	e.t.Helper()
-	for _, x := range e.push(token, 0).Queues {
-		if x.ID == id {
-			q.Name, q.Songs, q.CurrentSong, q.PositionMS = x.Name, x.Songs, x.CurrentSong, x.PositionMS
+	for _, q := range e.push(token, 0).Queues {
+		if q.ID == id {
 			return q
 		}
 	}
 	e.t.Fatalf("queue %s not found", id)
-	return q
+	return queueResp{}
 }
 
 // library with songs 1..n, user vivek (admin) signed in on two devices.
@@ -102,8 +86,6 @@ func syncEnv(t *testing.T, n int) (e *env, phone, mac string) {
 	e.user("vivek", true)
 	return e, e.login("vivek"), e.login("vivek")
 }
-
-func ptr(n int64) *int64 { return &n }
 
 // Two devices edit the same queue offline. Positions are relative to a
 // neighbouring song, so both edits survive in a sensible order (plan 006).

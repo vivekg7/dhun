@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
 // The server decides which files make one audiobook and which episodes one
@@ -65,22 +67,13 @@ func bookOf(it *groupItem) (key, title string) {
 // regroup recomputes the books or shows of one kind and stores those that
 // changed, at version. It returns how many files changed group or place.
 func regroup(ctx context.Context, tx *sql.Tx, kind string, version int64) (int, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id, path, album, date, disc, track, group_key, group_title, group_index
-		FROM songs WHERE kind = ? AND missing_since IS NULL`, kind)
-	if err != nil {
-		return 0, err
-	}
-	var items []*groupItem
-	for rows.Next() {
+	items, err := store.Rows(ctx, tx, `SELECT id, path, album, date, disc, track, group_key, group_title, group_index
+		FROM songs WHERE kind = ? AND missing_since IS NULL`, []any{kind}, func(r *sql.Rows) (*groupItem, error) {
 		it := &groupItem{}
-		if err := rows.Scan(&it.id, &it.path, &it.album, &it.date, &it.disc, &it.track, &it.key, &it.title, &it.index); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		items = append(items, it)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		err := r.Scan(&it.id, &it.path, &it.album, &it.date, &it.disc, &it.track, &it.key, &it.title, &it.index)
+		return it, err
+	})
+	if err != nil {
 		return 0, err
 	}
 	group(kind, items)

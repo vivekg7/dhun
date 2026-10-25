@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
 // Family members are managed by the admin. Only the admin is an admin: the
@@ -19,25 +21,14 @@ type adminUserJSON struct {
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request, _ session) {
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT u.id, u.name, u.is_admin, u.created_at,
+	out, err := store.Rows(r.Context(), s.DB, `SELECT u.id, u.name, u.is_admin, u.created_at,
 			count(d.id), coalesce(max(d.last_seen_at), '')
 		FROM users u LEFT JOIN devices d ON d.user_id = u.id
-		GROUP BY u.id ORDER BY u.is_admin DESC, u.name`)
+		GROUP BY u.id ORDER BY u.is_admin DESC, u.name`, nil, func(rows *sql.Rows) (u adminUserJSON, err error) {
+		err = rows.Scan(&u.ID, &u.Name, &u.Admin, &u.Created, &u.Devices, &u.LastSeen)
+		return u, err
+	})
 	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer rows.Close()
-	out := []adminUserJSON{}
-	for rows.Next() {
-		var u adminUserJSON
-		if err := rows.Scan(&u.ID, &u.Name, &u.Admin, &u.Created, &u.Devices, &u.LastSeen); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		out = append(out, u)
-	}
-	if err := rows.Err(); err != nil {
 		s.fail(w, r, err)
 		return
 	}

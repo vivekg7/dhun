@@ -141,18 +141,11 @@ func TestMarkdownTranscriptKeepsSpeakers(t *testing.T) {
 func TestSpokenRootsScanOnTheirOwn(t *testing.T) {
 	s, put := setup(t)
 	s.Podcasts, s.Audiobooks = t.TempDir(), t.TempDir()
-	copyTo := func(fixture, abs string) {
-		data, err := os.ReadFile(filepath.Join("testdata", fixture))
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeFile(t, abs, data)
-	}
 	put("a.mp3", "Show/001 - Ep.mp3") // the same path in Music is another file
-	copyTo("chapters.opus", filepath.Join(s.Podcasts, "Show/001 - Ep.opus"))
+	copyFixture(t, "chapters.opus", filepath.Join(s.Podcasts, "Show/001 - Ep.opus"))
 	writeFile(t, filepath.Join(s.Podcasts, "Show/001 - Ep.en.auto.vtt"), []byte("WEBVTT\n"))
 	writeFile(t, filepath.Join(s.Podcasts, "Show/001 - Ep.en.vtt"), []byte("WEBVTT\n"))
-	copyTo("chapters.mp3", filepath.Join(s.Audiobooks, "Book/Part 1.mp3"))
+	copyFixture(t, "chapters.mp3", filepath.Join(s.Audiobooks, "Book/Part 1.mp3"))
 	if st := scan(t, s); st.Added != 3 {
 		t.Fatalf("added %d, want 3 (%s)", st.Added, st)
 	}

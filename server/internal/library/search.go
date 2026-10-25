@@ -4,15 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
 // Search folding, as the Android app's data/Search.kt does it
@@ -198,8 +202,8 @@ type LyricsHit struct {
 	Line string `json:"line"`
 }
 
-// MaxLyricsHits is how many songs a lyrics search returns at most.
-const MaxLyricsHits = 50
+// maxLyricsHits is how many songs a lyrics search returns at most.
+const maxLyricsHits = 50
 
 // LyricsIndex keeps every song's lyrics lines in memory, a few megabytes
 // for the family's library, so a search reads no files
@@ -239,26 +243,16 @@ func (x *LyricsIndex) Refresh(ctx context.Context) error {
 }
 
 func (x *LyricsIndex) refresh(ctx context.Context) error {
-	rows, err := x.DB.QueryContext(ctx, `SELECT id, path, version, embedded_lyrics, lrc FROM songs
-		WHERE kind = 'music' AND missing_since IS NULL AND (embedded_lyrics OR lrc)`)
-	if err != nil {
-		return err
-	}
 	type row struct {
 		id, version int64
 		f           SongFile
 	}
-	var all []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.id, &r.f.Path, &r.version, &r.f.EmbeddedLyrics, &r.f.Lrc); err != nil {
-			rows.Close()
-			return err
-		}
-		all = append(all, r)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+	all, err := store.Rows(ctx, x.DB, `SELECT id, path, version, embedded_lyrics, lrc FROM songs
+		WHERE kind = 'music' AND missing_since IS NULL AND (embedded_lyrics OR lrc)`, nil, func(rs *sql.Rows) (r row, err error) {
+		err = rs.Scan(&r.id, &r.f.Path, &r.version, &r.f.EmbeddedLyrics, &r.f.Lrc)
+		return r, err
+	})
+	if err != nil {
 		return err
 	}
 
@@ -360,23 +354,17 @@ func (x *LyricsIndex) Search(ctx context.Context, q string) ([]LyricsHit, error)
 			match[i][id] = strings.Contains(w, t) || (key != "" && strings.HasPrefix(x.keys[id], key))
 		}
 	}
-	ids := make([]int64, 0, len(x.songs))
-	for id := range x.songs {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
 	type hit struct {
 		LyricsHit
 		exact bool
 	}
 	var hits []hit
-	for _, id := range ids {
+	for _, id := range slices.Sorted(maps.Keys(x.songs)) {
 		s := x.songs[id]
 	lines:
 		for n, line := range s.words {
-			for i := range terms {
-				if !anyMarked(line, match[i]) {
+			for _, m := range match {
+				if !slices.ContainsFunc(line, func(w int32) bool { return m[w] }) {
 					continue lines
 				}
 			}
@@ -389,19 +377,9 @@ func (x *LyricsIndex) Search(ctx context.Context, q string) ([]LyricsHit, error)
 		}
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].exact && !hits[j].exact })
-	out := make([]LyricsHit, 0, min(len(hits), MaxLyricsHits))
-	for _, h := range hits[:min(len(hits), MaxLyricsHits)] {
+	out := make([]LyricsHit, 0, min(len(hits), maxLyricsHits))
+	for _, h := range hits[:min(len(hits), maxLyricsHits)] {
 		out = append(out, h.LyricsHit)
 	}
 	return out, nil
-}
-
-// anyMarked reports whether any word of line is marked in ok.
-func anyMarked(line []int32, ok []bool) bool {
-	for _, w := range line {
-		if ok[w] {
-			return true
-		}
-	}
-	return false
 }

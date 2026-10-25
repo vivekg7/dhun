@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
 // PlaylistsDir holds the .m3u8 files: shared ones at the top level, each
@@ -33,10 +35,10 @@ type Playlist struct {
 	Trailer []string // # lines after the last entry
 }
 
-// ParsePlaylist reads an .m3u/.m3u8 file. Other # lines before the first
+// parsePlaylist reads an .m3u/.m3u8 file. Other # lines before the first
 // entry are the header, which the writer re-reads from the file; those
 // between entries travel with the entry that follows them.
-func ParsePlaylist(abs string) (Playlist, error) {
+func parsePlaylist(abs string) (Playlist, error) {
 	f, err := os.Open(abs)
 	if err != nil {
 		return Playlist{}, err
@@ -125,21 +127,14 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 	}
 	rows.Close()
 
-	users := map[string]int64{}
-	urows, err := tx.QueryContext(ctx, `SELECT id, name FROM users`)
+	us, err := allUsers(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
-	for urows.Next() {
-		var id int64
-		var name string
-		if err := urows.Scan(&id, &name); err != nil {
-			urows.Close()
-			return 0, err
-		}
-		users[strings.ToLower(name)] = id
+	users := map[string]int64{}
+	for _, u := range us {
+		users[strings.ToLower(u.name)] = u.id
 	}
-	urows.Close()
 
 	// Loaded on the first playlist that actually changed: most scans change
 	// none, and this runs under the write lock every phone's push waits on.
@@ -169,7 +164,7 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 		}
 		relOS, _ := filepath.Rel(root, abs)
 		rel := filepath.ToSlash(relOS)
-		if IsSpecialFile(rel) {
+		if isSpecialFile(rel) {
 			return nil // a nightly copy of a table, not a playlist of its own
 		}
 		info, err := d.Info()
@@ -193,15 +188,12 @@ func indexPlaylists(ctx context.Context, tx *sql.Tx, root string, version int64)
 			}
 			return nil
 		}
-		pl, err := ParsePlaylist(abs)
+		pl, err := parsePlaylist(abs)
 		if err != nil {
 			return nil // unreadable now; retried on the next scan
 		}
-		var existingID int64
-		if ok {
-			existingID = k.id
-		}
-		if _, err := storePlaylist(ctx, tx, rel, existingID, owner, pl, info, version, songAt); err != nil {
+		// A new file has no row yet: k.id is 0, and storePlaylist adds one.
+		if _, err := storePlaylist(ctx, tx, rel, k.id, owner, pl, info, version, songAt); err != nil {
 			return err
 		}
 		changed++
@@ -263,10 +255,9 @@ func isPlaylist(name string) bool {
 // RefreshPlaylist re-indexes the playlist file at rel if it changed on disk
 // since it was indexed: someone edited it over SMB, or another player saved
 // it. An edit through Dhun rebuilds the file from the index, so without this
-// it would silently undo those changes until the next scan. next is called
-// for a library version only when something changed.
-func RefreshPlaylist(ctx context.Context, tx *sql.Tx, root, rel string, id int64, owner sql.NullInt64,
-	next func() (int64, error)) error {
+// it would silently undo those changes until the next scan. It takes a new
+// library version only when something changed.
+func RefreshPlaylist(ctx context.Context, tx *sql.Tx, root, rel string, id int64, owner sql.NullInt64) error {
 	abs := filepath.Join(root, filepath.FromSlash(rel))
 	info, err := os.Stat(abs)
 	if err != nil {
@@ -279,11 +270,11 @@ func RefreshPlaylist(ctx context.Context, tx *sql.Tx, root, rel string, id int64
 	if size == info.Size() && mtimeNS == info.ModTime().UnixNano() {
 		return nil
 	}
-	pl, err := ParsePlaylist(abs)
+	pl, err := parsePlaylist(abs)
 	if err != nil {
 		return err
 	}
-	version, err := next()
+	version, err := store.NextLibraryVersion(ctx, tx)
 	if err != nil {
 		return err
 	}

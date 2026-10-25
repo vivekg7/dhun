@@ -22,9 +22,9 @@ type WriteEntry struct {
 	Before    []string // # lines kept from the file, written before the entry
 }
 
-// oneLine drops control characters (newlines above all) from text that goes
+// OneLine drops control characters (newlines above all) from text that goes
 // into a single playlist line, so a tag or a name cannot add lines or entries.
-func oneLine(s string) string {
+func OneLine(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 32 || r == 0x7f {
 			return -1
@@ -49,7 +49,7 @@ func SavePlaylist(ctx context.Context, tx *sql.Tx, root, data, rel string, exist
 	}
 	header := readHeader(abs)
 	var trailer []string
-	if old, err := ParsePlaylist(abs); err == nil {
+	if old, err := parsePlaylist(abs); err == nil {
 		trailer = old.Trailer
 	}
 
@@ -65,12 +65,12 @@ func SavePlaylist(ctx context.Context, tx *sql.Tx, root, data, rel string, exist
 			if named {
 				continue
 			}
-			h, named = "#PLAYLIST:"+oneLine(name), true
+			h, named = "#PLAYLIST:"+OneLine(name), true
 		}
 		b.WriteString(h + "\n")
 	}
 	if !named && name != strings.TrimSuffix(path.Base(rel), path.Ext(rel)) {
-		fmt.Fprintf(&b, "#PLAYLIST:%s\n", oneLine(name))
+		fmt.Fprintf(&b, "#PLAYLIST:%s\n", OneLine(name))
 	}
 	dir := path.Dir(rel)
 	for _, e := range entries {
@@ -89,7 +89,7 @@ func SavePlaylist(ctx context.Context, tx *sql.Tx, root, data, rel string, exist
 			b.WriteString(l + "\n")
 		}
 		if e.Title != "" || e.DurationS >= 0 { // no #EXTINF is added where there was none
-			fmt.Fprintf(&b, "#EXTINF:%d,%s\n", e.DurationS, oneLine(e.Title))
+			fmt.Fprintf(&b, "#EXTINF:%d,%s\n", e.DurationS, OneLine(e.Title))
 		}
 		b.WriteString(line + "\n")
 	}
@@ -104,7 +104,7 @@ func SavePlaylist(ctx context.Context, tx *sql.Tx, root, data, rel string, exist
 	if err != nil {
 		return 0, err
 	}
-	pl, err := ParsePlaylist(abs)
+	pl, err := parsePlaylist(abs)
 	if err != nil {
 		return 0, err
 	}
@@ -187,7 +187,7 @@ func writeAtomic(abs string, data []byte) error {
 // The copies live in Dhun's data folder rather than Music/_trash, so the
 // Music mount can stay read-only apart from Playlists/ (plan 003).
 func keepCopy(root, data, rel, kind string, now time.Time) error {
-	content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	content, err := os.ReadFile(abs(root, rel))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil // a new playlist: nothing to keep
 	}
@@ -199,7 +199,7 @@ func keepCopy(root, data, rel, kind string, now time.Time) error {
 	base := path.Join("playlists", kind, now.Format("2006-01-02"), strings.TrimSuffix(sub, ext))
 	dst := base + ext
 	for i := 2; ; i++ {
-		_, err := os.Stat(filepath.Join(data, filepath.FromSlash(dst)))
+		_, err := os.Stat(abs(data, dst))
 		if errors.Is(err, os.ErrNotExist) {
 			break
 		}
@@ -211,7 +211,7 @@ func keepCopy(root, data, rel, kind string, now time.Time) error {
 		}
 		dst = fmt.Sprintf("%s (%d)%s", base, i, ext)
 	}
-	return writeAtomic(filepath.Join(data, filepath.FromSlash(dst)), content)
+	return writeAtomic(abs(data, dst), content)
 }
 
 // PlaylistRel returns a free path for a playlist file named name in dir
@@ -231,7 +231,7 @@ func PlaylistRel(root, dir, name, except string) (string, error) {
 	if r := []rune(base); len(r) > 120 { // by character: never split a UTF-8 sequence
 		base = string(r[:120])
 	}
-	if IsSpecialFile(path.Join(dir, base+".m3u8")) {
+	if isSpecialFile(path.Join(dir, base+".m3u8")) {
 		return "", fmt.Errorf("%q is a built-in list", base)
 	}
 	for i := 1; i < 1000; i++ {
@@ -243,7 +243,7 @@ func PlaylistRel(root, dir, name, except string) (string, error) {
 		if rel == except {
 			return rel, nil
 		}
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(abs(root, rel)); errors.Is(err, os.ErrNotExist) {
 			return rel, nil
 		}
 	}
@@ -261,10 +261,10 @@ func RenamePlaylist(root, data, from, to string, now time.Time) error {
 	}
 	// os.Rename replaces an existing file; never let it replace a playlist
 	// that appeared under the new name since PlaylistRel looked.
-	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(to))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(abs(root, to)); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("%s already exists", to)
 	}
-	return os.Rename(filepath.Join(root, filepath.FromSlash(from)), filepath.Join(root, filepath.FromSlash(to)))
+	return os.Rename(abs(root, from), abs(root, to))
 }
 
 // TrashPlaylist removes a playlist file from Playlists/ after copying it to
@@ -274,5 +274,5 @@ func TrashPlaylist(root, data, rel string, now time.Time) error {
 	if err := keepCopy(root, data, rel, "deleted", now); err != nil {
 		return err
 	}
-	return os.Remove(filepath.Join(root, filepath.FromSlash(rel)))
+	return os.Remove(abs(root, rel))
 }

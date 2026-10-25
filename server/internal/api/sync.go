@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"net/http"
 	"os"
 	"path"
@@ -185,15 +186,18 @@ type applier struct {
 	version int64 // this user's data version for the op, allocated lazily
 }
 
-func (a *applier) bump() (int64, error) {
+// write runs q, a change to the user's data, with the op's data version as
+// its first argument: allocated by the op's first write, shared by the rest.
+func (a *applier) write(q string, args ...any) error {
 	if a.version == 0 {
 		err := a.tx.QueryRowContext(a.ctx,
 			`UPDATE users SET data_version = data_version + 1 WHERE id = ? RETURNING data_version`, a.sess.UserID).Scan(&a.version)
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
-	return a.version, nil
+	_, err := a.tx.ExecContext(a.ctx, q, append([]any{a.version}, args...)...)
+	return err
 }
 
 func (a *applier) apply(o op) error {
@@ -317,12 +321,7 @@ func readSetting[T any](a *applier, name string, def T) T {
 
 // label keeps a client-supplied tag to one short line.
 func label(s string, n int) string {
-	s = strings.Map(func(r rune) rune {
-		if r < 32 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, s)
+	s = library.OneLine(s)
 	if r := []rune(s); len(r) > n {
 		s = string(r[:n])
 	}
@@ -335,19 +334,33 @@ const (
 	songsPerLookup = 500   // well under SQLite's limit on query parameters
 )
 
-func (a *applier) songsExist(ids []int64) error {
+// songLookups splits the distinct songs of ids into lookups of
+// songsPerLookup, or rejects an op naming too many.
+func songLookups(ids []int64) (iter.Seq[[]int64], error) {
 	if len(ids) > maxSongsPerOp {
-		return rejected("more than %d songs in one operation", maxSongsPerOp)
+		return nil, rejected("more than %d songs in one operation", maxSongsPerOp)
 	}
-	uniq := slices.Compact(slices.Sorted(slices.Values(ids)))
-	for chunk := range slices.Chunk(uniq, songsPerLookup) {
-		q := `SELECT count(*) FROM songs WHERE id IN (?` + strings.Repeat(",?", len(chunk)-1) + `)`
-		args := make([]any, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-		}
+	return slices.Chunk(slices.Compact(slices.Sorted(slices.Values(ids))), songsPerLookup), nil
+}
+
+// inList is an SQL "(?, …)" list for vals, and vals as its arguments.
+func inList[T any](vals []T) (string, []any) {
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		args[i] = v
+	}
+	return "(?" + strings.Repeat(", ?", len(vals)-1) + ")", args
+}
+
+func (a *applier) songsExist(ids []int64) error {
+	lookups, err := songLookups(ids)
+	if err != nil {
+		return err
+	}
+	for chunk := range lookups {
+		in, args := inList(chunk)
 		var n int
-		if err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&n); err != nil {
+		if err := a.tx.QueryRowContext(a.ctx, `SELECT count(*) FROM songs WHERE id IN `+in, args...).Scan(&n); err != nil {
 			return err
 		}
 		if n != len(chunk) {
@@ -389,20 +402,15 @@ func (a *applier) loadQueue(id string) (*queueRow, error) {
 }
 
 func (a *applier) saveQueue(q *queueRow, touch bool) error {
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
 	songs, _ := json.Marshal(q.Songs)
 	usedAt := ""
 	if touch {
 		usedAt = a.now
 	}
-	_, err = a.tx.ExecContext(a.ctx, `UPDATE queues SET name = ?, songs = ?, current_song = ?, position_ms = ?,
-		current_at = ?, shuffle = ?, repeat = ?, used_at = CASE WHEN ? = '' THEN used_at ELSE ? END, version = ?
+	return a.write(`UPDATE queues SET version = ?, name = ?, songs = ?, current_song = ?, position_ms = ?,
+		current_at = ?, shuffle = ?, repeat = ?, used_at = CASE WHEN ? = '' THEN used_at ELSE ? END
 		WHERE id = ?`, q.Name, string(songs), q.CurrentSong, q.PositionMS, q.CurrentAt, q.Shuffle, q.Repeat,
-		usedAt, usedAt, v, q.ID)
-	return err
+		usedAt, usedAt, q.ID)
 }
 
 // uniqueQueueName adds " (2)", " (3)", … so names stay unique per user.
@@ -461,10 +469,6 @@ func (a *applier) queueCreate(o op) error {
 	if err != nil {
 		return err
 	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
 	// Past 20 queues the least recently used one goes, as in Musicolet.
 	for {
 		var n int
@@ -474,8 +478,8 @@ func (a *applier) queueCreate(o op) error {
 		if n < maxQueues {
 			break
 		}
-		if _, err := a.tx.ExecContext(a.ctx, `UPDATE queues SET deleted = 1, version = ? WHERE id = (
-			SELECT id FROM queues WHERE user_id = ? AND deleted = 0 ORDER BY used_at, created_at LIMIT 1)`, v, a.sess.UserID); err != nil {
+		if err := a.write(`UPDATE queues SET version = ?, deleted = 1 WHERE id = (
+			SELECT id FROM queues WHERE user_id = ? AND deleted = 0 ORDER BY used_at, created_at LIMIT 1)`, a.sess.UserID); err != nil {
 			return err
 		}
 	}
@@ -484,14 +488,28 @@ func (a *applier) queueCreate(o op) error {
 		current = songs[0]
 	}
 	data, _ := json.Marshal(songs)
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO queues (id, user_id, name, songs, current_song, position_ms, current_at,
-		created_at, used_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		o.Queue, a.sess.UserID, name, string(data), current, max(o.PositionMS, 0), a.at, a.now, a.now, v)
-	return err
+	return a.write(`INSERT INTO queues (version, id, user_id, name, songs, current_song, position_ms, current_at,
+		created_at, used_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		o.Queue, a.sess.UserID, name, string(data), current, max(o.PositionMS, 0), a.at, a.now, a.now)
 }
 
-// insertAfter puts songs after `after` (nil: end, 0: start, unknown: end),
-// moving any that are already in the list rather than duplicating them.
+// insertAt is where songs go after the given occurrence of `after` in ids:
+// nil or a song not there is the end, 0 the start.
+func insertAt(ids []int64, after *int64, occurrence int) int {
+	if after == nil {
+		return len(ids)
+	}
+	if *after == 0 {
+		return 0
+	}
+	if i := indexOf(ids, *after, occurrence); i >= 0 {
+		return i + 1
+	}
+	return len(ids)
+}
+
+// insertAfter puts songs after `after` (see insertAt), moving any that are
+// already in the list rather than duplicating them.
 func insertAfter(list, songs []int64, after *int64) []int64 {
 	songs = dedupe(songs)
 	moving := map[int64]bool{}
@@ -504,15 +522,7 @@ func insertAfter(list, songs []int64, after *int64) []int64 {
 			rest = append(rest, id)
 		}
 	}
-	at := len(rest)
-	if after != nil {
-		if *after == 0 {
-			at = 0
-		} else if i := slices.Index(rest, *after); i >= 0 {
-			at = i + 1
-		}
-	}
-	return slices.Insert(rest, at, songs...)
+	return slices.Insert(rest, insertAt(rest, after, 0), songs...)
 }
 
 func (a *applier) queueEdit(o op) error {
@@ -527,12 +537,7 @@ func (a *applier) queueEdit(o op) error {
 			return err
 		}
 	case "queue.delete":
-		v, err := a.bump()
-		if err != nil {
-			return err
-		}
-		_, err = a.tx.ExecContext(a.ctx, `UPDATE queues SET deleted = 1, version = ? WHERE id = ?`, v, q.ID)
-		return err
+		return a.write(`UPDATE queues SET version = ?, deleted = 1 WHERE id = ?`, q.ID)
 	case "queue.insert", "queue.move":
 		songs := o.Songs
 		if o.Type == "queue.move" {
@@ -587,22 +592,12 @@ func (a *applier) mark(table string, song int64, removed bool, at string) error 
 		return err
 	}
 	// table is a constant from the caller, never input.
-	var old string
-	err := a.tx.QueryRowContext(a.ctx, `SELECT at FROM `+table+` WHERE user_id = ? AND song_id = ?`, a.sess.UserID, song).Scan(&old)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if later, err := a.isLater(at, `SELECT at FROM `+table+` WHERE user_id = ? AND song_id = ?`, a.sess.UserID, song); !later {
 		return err
 	}
-	if err == nil && at < old {
-		return nil
-	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO `+table+` (user_id, song_id, at, deleted, version) VALUES (?, ?, ?, ?, ?)
+	return a.write(`INSERT INTO `+table+` (version, user_id, song_id, at, deleted) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, song_id) DO UPDATE SET at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
-		a.sess.UserID, song, at, removed, v)
-	return err
+		a.sess.UserID, song, at, removed)
 }
 
 // resume records where the user stopped in a long file, or forgets it once
@@ -611,18 +606,13 @@ func (a *applier) resume(o op) error {
 	if err := a.songsExist([]int64{o.Song}); err != nil {
 		return err
 	}
-	if later, err := a.isLater(`SELECT at FROM resume_points WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song); !later {
+	if later, err := a.isLater(a.at, `SELECT at FROM resume_points WHERE user_id = ? AND song_id = ?`, a.sess.UserID, o.Song); !later {
 		return err
 	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO resume_points (user_id, song_id, position_ms, at, deleted, version)
+	return a.write(`INSERT INTO resume_points (version, user_id, song_id, position_ms, at, deleted)
 		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, song_id) DO UPDATE SET position_ms = excluded.position_ms,
 		at = excluded.at, deleted = excluded.deleted, version = excluded.version`,
-		a.sess.UserID, o.Song, max(o.PositionMS, 0), a.at, o.Type == "resume.unset", v)
-	return err
+		a.sess.UserID, o.Song, max(o.PositionMS, 0), a.at, o.Type == "resume.unset")
 }
 
 // Bookmarks are the user's own notes; these limits only keep one user from
@@ -655,13 +645,8 @@ func (a *applier) bookmark(o op) error {
 		if !exists {
 			return nil // never seen: nothing to delete
 		}
-		v, err := a.bump()
-		if err != nil {
-			return err
-		}
-		_, err = a.tx.ExecContext(a.ctx, `UPDATE bookmarks SET deleted = 1, note = '', at = ?, version = ? WHERE user_id = ? AND id = ?`,
-			max(a.at, at), v, a.sess.UserID, o.Bookmark)
-		return err
+		return a.write(`UPDATE bookmarks SET version = ?, deleted = 1, note = '', at = ? WHERE user_id = ? AND id = ?`,
+			max(a.at, at), a.sess.UserID, o.Bookmark)
 	}
 	if exists && a.at < at {
 		return nil
@@ -682,15 +667,10 @@ func (a *applier) bookmark(o op) error {
 			return rejected("more than %d bookmarks", maxBookmarks)
 		}
 	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO bookmarks (user_id, id, song_id, position_ms, note, at, version)
+	return a.write(`INSERT INTO bookmarks (version, user_id, id, song_id, position_ms, note, at)
 		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, id) DO UPDATE SET song_id = excluded.song_id,
 		position_ms = excluded.position_ms, note = excluded.note, at = excluded.at, version = excluded.version`,
-		a.sess.UserID, o.Bookmark, o.Song, max(o.PositionMS, 0), o.Note, a.at, v)
-	return err
+		a.sess.UserID, o.Bookmark, o.Song, max(o.PositionMS, 0), o.Note, a.at)
 }
 
 // Settings are the apps' business; these limits only keep one user from
@@ -713,8 +693,7 @@ func (a *applier) setting(o op) error {
 	if len(o.Value) == 0 || len(o.Value) > maxSettingBytes {
 		return rejected("setting value must be JSON of at most %d bytes", maxSettingBytes)
 	}
-	later, err := a.isLater(`SELECT at FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, o.Name)
-	if !later {
+	if later, err := a.isLater(a.at, `SELECT at FROM settings WHERE user_id = ? AND name = ?`, a.sess.UserID, o.Name); !later {
 		return err
 	}
 	var n int
@@ -725,51 +704,36 @@ func (a *applier) setting(o op) error {
 	if n >= maxSettings {
 		return rejected("more than %d settings", maxSettings)
 	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO settings (user_id, name, value, at, version) VALUES (?, ?, ?, ?, ?)
+	return a.write(`INSERT INTO settings (version, user_id, name, value, at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value, at = excluded.at, version = excluded.version`,
-		a.sess.UserID, o.Name, string(o.Value), a.at, v)
-	return err
+		a.sess.UserID, o.Name, string(o.Value), a.at)
 }
 
-// isLater reports whether this op is at least as new as the row q finds (an
-// "at" column), or there is none: the later change wins.
-func (a *applier) isLater(q string, args ...any) (bool, error) {
-	var at string
-	err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&at)
+// isLater reports whether a change made at `at` is at least as new as the
+// row q finds (an "at" column), or there is none: the later change wins.
+func (a *applier) isLater(at, q string, args ...any) (bool, error) {
+	var old string
+	err := a.tx.QueryRowContext(a.ctx, q, args...).Scan(&old)
 	if errors.Is(err, sql.ErrNoRows) {
 		return true, nil
 	}
-	return err == nil && a.at >= at, err
+	return err == nil && at >= old, err
 }
 
 func (a *applier) playbackState(o op) error {
-	var at string
-	err := a.tx.QueryRowContext(a.ctx, `SELECT at FROM now_playing WHERE user_id = ?`, a.sess.UserID).Scan(&at)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if later, err := a.isLater(a.at, `SELECT at FROM now_playing WHERE user_id = ?`, a.sess.UserID); !later {
 		return err
-	}
-	if err == nil && a.at < at {
-		return nil
 	}
 	var device string
 	if err := a.tx.QueryRowContext(a.ctx, `SELECT name FROM devices WHERE id = ?`, a.sess.DeviceID).Scan(&device); err != nil {
 		return err
 	}
-	v, err := a.bump()
-	if err != nil {
-		return err
-	}
-	_, err = a.tx.ExecContext(a.ctx, `INSERT INTO now_playing (user_id, device_id, device_name, queue_id, song_id, position_ms,
-		playing, at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	return a.write(`INSERT INTO now_playing (version, user_id, device_id, device_name, queue_id, song_id, position_ms,
+		playing, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id) DO UPDATE SET device_id = excluded.device_id, device_name = excluded.device_name,
 		queue_id = excluded.queue_id, song_id = excluded.song_id, position_ms = excluded.position_ms,
 		playing = excluded.playing, at = excluded.at, version = excluded.version`,
-		a.sess.UserID, a.sess.DeviceID, device, o.Queue, o.Song, max(o.PositionMS, 0), o.Playing, a.at, v)
-	return err
+		a.sess.UserID, a.sess.DeviceID, device, o.Queue, o.Song, max(o.PositionMS, 0), o.Playing, a.at)
 }
 
 // ---- playlists: the .m3u8 files are the truth (plan 005) ----
@@ -784,20 +748,18 @@ type playlistRow struct {
 }
 
 func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
+	col, key := "client_ref", any(nil)
+	if r, ok := strings.CutPrefix(ref, "ref:"); ok {
+		key = r
+	} else if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
+		col, key = "id", id
+	} else {
+		return nil, rejected("bad playlist reference %q", ref)
+	}
 	p := &playlistRow{}
 	var deleted bool
-	var err error
-	if r, ok := strings.CutPrefix(ref, "ref:"); ok {
-		err = a.tx.QueryRowContext(a.ctx, `SELECT id, path, name, owner_id, deleted FROM playlists WHERE client_ref = ?`, r).
-			Scan(&p.ID, &p.Path, &p.Name, &p.Owner, &deleted)
-	} else {
-		id, perr := strconv.ParseInt(ref, 10, 64)
-		if perr != nil {
-			return nil, rejected("bad playlist reference %q", ref)
-		}
-		err = a.tx.QueryRowContext(a.ctx, `SELECT id, path, name, owner_id, deleted FROM playlists WHERE id = ?`, id).
-			Scan(&p.ID, &p.Path, &p.Name, &p.Owner, &deleted)
-	}
+	err := a.tx.QueryRowContext(a.ctx, `SELECT id, path, name, owner_id, deleted FROM playlists WHERE `+col+` = ?`, key).
+		Scan(&p.ID, &p.Path, &p.Name, &p.Owner, &deleted)
 	if errors.Is(err, sql.ErrNoRows) || deleted {
 		return nil, rejected("no playlist %s", ref)
 	}
@@ -809,9 +771,7 @@ func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
 		return nil, rejected("playlist %s is not yours to edit", ref)
 	}
 	// The file is the truth: pick up changes made to it outside Dhun first.
-	err = library.RefreshPlaylist(a.ctx, a.tx, a.s.Root, p.Path, p.ID, p.Owner, func() (int64, error) {
-		return store.NextLibraryVersion(a.ctx, a.tx)
-	})
+	err = library.RefreshPlaylist(a.ctx, a.tx, a.s.Root, p.Path, p.ID, p.Owner)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, rejected("playlist %s was removed from the Playlists folder", ref)
 	}
@@ -851,29 +811,17 @@ func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
 	return p, rows.Err()
 }
 
-func songEntry(path, title, artist string, durMS int64) library.WriteEntry {
-	t := title
-	if artist != "" {
-		t = artist + " - " + title
-	}
-	return library.WriteEntry{SongPath: path, Title: t, DurationS: int(durMS / 1000)}
-}
-
 func (a *applier) songEntries(ids []int64) ([]library.WriteEntry, error) {
-	if len(ids) > maxSongsPerOp {
-		return nil, rejected("more than %d songs in one operation", maxSongsPerOp)
-	}
 	// The songs are fetched in the same chunks songsExist uses, not one query
 	// each: a replaced playlist may name 20,000 songs.
+	lookups, err := songLookups(ids)
+	if err != nil {
+		return nil, err
+	}
 	entries := map[int64]library.WriteEntry{}
-	uniq := slices.Compact(slices.Sorted(slices.Values(ids)))
-	for chunk := range slices.Chunk(uniq, songsPerLookup) {
-		q := `SELECT id, kind, path, title, artist, duration_ms FROM songs WHERE id IN (?` + strings.Repeat(",?", len(chunk)-1) + `)`
-		args := make([]any, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-		}
-		rows, err := a.tx.QueryContext(a.ctx, q, args...)
+	for chunk := range lookups {
+		in, args := inList(chunk)
+		rows, err := a.tx.QueryContext(a.ctx, `SELECT id, kind, path, title, artist, duration_ms FROM songs WHERE id IN `+in, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -890,7 +838,10 @@ func (a *applier) songEntries(ids []int64) ([]library.WriteEntry, error) {
 				rows.Close()
 				return nil, rejected("only music can go in a playlist")
 			}
-			entries[id] = songEntry(p, t, ar, d)
+			if ar != "" {
+				t = ar + " - " + t
+			}
+			entries[id] = library.WriteEntry{SongPath: p, Title: t, DurationS: int(d / 1000)}
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
@@ -921,13 +872,13 @@ func indexOf(ids []int64, song int64, n int) int {
 	return -1
 }
 
-func (a *applier) savePlaylist(p *playlistRow, rel string) error {
+// savePlaylist writes p's file at rel and re-indexes it, returning its ID.
+func (a *applier) savePlaylist(p *playlistRow, rel string) (int64, error) {
 	v, err := store.NextLibraryVersion(a.ctx, a.tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = library.SavePlaylist(a.ctx, a.tx, a.s.Root, a.s.DataDir, rel, p.ID, p.Owner, p.Name, p.entries, v)
-	return err
+	return library.SavePlaylist(a.ctx, a.tx, a.s.Root, a.s.DataDir, rel, p.ID, p.Owner, p.Name, p.entries, v)
 }
 
 func (a *applier) playlistCreate(o op) error {
@@ -950,11 +901,7 @@ func (a *applier) playlistCreate(o op) error {
 		return rejected("%v", err)
 	}
 	p := &playlistRow{Name: strings.TrimSpace(o.Name), Owner: sql.NullInt64{Int64: a.sess.UserID, Valid: true}, entries: entries}
-	v, err := store.NextLibraryVersion(a.ctx, a.tx)
-	if err != nil {
-		return err
-	}
-	id, err := library.SavePlaylist(a.ctx, a.tx, a.s.Root, a.s.DataDir, rel, 0, p.Owner, p.Name, p.entries, v)
+	id, err := a.savePlaylist(p, rel)
 	if err != nil {
 		return err
 	}
@@ -1000,15 +947,7 @@ func (a *applier) playlistEdit(o op) error {
 		if err != nil {
 			return err
 		}
-		at := len(p.entries)
-		if o.After != nil {
-			if *o.After == 0 {
-				at = 0
-			} else if i := indexOf(p.songIDs, *o.After, o.AfterOccurrence); i >= 0 {
-				at = i + 1
-			}
-		}
-		p.entries = slices.Insert(p.entries, at, entries...)
+		p.entries = slices.Insert(p.entries, insertAt(p.songIDs, o.After, o.AfterOccurrence), entries...)
 	case "playlist.remove":
 		i := indexOf(p.songIDs, o.Song, o.Occurrence)
 		if i < 0 {
@@ -1023,21 +962,14 @@ func (a *applier) playlistEdit(o op) error {
 		e := p.entries[i]
 		p.entries = slices.Delete(p.entries, i, i+1)
 		ids := slices.Delete(slices.Clone(p.songIDs), i, i+1)
-		at := len(p.entries)
-		if o.After != nil {
-			if *o.After == 0 {
-				at = 0
-			} else if j := indexOf(ids, *o.After, o.AfterOccurrence); j >= 0 {
-				at = j + 1
-			}
-		}
-		p.entries = slices.Insert(p.entries, at, e)
+		p.entries = slices.Insert(p.entries, insertAt(ids, o.After, o.AfterOccurrence), e)
 	case "playlist.replace":
 		if p.entries, err = a.songEntries(o.Songs); err != nil {
 			return err
 		}
 	}
-	return a.savePlaylist(p, rel)
+	_, err = a.savePlaylist(p, rel)
+	return err
 }
 
 // ---- pull ----
@@ -1065,40 +997,21 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		Repeat      string          `json:"repeat,omitempty"`
 		UsedAt      string          `json:"usedAt,omitempty"`
 	}
-	queues := []queueJSON{}
-	rows, err := tx.QueryContext(ctx, `SELECT id, deleted, name, songs, current_song, position_ms, shuffle, repeat, used_at
-		FROM queues WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0) ORDER BY used_at DESC`, userID, since, since)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var q queueJSON
-		var songs string
-		if err := rows.Scan(&q.ID, &q.Deleted, &q.Name, &songs, &q.CurrentSong, &q.PositionMS, &q.Shuffle, &q.Repeat, &q.UsedAt); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if q.Deleted {
-			q = queueJSON{ID: q.ID, Deleted: true}
-		} else {
-			q.Songs = json.RawMessage(songs)
-		}
-		queues = append(queues, q)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	favs, err := marks(ctx, tx, "favorites", userID, since)
-	if err != nil {
-		return nil, err
-	}
-	later, err := marks(ctx, tx, "listen_later", userID, since)
-	if err != nil {
-		return nil, err
-	}
-	played, err := marks(ctx, tx, "played", userID, since)
+	// Each list is what changed since the cursor. A full pull (since 0) leaves
+	// out tombstones: the client has nothing to delete.
+	changed := []any{userID, since, since}
+	queues, err := store.Rows(ctx, tx, `SELECT id, deleted, name, songs, current_song, position_ms, shuffle, repeat, used_at
+		FROM queues WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0) ORDER BY used_at DESC`, changed,
+		func(r *sql.Rows) (q queueJSON, err error) {
+			var songs string
+			err = r.Scan(&q.ID, &q.Deleted, &q.Name, &songs, &q.CurrentSong, &q.PositionMS, &q.Shuffle, &q.Repeat, &q.UsedAt)
+			if q.Deleted {
+				q = queueJSON{ID: q.ID, Deleted: true}
+			} else {
+				q.Songs = json.RawMessage(songs)
+			}
+			return q, err
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -1109,44 +1022,29 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		PositionMS int64  `json:"positionMs,omitempty"`
 		At         string `json:"at,omitempty"`
 	}
-	resume := []resumeJSON{}
-	rows, err = tx.QueryContext(ctx, `SELECT song_id, deleted, position_ms, at FROM resume_points
-		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, userID, since, since)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var p resumeJSON
-		if err := rows.Scan(&p.Song, &p.Deleted, &p.PositionMS, &p.At); err != nil {
-			rows.Close()
-			return nil, err
-		}
+	resume, err := store.Rows(ctx, tx, `SELECT song_id, deleted, position_ms, at FROM resume_points
+		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, changed, func(r *sql.Rows) (p resumeJSON, err error) {
+		err = r.Scan(&p.Song, &p.Deleted, &p.PositionMS, &p.At)
 		if p.Deleted {
 			p = resumeJSON{Song: p.Song, Deleted: true}
 		}
-		resume = append(resume, p)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	settings := map[string]json.RawMessage{}
-	rows, err = tx.QueryContext(ctx, `SELECT name, value FROM settings WHERE user_id = ? AND version > ?`, userID, since)
+		return p, err
+	})
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var name, value string
-		if err := rows.Scan(&name, &value); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		settings[name] = json.RawMessage(value)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+
+	pairs, err := store.Rows(ctx, tx, `SELECT name, value FROM settings WHERE user_id = ? AND version > ?`, []any{userID, since},
+		func(r *sql.Rows) (nv [2]string, err error) {
+			err = r.Scan(&nv[0], &nv[1])
+			return nv, err
+		})
+	if err != nil {
 		return nil, err
+	}
+	settings := map[string]json.RawMessage{}
+	for _, nv := range pairs {
+		settings[nv[0]] = json.RawMessage(nv[1])
 	}
 
 	type bookmarkJSON struct {
@@ -1157,25 +1055,15 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 		Note       string `json:"note,omitempty"`
 		At         string `json:"at,omitempty"`
 	}
-	bookmarks := []bookmarkJSON{}
-	rows, err = tx.QueryContext(ctx, `SELECT id, deleted, song_id, position_ms, note, at FROM bookmarks
-		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, userID, since, since)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var b bookmarkJSON
-		if err := rows.Scan(&b.ID, &b.Deleted, &b.Song, &b.PositionMS, &b.Note, &b.At); err != nil {
-			rows.Close()
-			return nil, err
-		}
+	bookmarks, err := store.Rows(ctx, tx, `SELECT id, deleted, song_id, position_ms, note, at FROM bookmarks
+		WHERE user_id = ? AND version > ? AND NOT (deleted AND ? = 0)`, changed, func(r *sql.Rows) (b bookmarkJSON, err error) {
+		err = r.Scan(&b.ID, &b.Deleted, &b.Song, &b.PositionMS, &b.Note, &b.At)
 		if b.Deleted {
 			b = bookmarkJSON{ID: b.ID, Deleted: true}
 		}
-		bookmarks = append(bookmarks, b)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		return b, err
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -1183,36 +1071,28 @@ func (s *Server) pullSince(ctx context.Context, userID, since int64) (map[string
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"version": version, "queues": queues, "favorites": favs, "listenLater": later, "played": played, "resume": resume,
-		"bookmarks": bookmarks, "settings": settings, "nowPlaying": np}, nil
+	out := map[string]any{"version": version, "queues": queues, "resume": resume, "bookmarks": bookmarks,
+		"settings": settings, "nowPlaying": np}
+	// The special lists. table is a constant, never input.
+	for key, table := range map[string]string{"favorites": "favorites", "listenLater": "listen_later", "played": "played"} {
+		if out[key], err = store.Rows(ctx, tx, `SELECT song_id, deleted, at FROM `+table+` WHERE user_id = ? AND version > ?
+			AND NOT (deleted AND ? = 0)`, changed, func(r *sql.Rows) (m markJSON, err error) {
+			err = r.Scan(&m.Song, &m.Deleted, &m.At)
+			if m.Deleted {
+				m.At = ""
+			}
+			return m, err
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 type markJSON struct {
 	Song    int64  `json:"song"`
 	Deleted bool   `json:"deleted,omitempty"`
 	At      string `json:"at,omitempty"` // when it was added: the lists show newest first
-}
-
-// marks returns a special list's changes since the cursor.
-func marks(ctx context.Context, tx *sql.Tx, table string, userID, since int64) ([]markJSON, error) {
-	out := []markJSON{}
-	rows, err := tx.QueryContext(ctx, `SELECT song_id, deleted, at FROM `+table+` WHERE user_id = ? AND version > ?
-		AND NOT (deleted AND ? = 0)`, userID, since, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var m markJSON
-		if err := rows.Scan(&m.Song, &m.Deleted, &m.At); err != nil {
-			return nil, err
-		}
-		if m.Deleted {
-			m.At = ""
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
 }
 
 type nowPlayingJSON struct {
@@ -1259,28 +1139,21 @@ const countedPercent = 50
 // for sorting by most / recently played on the client. Music only: an
 // episode or a book has played marks instead (plan 031).
 func (s *Server) playCounts(w http.ResponseWriter, r *http.Request, sess session) {
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT p.song_id, count(*), max(p.at)
-		FROM plays p JOIN songs s ON s.id = p.song_id
-		WHERE p.user_id = ? AND s.kind = 'music' AND p.ms_played > 0 AND p.ms_played * 100 >= s.duration_ms * ?
-		GROUP BY p.song_id`, sess.UserID, countedPercent)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer rows.Close()
 	type pc struct {
 		Song       int64  `json:"song"`
 		Count      int    `json:"count"`
 		LastPlayed string `json:"lastPlayedAt"`
 	}
-	out := []pc{}
-	for rows.Next() {
-		var p pc
-		if err := rows.Scan(&p.Song, &p.Count, &p.LastPlayed); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		out = append(out, p)
+	out, err := store.Rows(r.Context(), s.DB, `SELECT p.song_id, count(*), max(p.at)
+		FROM plays p JOIN songs s ON s.id = p.song_id
+		WHERE p.user_id = ? AND s.kind = 'music' AND p.ms_played > 0 AND p.ms_played * 100 >= s.duration_ms * ?
+		GROUP BY p.song_id`, []any{sess.UserID, countedPercent}, func(rows *sql.Rows) (p pc, err error) {
+		err = rows.Scan(&p.Song, &p.Count, &p.LastPlayed)
+		return p, err
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	writeJSON(w, r, map[string]any{"plays": out})
 }

@@ -3,6 +3,7 @@ package library
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -149,11 +150,7 @@ func splitNames(values []string) []string {
 
 // leadingInt parses "2014-05-01" → 2014 and "3/12" → 3.
 func leadingInt(s string) int {
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
-	}
-	n, _ := strconv.Atoi(s[:end])
+	n, _ := strconv.Atoi(s[:digitRun(s)])
 	return n
 }
 
@@ -169,27 +166,28 @@ func titleFromFileName(rel string) string {
 // quickHash identifies a file's content cheaply: SHA-256 of its size plus
 // the first and last 64 KB. Hashing whole files would read the entire
 // collection from HDD on every scan; at this scale a collision between two
-// different songs is not a realistic risk (plan 005).
-func quickHash(abs string, size int64) ([]byte, error) {
+// different songs is not a realistic risk (plan 005). It is in upper-case
+// hex, as SQLite's hex() gives the stored one back.
+func quickHash(abs string, size int64) (string, error) {
 	f, err := os.Open(abs)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
 	binary.Write(h, binary.LittleEndian, size)
 	const chunk = 64 << 10
 	if _, err := io.CopyN(h, f, chunk); err != nil && err != io.EOF {
-		return nil, err
+		return "", err
 	}
 	if size > 2*chunk {
 		if _, err := f.Seek(-chunk, io.SeekEnd); err != nil {
-			return nil, err
+			return "", err
 		}
 	}
 	// Small files: the rest of the file; large ones: the last 64 KB.
 	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
+		return "", err
 	}
-	return h.Sum(nil), nil
+	return fmt.Sprintf("%X", h.Sum(nil)), nil
 }

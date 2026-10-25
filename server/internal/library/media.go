@@ -44,15 +44,14 @@ var decodeSlots = make(chan struct{}, 2)
 // file, the same order Musicolet uses. size > 0 scales the longest side down
 // to size pixels and re-encodes as JPEG; the original is never upscaled.
 func Art(f SongFile, size int) (data []byte, mimeType string, err error) {
-	root := f.Root
 	switch {
 	case f.EmbeddedArt:
-		data, err = taglib.ReadImage(abs(root, f.Path))
+		data, err = taglib.ReadImage(abs(f.Root, f.Path))
 		if err == nil && len(data) == 0 {
 			err = ErrNone
 		}
 	case f.FolderArt != "":
-		data, err = os.ReadFile(abs(root, path.Join(path.Dir(f.Path), f.FolderArt)))
+		data, err = os.ReadFile(abs(f.Root, path.Join(path.Dir(f.Path), f.FolderArt)))
 	default:
 		return nil, "", ErrNone
 	}
@@ -115,22 +114,21 @@ var lrcTimestamp = regexp.MustCompile(`(?m)^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]
 // those and they are usually synced, while embedded lyrics often are not.
 // An episode's transcript comes last, converted to LRC.
 func ReadLyrics(f SongFile) (Lyrics, error) {
-	root := f.Root
 	if f.Lrc {
-		if dir, err := os.ReadDir(abs(root, path.Dir(f.Path))); err == nil {
+		if dir, err := os.ReadDir(abs(f.Root, path.Dir(f.Path))); err == nil {
 			names := make([]string, len(dir))
 			for i, e := range dir {
 				names[i] = e.Name()
 			}
 			if n := lrcName(names, path.Base(f.Path), f.Spoken); n != "" {
-				if data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), n))); err == nil {
+				if data, err := os.ReadFile(abs(f.Root, path.Join(path.Dir(f.Path), n))); err == nil {
 					return makeLyrics("lrc", spokenLRC(f, string(data))), nil
 				}
 			}
 		}
 	}
 	if f.EmbeddedLyrics {
-		m, err := taglib.ReadTags(abs(root, f.Path))
+		m, err := taglib.ReadTags(abs(f.Root, f.Path))
 		if err != nil {
 			return Lyrics{}, err
 		}
@@ -145,7 +143,7 @@ func ReadLyrics(f SongFile) (Lyrics, error) {
 		}
 	}
 	if f.Transcript != "" {
-		data, err := os.ReadFile(abs(root, path.Join(path.Dir(f.Path), f.Transcript)))
+		data, err := os.ReadFile(abs(f.Root, path.Join(path.Dir(f.Path), f.Transcript)))
 		if err != nil {
 			return Lyrics{}, err
 		}

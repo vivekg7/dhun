@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/vivekg7/dhun/server/internal/library"
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
 type songJSON struct {
@@ -226,7 +227,7 @@ func (s *Server) songFile(r *http.Request) (library.SongFile, int64, error) {
 		return f, 0, errNotFound("song")
 	}
 	f.Root = s.Scanner.RootOf(kind)
-	f.Spoken = kind != "music"
+	f.Spoken = kind != library.KindMusic
 	return f, version, err
 }
 
@@ -340,41 +341,33 @@ func (s *Server) thumbs(w http.ResponseWriter, r *http.Request, _ session) {
 		s.fail(w, r, errBadRequest(fmt.Sprintf("send 1 to %d keys", maxThumbs)))
 		return
 	}
-	args := make([]any, len(req.Keys))
 	out := make(map[string]string, len(req.Keys))
-	for i, k := range req.Keys {
-		args[i] = k
+	for _, k := range req.Keys {
 		out[k] = ""
 	}
-	rows, err := s.DB.QueryContext(r.Context(), `SELECT art, id, kind, path, embedded_art, embedded_lyrics, folder_art, lrc, version
-		FROM songs WHERE missing_since IS NULL AND art IN (?`+strings.Repeat(", ?", len(args)-1)+`) ORDER BY id`, args...)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
+	in, args := inList(req.Keys)
 	type song struct {
+		key     string
 		id      int64
 		f       library.SongFile
 		version int64
 	}
-	found := map[string]song{}
-	for rows.Next() {
-		var key, kind string
-		var x song
-		if err := rows.Scan(&key, &x.id, &kind, &x.f.Path, &x.f.EmbeddedArt, &x.f.EmbeddedLyrics, &x.f.FolderArt, &x.f.Lrc, &x.version); err != nil {
-			rows.Close()
-			s.fail(w, r, err)
-			return
-		}
+	songs, err := store.Rows(r.Context(), s.DB, `SELECT art, id, kind, path, embedded_art, embedded_lyrics, folder_art, lrc, version
+		FROM songs WHERE missing_since IS NULL AND art IN `+in+` ORDER BY id`, args, func(rows *sql.Rows) (x song, err error) {
+		var kind string
+		err = rows.Scan(&x.key, &x.id, &kind, &x.f.Path, &x.f.EmbeddedArt, &x.f.EmbeddedLyrics, &x.f.FolderArt, &x.f.Lrc, &x.version)
 		x.f.Root = s.Scanner.RootOf(kind)
-		if _, ok := found[key]; !ok {
-			found[key] = x // any song showing the cover will do
-		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
+		return x, err
+	})
+	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	found := map[string]song{}
+	for _, x := range songs {
+		if _, ok := found[x.key]; !ok {
+			found[x.key] = x // any song showing the cover will do
+		}
 	}
 	for key, x := range found {
 		data, _, err := s.scaledArt(strconv.FormatInt(x.id, 10), x.f, x.version, thumbSize)

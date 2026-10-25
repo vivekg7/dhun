@@ -29,8 +29,8 @@ const (
 	argonKeyLen  = 32
 )
 
-// HashPassword returns an encoded argon2id hash.
-func HashPassword(password string) (string, error) {
+// hashPassword returns an encoded argon2id hash.
+func hashPassword(password string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
@@ -46,8 +46,7 @@ func checkPassword(encoded, password string) bool {
 	if len(parts) != 5 || parts[0] != "argon2id" {
 		return false
 	}
-	var m uint32
-	var t uint32
+	var m, t uint32
 	var p uint8
 	if _, err := fmt.Sscanf(parts[2], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
 		return false
@@ -67,7 +66,7 @@ func checkPassword(encoded, password string) bool {
 func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bool) error {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 64 || strings.ContainsAny(name, `/\:*?"<>|`) || strings.ContainsFunc(name, unicode.IsControl) ||
-		strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || strings.HasPrefix(name, "#") || strings.HasPrefix(name, "@") {
+		strings.ContainsAny(name[:1], "._#@") {
 		// The name is also the user's Playlists/<name>/ folder.
 		return errBadRequest("user name must be non-empty and usable as a folder name")
 	}
@@ -76,24 +75,19 @@ func CreateUser(ctx context.Context, db *sql.DB, name, password string, admin bo
 	}
 	// Compared in Go: SQLite's NOCASE folds ASCII only, and "Émile" and
 	// "émile" would otherwise share one Playlists/ folder.
-	rows, err := db.QueryContext(ctx, `SELECT name FROM users`)
+	names, err := store.Rows(ctx, db, `SELECT name FROM users`, nil, func(r *sql.Rows) (n string, err error) {
+		err = r.Scan(&n)
+		return n, err
+	})
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var other string
-		if err := rows.Scan(&other); err != nil {
-			return err
-		}
+	for _, other := range names {
 		if strings.EqualFold(other, name) {
 			return &apiError{http.StatusConflict, "user_exists", fmt.Sprintf("a user named %q already exists", other)}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	hash, err := HashPassword(password)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -128,7 +122,7 @@ func SetPassword(ctx context.Context, db *sql.DB, name, password string) error {
 	if len(password) < 8 {
 		return errBadRequest("password must be at least 8 characters")
 	}
-	hash, err := HashPassword(password)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -230,7 +224,7 @@ type userJSON struct {
 // guessing nor timing reveals much.
 var (
 	hashSlots = make(chan struct{}, 2)
-	dummyHash = sync.OnceValue(func() string { h, _ := HashPassword("not a password"); return h })
+	dummyHash = sync.OnceValue(func() string { h, _ := hashPassword("not a password"); return h })
 )
 
 const (
@@ -360,13 +354,6 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request, sess session) {
 }
 
 func (s *Server) listDevices(w http.ResponseWriter, r *http.Request, sess session) {
-	rows, err := s.DB.QueryContext(r.Context(),
-		`SELECT id, name, created_at, last_seen_at FROM devices WHERE user_id = ? ORDER BY last_seen_at DESC`, sess.UserID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer rows.Close()
 	type device struct {
 		ID       int64  `json:"id"`
 		Name     string `json:"name"`
@@ -374,15 +361,15 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request, sess sessio
 		LastSeen string `json:"lastSeenAt"`
 		Current  bool   `json:"current"`
 	}
-	out := []device{}
-	for rows.Next() {
-		var d device
-		if err := rows.Scan(&d.ID, &d.Name, &d.Created, &d.LastSeen); err != nil {
-			s.fail(w, r, err)
-			return
-		}
+	out, err := store.Rows(r.Context(), s.DB, `SELECT id, name, created_at, last_seen_at FROM devices
+		WHERE user_id = ? ORDER BY last_seen_at DESC`, []any{sess.UserID}, func(rows *sql.Rows) (d device, err error) {
+		err = rows.Scan(&d.ID, &d.Name, &d.Created, &d.LastSeen)
 		d.Current = d.ID == sess.DeviceID
-		out = append(out, d)
+		return d, err
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	writeJSON(w, r, map[string]any{"devices": out})
 }

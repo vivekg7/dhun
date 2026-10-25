@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -322,7 +322,7 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 	if r.dir == "" {
 		return nil
 	}
-	entries, err := os.ReadDir(filepath.Join(r.dir, filepath.FromSlash(rel)))
+	entries, err := os.ReadDir(abs(r.dir, rel))
 	if err != nil {
 		if rel == "" {
 			return err
@@ -330,8 +330,10 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 		s.Log.Warn("scan: cannot list folder", "path", rel, "err", err)
 		return nil
 	}
+	names := make([]string, len(entries))
 	lower := map[string]string{}
-	for _, e := range entries {
+	for i, e := range entries {
+		names[i] = e.Name()
 		lower[strings.ToLower(e.Name())] = e.Name()
 	}
 	folderArt, folderKey := "", ""
@@ -340,10 +342,6 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 			folderArt = name
 			break
 		}
-	}
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = e.Name()
 	}
 	if folderArt == "" && r.kind != KindMusic {
 		// A book's folder often holds one image under the book's own name
@@ -356,12 +354,10 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 			}
 		}
 	}
-	for _, e := range entries {
-		if e.Name() == folderArt {
-			// Not the bytes: that would read every cover on every scan.
-			if info, err := e.Info(); err == nil {
-				folderKey = artKey(fmt.Sprintf("%s\x00%d\x00%d", path.Join(rel, folderArt), info.Size(), info.ModTime().UnixNano()))
-			}
+	if i := slices.Index(names, folderArt); i >= 0 {
+		// Not the bytes: that would read every cover on every scan.
+		if info, err := entries[i].Info(); err == nil {
+			folderKey = artKey(fmt.Sprintf("%s\x00%d\x00%d", path.Join(rel, folderArt), info.Size(), info.ModTime().UnixNano()))
 		}
 	}
 	for _, e := range entries {
@@ -390,7 +386,7 @@ func (s *Scanner) walk(ctx context.Context, r root, rel string, known map[fileKe
 			kind:       r.kind,
 			transcript: transcript,
 			rel:        childRel,
-			abs:        filepath.Join(r.dir, filepath.FromSlash(childRel)),
+			abs:        abs(r.dir, childRel),
 			size:       info.Size(),
 			mtimeNS:    info.ModTime().UnixNano(),
 			folderArt:  folderArt,
@@ -408,13 +404,11 @@ func readAll(ctx context.Context, files []*seenFile) {
 	work := make(chan *seenFile)
 	var wg sync.WaitGroup
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for f := range work {
 				readOne(f)
 			}
-		}()
+		})
 	}
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -434,7 +428,7 @@ func readOne(f *seenFile) {
 			f.err = fmt.Errorf("tag reader panicked: %v", r)
 		}
 	}()
-	if f.hash, f.err = hashHex(f.abs, f.size); f.err != nil {
+	if f.hash, f.err = quickHash(f.abs, f.size); f.err != nil {
 		return
 	}
 	if f.tags, f.err = readTags(f.abs, f.rel, f.kind != KindMusic); f.err != nil {
@@ -457,11 +451,6 @@ func readOne(f *seenFile) {
 func artKey(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:8])
-}
-
-func hashHex(abs string, size int64) (string, error) {
-	h, err := quickHash(abs, size)
-	return fmt.Sprintf("%X", h), err // upper-case, to match SQLite's hex()
 }
 
 func songArgs(f *seenFile) []any {

@@ -10,26 +10,28 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/vivekg7/dhun/server/internal/store"
 )
 
-// SpecialLists are the playlists every user has and cannot delete
+// specialLists are the playlists every user has and cannot delete
 // (docs/plans/010_special_playlists.md). Their truth is the table; the file
 // in Playlists/<user>/ is a copy written once a night by ExportSpecial, so
 // no user action ever writes to the music share for them.
-var SpecialLists = []struct{ Table, Name string }{
+var specialLists = []struct{ Table, Name string }{
 	{"favorites", "Favorites"},
 	{"listen_later", "Listen Later"},
 }
 
-// IsSpecialFile reports whether rel is where a user's special list is
+// isSpecialFile reports whether rel is where a user's special list is
 // exported: Playlists/<user>/Favorites.m3u8 and the like. Compared ignoring
 // case, as a Mac sees the share.
-func IsSpecialFile(rel string) bool {
+func isSpecialFile(rel string) bool {
 	parts := strings.Split(rel, "/")
 	if len(parts) != 3 || parts[0] != PlaylistsDir {
 		return false
 	}
-	for _, l := range SpecialLists {
+	for _, l := range specialLists {
 		if strings.EqualFold(parts[2], l.Name+".m3u8") {
 			return true
 		}
@@ -42,28 +44,13 @@ func IsSpecialFile(rel string) bool {
 // only when its content changed, after the usual copy of the old one, and an
 // empty list that never had a file gets none.
 func ExportSpecial(ctx context.Context, db *sql.DB, root, data string, now time.Time) (written int, err error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, name FROM users ORDER BY id`)
+	users, err := allUsers(ctx, db)
 	if err != nil {
 		return 0, err
 	}
-	type user struct {
-		id   int64
-		name string
-	}
-	var users []user
-	for rows.Next() {
-		var u user
-		if err := rows.Scan(&u.id, &u.name); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		users = append(users, u)
-	}
-	rows.Close()
-
 	var errs []error
 	for _, u := range users {
-		for _, l := range SpecialLists {
+		for _, l := range specialLists {
 			ok, err := exportList(ctx, db, root, data, u.id, path.Join(PlaylistsDir, u.name, l.Name+".m3u8"), l.Table, l.Name, now)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s's %s: %w", u.name, l.Name, err))
@@ -76,9 +63,22 @@ func ExportSpecial(ctx context.Context, db *sql.DB, root, data string, now time.
 	return written, errors.Join(errs...)
 }
 
+type user struct {
+	id   int64
+	name string
+}
+
+// allUsers lists every user, oldest first.
+func allUsers(ctx context.Context, db store.Querier) ([]user, error) {
+	return store.Rows(ctx, db, `SELECT id, name FROM users ORDER BY id`, nil, func(r *sql.Rows) (u user, err error) {
+		err = r.Scan(&u.id, &u.name)
+		return u, err
+	})
+}
+
 func exportList(ctx context.Context, db *sql.DB, root, data string, userID int64, rel, table, name string,
 	now time.Time) (bool, error) {
-	// table is one of SpecialLists' names, never input.
+	// table is one of specialLists' names, never input.
 	rows, err := db.QueryContext(ctx, `SELECT s.path, s.title, s.artist, s.duration_ms FROM `+table+` t
 		JOIN songs s ON s.id = t.song_id WHERE t.user_id = ? AND NOT t.deleted
 		AND s.kind = 'music' -- the file's paths are relative to Music (plan 031)
@@ -104,7 +104,7 @@ func exportList(ctx context.Context, db *sql.DB, root, data string, userID int64
 			rows.Close()
 			return false, err
 		}
-		fmt.Fprintf(&b, "#EXTINF:%d,%s\n%s\n", durMS/1000, oneLine(title), filepath.ToSlash(r))
+		fmt.Fprintf(&b, "#EXTINF:%d,%s\n%s\n", durMS/1000, OneLine(title), filepath.ToSlash(r))
 		n++
 	}
 	rows.Close()
