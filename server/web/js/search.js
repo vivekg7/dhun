@@ -363,6 +363,7 @@ export class Index {
         let id = this.ids.get(w);
         if (id === undefined) {
           id = this.words.length;
+          this.ids.set(w, id);
           this.words.push(w);
           this.keys.push(key(w));
           this.open.push(false);

@@ -78,6 +78,11 @@ test("filters narrow a word to a field", () => {
   assert.deepEqual(find('artist:"arijit singh" tum'), [1]);
 });
 
+test("a word is folded once, however many items have it", () => {
+  // Song 1's title and song 7's album share three words.
+  assert.equal(new Set(index.build().words).size, index.words.length);
+});
+
 test("an index built a slice at a time answers as one built whole", () => {
   // Catalog.warm builds in idle time; a keystroke before it is done finishes the build.
   const sliced = songIndex(index.items);
