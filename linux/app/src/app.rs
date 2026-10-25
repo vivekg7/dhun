@@ -42,6 +42,8 @@ pub enum Change {
     Section,
     /// The pins, or the downloads' progress.
     Downloads,
+    /// The playing song's cover arrived as a file, for the media controls.
+    Art,
     /// Which songs play without the server: a download done or gone, or the server lost or found.
     Playable,
     /// Favorites, Listen Later, the played marks or the bookmarks.
@@ -169,6 +171,21 @@ impl App {
     /// returns false once the view is gone.
     pub fn listen(&self, f: impl Fn(Change) -> bool + 'static) {
         self.listeners.borrow_mut().push(Rc::new(f));
+    }
+
+    /// Calls `f` on every change while `w` lives. For the many cells of a
+    /// list: a flag is cheaper than upgrading weak references at every
+    /// change, four a second while playing.
+    pub fn listen_while(&self, w: &impl IsA<gtk::Widget>, f: impl Fn(Change) + 'static) {
+        let alive = Rc::new(Cell::new(true));
+        let a = alive.clone();
+        w.connect_destroy(move |_| a.set(false));
+        self.listen(move |c| {
+            if alive.get() {
+                f(c);
+            }
+            alive.get()
+        });
     }
 
     /// Tells every listener. A listener may announce a change of its own,

@@ -185,16 +185,22 @@ impl Playback {
         self.app.queues.borrow().iter().find(|q| q.id == id).cloned()
     }
 
+    /// `f` of the playing queue, without copying its songs, 31,000 in "All songs".
+    pub fn active_with<T>(&self, f: impl FnOnce(&QueueRow) -> T) -> Option<T> {
+        let id = self.active_id();
+        self.app.queues.borrow().iter().find(|q| q.id == id).map(f)
+    }
+
     /// The queues in the user's order, numbered from 1 as in Musicolet (plan 020).
     pub fn ordered(&self) -> Vec<QueueRow> {
         queue::order_of(&self.app.queues.borrow(), self.app.settings.borrow().get(synced::QUEUE_ORDER))
     }
 
     pub fn shuffle(&self) -> bool {
-        self.active().is_some_and(|q| q.shuffle)
+        self.active_with(|q| q.shuffle).unwrap_or(false)
     }
     pub fn repeat_mode(&self) -> String {
-        self.active().map_or("off".into(), |q| q.repeat_mode)
+        self.active_with(|q| q.repeat_mode.clone()).unwrap_or_else(|| "off".into())
     }
 
     /// Every episode and book file keeps its place, however short (plan 031).
@@ -996,7 +1002,12 @@ impl Playback {
         q.current_song = s.id;
         q.position_ms = start_ms;
         self.app.store(|db| store::set_current(db, &q));
-        self.app.reload_queues();
+        // The working copy as stored, without reading every queue back.
+        if let Some(w) = self.app.queues.borrow_mut().iter_mut().find(|w| w.id == q.id) {
+            w.current_song = q.current_song;
+            w.position_ms = q.position_ms;
+        }
+        self.app.changed(Change::Queues);
         // The next song, for a hand-off from another device.
         if self.is_playing() {
             self.report(&q, s, start_ms, true);
@@ -1095,13 +1106,23 @@ impl Playback {
         st.items.iter().position(|s| s == id)
     }
 
-    /// What the engine reads for the song after the one it decodes.
+    /// What the engine reads for the song after the one it decodes: the
+    /// playing song and the three after it, more than it reaches before the
+    /// next song change publishes again. The whole queue, 31,000 songs with
+    /// a speed each, took 15–20 ms, twice on every Next.
     fn publish_upcoming(&self) {
         let st = self.st.borrow();
         let up = Upcoming { order: st.order.clone(), repeat_mode: self.repeat_mode(), pause_after: self.pause_after() };
         let c = self.app.catalog();
-        let songs: HashMap<i64, SongRef> =
-            st.items.iter().filter_map(|i| c.by_id.get(i).map(|s| (*i, s.clone()))).collect();
+        let mut songs = HashMap::new();
+        let mut at = st.current.as_ref().map(|s| s.id);
+        for _ in 0..4 {
+            let Some(id) = at else { break };
+            if let Some(s) = c.by_id.get(&id) {
+                songs.insert(id, s.clone());
+            }
+            at = up.next(id);
+        }
         // Each song's speed, for a gapless start at it.
         let (settings, everyday) = (self.app.settings.borrow(), self.app.prefs.get().everyday());
         let speeds = songs.values().map(|s| (s.id, tempo_in(s, &settings, everyday).speed));

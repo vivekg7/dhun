@@ -129,7 +129,7 @@ pub fn delete_queue(db: &mut Db, id: &str) -> Result<()> {
 
 /// The queue's current song and position; only the latest is worth sending.
 pub fn set_current(db: &mut Db, q: &QueueRow) -> Result<()> {
-    db.put_queue(q)?;
+    db.set_current(&q.id, q.current_song, q.position_ms)?;
     let f = json!({ "queue": q.id, "song": q.current_song, "positionMs": q.position_ms });
     record(db, "queue.set_current", Some(format!("current:{}", q.id)), "", now(), f)
 }
@@ -328,6 +328,8 @@ mod tests {
         let current: Value = serde_json::from_str(&ops[1].2).unwrap();
         assert_eq!(current["positionMs"], 3000);
         assert_eq!(d.queues().unwrap()[0].position_ms, 3000);
+        // Only the place is written: the songs stay.
+        assert_eq!(d.queues().unwrap()[0].songs, [1, 2]);
         // Tagged with its queue, so a pull leaves the queue as edited here.
         assert!(ops[0].1.ends_with(":q1"));
     }

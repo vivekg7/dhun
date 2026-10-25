@@ -157,15 +157,14 @@ fn show_left(app: &App, item: &gtk::ListItem) {
 /// row already on screen is not bound again when only these change. A
 /// resume point is kept at a pause, and goes when its file plays to the end.
 fn follow_kept(app: &Rc<App>, item: &gtk::ListItem) {
+    let Some(cell) = item.child() else { return };
     let (a, w) = (app.clone(), item.downgrade());
-    app.listen(move |c| {
-        let Some(item) = w.upgrade() else { return false };
-        match c {
-            Change::Playable => show_kept(&a, &item),
-            Change::Playback | Change::Marks => show_left(&a, &item),
-            _ => {}
+    app.listen_while(&cell, move |c| {
+        if !matches!(c, Change::Playable | Change::Playback | Change::Marks) {
+            return;
         }
-        true
+        let Some(item) = w.upgrade() else { return };
+        if c == Change::Playable { show_kept(&a, &item) } else { show_left(&a, &item) }
     });
 }
 

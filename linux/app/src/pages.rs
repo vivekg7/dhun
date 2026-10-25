@@ -418,12 +418,13 @@ fn albums_grid(nav: &Rc<Nav>, albums: Vec<Arc<Album>>) -> gtk::Widget {
         item.set_child(Some(&b));
         // The cell is recycled: the mark follows the album it shows.
         let (a, w, m) = (a.clone(), item.downgrade(), mark.downgrade());
-        a.clone().listen(move |c| {
-            let (Some(item), Some(mark)) = (w.upgrade(), m.upgrade()) else { return false };
-            if c == Change::Downloads {
+        a.clone().listen_while(&b, move |c| {
+            if c != Change::Downloads {
+                return;
+            }
+            if let (Some(item), Some(mark)) = (w.upgrade(), m.upgrade()) {
                 album_mark(&a, &item, &mark);
             }
-            true
         });
     });
     let (a, settled) = (app.clone(), settle.clone());

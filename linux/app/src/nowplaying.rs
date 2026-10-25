@@ -296,10 +296,15 @@ pub fn bar(
             update_position.clone(),
         );
         let (details, back, on, mark, line) = (details, back, on, mark, line.clone());
+        let shown = Cell::new(i64::MIN);
         move || {
             let cur = pb.current();
             b.set_sensitive(cur.is_some());
-            art.set_child(Some(&cover(&app, cur.as_ref(), 48)));
+            // Made again only for another song: the bar updates two or three times a song change.
+            let id = cur.as_ref().map_or(0, |s| s.id);
+            if shown.replace(id) != id {
+                art.set_child(Some(&cover(&app, cur.as_ref(), 48)));
+            }
             title.set_label(cur.as_ref().map_or("Nothing playing", |s| s.title.as_str()));
             line();
             let spoken = cur.as_ref().is_some_and(|s| s.spoken());
@@ -516,8 +521,7 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
     let update = {
         let (app, holder, current) = (app.clone(), holder.clone(), current.clone());
         move || {
-            let q = pb.active();
-            name.set_label(&q.as_ref().map_or("No queue".to_string(), |q| q.name.clone()));
+            name.set_label(&pb.active_with(|q| q.name.clone()).unwrap_or_else(|| "No queue".into()));
             let key = (pb.active_id(), pb.items(), Arc::as_ptr(&app.catalog()) as usize);
             let same = *shown.borrow() == key;
             if !same {
@@ -599,9 +603,20 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
         }
     };
     update();
+    // Kept current only while on screen, and brought up to date when shown:
+    // GTK styles a hidden panel's new rows all the same.
+    let (update, stale) = (Rc::new(update), Rc::new(Cell::new(false)));
+    let (u, s) = (update.clone(), stale.clone());
+    b.connect_map(move |_| {
+        if s.replace(false) {
+            u();
+        }
+    });
+    let w = b.downgrade();
     app.listen(move |c| {
+        let Some(b) = w.upgrade() else { return false };
         if matches!(c, Change::Playback | Change::Queues | Change::Catalog) {
-            update();
+            if b.is_mapped() { update() } else { stale.set(true) }
         }
         true
     });

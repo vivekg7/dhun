@@ -273,6 +273,14 @@ impl Db {
         Ok(())
     }
 
+    /// A queue's current song and place, without writing its songs again:
+    /// joining and writing 31,000 of them took 3 ms at every song change.
+    pub fn set_current(&self, id: &str, song: i64, position_ms: i64) -> Result<()> {
+        self.sql
+            .execute("UPDATE queue SET currentSong = ?, positionMs = ? WHERE id = ?", params![song, position_ms, id])?;
+        Ok(())
+    }
+
     pub fn delete_queue(&self, id: &str) -> Result<()> {
         self.sql.execute("DELETE FROM queue WHERE id = ?", [id])?;
         Ok(())

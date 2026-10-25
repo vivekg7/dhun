@@ -740,9 +740,10 @@ made again on it and GTK's first layout of them.
   now waits for the thumbnails itself, and `rebind_on_thumbs` is gone.
 
 **Left for later**, in the baseline: Next and Previous hold the main
-thread 80–185 ms while playbin3 goes to READY; an untraced 0.2–0.3 s
-pause during the first sync; 70 MB more memory than step 1, mostly
-decoded thumbnails; the native build unmeasured.
+thread 80–185 ms (not while playbin3 goes to READY, as first thought;
+fixed 2026-10-25); an untraced 0.2–0.3 s pause during the first sync;
+70 MB more memory than step 1, mostly decoded thumbnails; the native
+build unmeasured.
 
 ## A pass over every feature (2026-10-24)
 

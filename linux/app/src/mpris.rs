@@ -93,7 +93,7 @@ fn serve(conn: &gio::DBusConnection, gapp: &adw::Application, app: &Rc<App>) {
     let last_position = std::cell::Cell::new(0i64);
     app.listen(move |ch| {
         match ch {
-            Change::Playback | Change::Queues => {
+            Change::Playback | Change::Queues | Change::Art => {
                 let names = [
                     "PlaybackStatus",
                     "Metadata",
@@ -202,7 +202,7 @@ fn metadata(app: &Rc<App>) -> Variant {
             }
             None => {
                 let a = app.clone();
-                app.cover(&art, 256, move |_| a.changed(Change::Playback));
+                app.cover(&art, 256, move |_| a.changed(Change::Art));
             }
         }
     }

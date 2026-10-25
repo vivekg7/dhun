@@ -263,8 +263,9 @@ both grow with the library, the views do not.
 
 **Not fixed, for the next change:**
 
-- Next and Previous hold the main thread for 80–185 ms, while playbin3
-  goes to READY (`engine.rs`); GStreamer's `call_async` would move it off.
+- Next and Previous hold the main thread for 80–185 ms. Blamed here on
+  playbin3 going to READY, which takes 2–8 ms; the rest was our own,
+  fixed on 2026-10-25 (below).
 - About 1.4 s after launch, online, the main thread stops for 210–290 ms
   while the first sync runs; not yet traced.
 - Memory rose by 70 MB since step 1, most of it decoded 128 px
@@ -285,24 +286,24 @@ over MPRIS. Scrolling and typing need test steps the release lacks, so
 those runs used a release build of the same commit with two added steps,
 run in the app's own sandbox; idle there matched the installed app.
 
-| Situation                                           | CPU, mean / peak | Memory       | Other                          |
-| --------------------------------------------------- | ---------------- | ------------ | ------------------------------ |
-| Signed out, window open                             | 0 %              | 92 MB        |                                |
-| First sync, empty folder                            | 146 % for 2 s    | 287 MB       | library in 2.4 s               |
-| … then the album thumbnails                         | 10–20 % for 50 s | 287 MB       | 4 MB/s written; DB 64 MB       |
-| Idle, the albums grid on screen                     | 0.0 %            | 303 MB       | 4 wakeups/s, no I/O, no GPU    |
-| Idle, closed to the tray                            | 0.1 %            | 298 MB       | 4 wakeups/s                    |
-| Playing, streamed, window open / closed             | 5.2 / 4.6 %      | 326 / 319 MB | 180 wakeups/s; caches ahead    |
-| Playing from the cache / in the mini player         | 5.6 / 6.2 %      | 326 / 324 MB |                                |
-| Playing at 1.25×, +2 semitones                      | 7.2 % / 34 %     | 325 MB       |                                |
-| Next every 3 s through a shuffle, 26 songs          | 15 % / 46 %      | 362 MB       | 4 MB/s into the cache          |
-| Downloading a 12-song album, 101 MB                 | 5–17 % for 30 s  | 243 MB       | then 0 %                       |
-| Typing "arijit singh" a key every 150 ms, 5 times   | 2.5 % / 11 %     | 302 MB       | no growth                      |
-| Scrolling the albums grid, 3,000 px/s               | 83 % / 115 %     | 337→389 MB   | GPU 37 ms/s, 55→138 MB         |
-| Scrolling the albums grid, 1,000 px/s               | 97 % / 111 %     | 314→407 MB   | 22 MB/s read, 5,000 wakeups/s  |
-| Scrolling the artists list, 3,000 px/s              | 42 % / 47 %      | 287→320 MB   | GPU 66 ms/s, 55→268 MB         |
-| Two album or artist pages a second, 90 s            | 53 % / 102 %     | 302→460 MB   |                                |
-| Four a second, 240 pages, then 90 s idle            | 42 % / 105 %     | 305→1,228 MB | not given back                 |
+| Situation                                         | CPU, mean / peak | Memory       | Other                         |
+| ------------------------------------------------- | ---------------- | ------------ | ----------------------------- |
+| Signed out, window open                           | 0 %              | 92 MB        |                               |
+| First sync, empty folder                          | 146 % for 2 s    | 287 MB       | library in 2.4 s              |
+| … then the album thumbnails                       | 10–20 % for 50 s | 287 MB       | 4 MB/s written; DB 64 MB      |
+| Idle, the albums grid on screen                   | 0.0 %            | 303 MB       | 4 wakeups/s, no I/O, no GPU   |
+| Idle, closed to the tray                          | 0.1 %            | 298 MB       | 4 wakeups/s                   |
+| Playing, streamed, window open / closed           | 5.2 / 4.6 %      | 326 / 319 MB | 180 wakeups/s; caches ahead   |
+| Playing from the cache / in the mini player       | 5.6 / 6.2 %      | 326 / 324 MB |                               |
+| Playing at 1.25×, +2 semitones                    | 7.2 % / 34 %     | 325 MB       |                               |
+| Next every 3 s through a shuffle, 26 songs        | 15 % / 46 %      | 362 MB       | 4 MB/s into the cache         |
+| Downloading a 12-song album, 101 MB               | 5–17 % for 30 s  | 243 MB       | then 0 %                      |
+| Typing "arijit singh" a key every 150 ms, 5 times | 2.5 % / 11 %     | 302 MB       | no growth                     |
+| Scrolling the albums grid, 3,000 px/s             | 83 % / 115 %     | 337→389 MB   | GPU 37 ms/s, 55→138 MB        |
+| Scrolling the albums grid, 1,000 px/s             | 97 % / 111 %     | 314→407 MB   | 22 MB/s read, 5,000 wakeups/s |
+| Scrolling the artists list, 3,000 px/s            | 42 % / 47 %      | 287→320 MB   | GPU 66 ms/s, 55→268 MB        |
+| Two album or artist pages a second, 90 s          | 53 % / 102 %     | 302→460 MB   |                               |
+| Four a second, 240 pages, then 90 s idle          | 42 % / 105 %     | 305→1,228 MB | not given back                |
 
 **Idle and playback are good:** nothing runs while idle, in the window
 or the tray, and playing costs about 5 % of one core. The rest of the
@@ -340,9 +341,26 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   ask for theirs 150 ms after the grid stops; the most columns is what
   fits, and one. A scroll at 1,000 px/s went from 110 % of a core to
   42 % on average, with almost nothing read. A fast one went from 100 %
-  to 55 %, and its memory from 524 to 259 MB. Opening the grid makes 161 cells, not 385, and asks
-  for 12 covers, not 384: 200 visits took 40 % of a core, not 80 %,
-  reading 2 MB/s, not 16.5. Showing the grid takes 238 MB, not 306.
+  to 55 %, and its memory from 524 to 259 MB. Opening the grid makes
+  161 cells, not 385, and asks for 12 covers, not 384: 200 visits took
+  40 % of a core, not 80 %, reading 2 MB/s, not 16.5. Showing the grid
+  takes 238 MB, not 306.
+- **Next and Previous held the window 50–145 ms, fixed.** Not playbin3:
+  going to READY takes 2–8 ms. The rest was ours, with the 31,000 songs
+  of "All songs" as the queue. Each song change handed the player every
+  song in the queue with its speed, twice, 15–20 ms each; wrote the whole
+  queue, its ids joined, to change its current song, then read every
+  queue back, 6–8 ms; copied the queue to read whether it shuffles; and
+  made the bar's cover again three times. The hidden queue panel
+  replaced two rows, which GTK styles even when hidden; the media
+  controls' cover, arriving, told every view the song had changed; and
+  each list cell's listener upgraded two weak references at every
+  change, four a second while playing. Now the player gets the playing
+  song and the three after it, which is all it reaches before the next
+  change, only the place is written, the panel catches up when shown,
+  and a cell's listener goes when the cell does. Measured on the main
+  thread, through a muted Pulse output, the longest pause at a Next went
+  from 46–144 ms to 16–30 ms; songs still follow each other gaplessly.
 - Scrolling the artists list raises the GPU's memory to 268 MB.
 - The scroll runs need the display on: with it asleep, the compositor
   draws no frames and the page did not move.
