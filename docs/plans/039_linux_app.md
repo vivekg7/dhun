@@ -228,7 +228,9 @@ override:
   audiobooks; Favorites, Listen Later and the automatic views (010); the
   user's playlists; and Downloads. A Now playing bar along the bottom, the
   hand-off bar above it, and a panel on the right for the playing queue or
-  the lyrics. Below 960sp the bar drops its times; below 800sp the window
+  the lyrics. Below 960sp the bar drops its times, or below 1080sp for a
+  long file, whose three more buttons would otherwise widen the window
+  past its frame; below 800sp the window
   shows one pane at a time and the bar becomes the phone's mini bar.
   Keyboard: Space plays or pauses, Ctrl+← and Ctrl+→ skip, Ctrl+F
   searches, Ctrl+Q quits.

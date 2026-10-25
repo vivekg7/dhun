@@ -12,6 +12,12 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
+/// Where `medium` starts: a long file's bar holds three buttons more (Back,
+/// Forward, a bookmark), 1,054 px in all against a song's 940, so its times go
+/// sooner, or the bar would widen the window past its frame.
+pub const MEDIUM: &str = "max-width: 960sp";
+const MEDIUM_LONG: &str = "max-width: 1080sp";
+
 /// The bar and the offers over it. Below `medium`'s width the times go and
 /// the song's text narrows; below `narrow`'s it is the phone's mini bar: the
 /// song, Previous, Play, Next and the queue.
@@ -278,8 +284,9 @@ pub fn bar(
         })
     };
     let update = {
-        let (app, up, marks, line) = (app.clone(), update_position.clone(), marks.clone(), line.clone());
-        let shown = Cell::new(i64::MIN);
+        let (app, up, marks, line, medium) =
+            (app.clone(), update_position.clone(), marks.clone(), line.clone(), medium.clone());
+        let (shown, was_long) = (Cell::new(i64::MIN), Cell::new(false));
         move || {
             let cur = pb.current();
             b.set_sensitive(cur.is_some());
@@ -296,6 +303,10 @@ pub fn bar(
             shuffle.set_visible(!spoken);
             for w in [back.upcast_ref::<gtk::Widget>(), on.upcast_ref(), mark.upcast_ref()] {
                 w.set_visible(long);
+            }
+            if was_long.replace(long) != long {
+                let at = adw::BreakpointCondition::parse(if long { MEDIUM_LONG } else { MEDIUM }).unwrap();
+                medium.set_condition(Some(&at));
             }
             let settings = app.settings.borrow();
             back.set_tooltip_text(Some(&format!("Back {} seconds", synced::SEEK_BACK.get(&settings))));

@@ -33,7 +33,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     let main = adw::ToolbarView::builder().content(&panel).build();
     // A tighter Now playing bar below the first width; one pane at a time,
     // as on a phone, below the second. Only the last that matches applies.
-    let medium = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 960sp").unwrap());
+    let medium = adw::Breakpoint::new(adw::BreakpointCondition::parse(crate::nowplaying::MEDIUM).unwrap());
     let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 800sp").unwrap());
     narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
     main.add_bottom_bar(&crate::nowplaying::bar(app, &panel, &pages, &medium, &narrow));
