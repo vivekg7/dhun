@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `RELEASED` — in the 0.17.0 GitHub release (2026-10-24), the first Linux release, with every platform at 0.17.0; not yet installed or deployed
+**Status:** `RELEASED` — in the 0.17.0 GitHub release (2026-10-24), the first Linux release, with every platform at 0.17.0; 0.17.1, a Linux-only patch, built and handed to the Mac (2026-10-25) and installed on the owner's laptop
 **Started:** 2026-10-23
 
 ## Problem
@@ -325,7 +325,8 @@ override:
   would say nothing. Its first release is 0.17.0, a minor release for every
   platform together rather than a patch for Linux alone (owner,
   2026-10-24): the Flatpak is built here and copied to the Mac, which
-  publishes the one GitHub release with every platform's build.
+  publishes the one GitHub release with every platform's build. Linux's
+  fixes after it go out as Linux-only patches, starting at 0.17.1.
 - **Releases.** `make linux` builds the Flatpak and archives it in `local/`
   as `dhun-linux-v<version>.flatpak` with its `.sha256`, under the same
   naming rules as `make apk` and `make mac`. A GitHub release carries it;

@@ -104,7 +104,7 @@ dependencies = [
 
 [[package]]
 name = "dhun"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "dhun-core",
  "gstreamer",
