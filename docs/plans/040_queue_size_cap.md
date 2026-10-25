@@ -1,6 +1,6 @@
 # 040 — At most 1,000 songs in a queue
 
-**Status:** `MERGED` — server, Android, Mac and web; Linux follows on the Linux laptop
+**Status:** `MERGED` — server, Android, Mac, web and Linux
 **Started:** 2026-10-25
 
 ## Problem
