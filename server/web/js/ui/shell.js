@@ -10,7 +10,7 @@ import { lists } from "../catalog.js";
 import { iconButton, closeMenu, touch, reducedMotion } from "./kit.js";
 import { addedTo, editable, cover } from "./songs.js";
 import * as pages from "./pages.js";
-import { searchPage } from "./searchpage.js";
+import { searchPage, searchField } from "./searchpage.js";
 import { shelvesPage, shelfPage } from "./spoken.js";
 import { settingsPage, signInPage, guidePage } from "./settings.js";
 import {
@@ -20,6 +20,7 @@ import {
   banners,
   lyricsView,
   skipButton,
+  fillProgress,
 } from "./player.js";
 import { ctx } from "./ctx.js";
 
@@ -168,13 +169,7 @@ export class Shell {
     this.host = h("main.host");
     this.banners = banners();
     if (this.wide) {
-      this.search = h("input.searchinput", {
-        type: "search",
-        placeholder: "Songs, albums, artists, lyrics",
-        "aria-label": "Search",
-        autocomplete: "off",
-        spellcheck: false,
-      });
+      this.search = searchField();
       this.search.addEventListener("input", () => this.searched());
       this.search.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
@@ -545,23 +540,19 @@ export class Shell {
     if (this.panelView?.key !== want) {
       const tabs = h(
         "div.segmented",
-        h(
-          "button",
-          {
-            type: "button",
-            class: kind === "queue" ? "on" : "",
-            onclick: () => kind !== "queue" && this.togglePanel("queue"),
-          },
-          "Queue",
-        ),
-        h(
-          "button",
-          {
-            type: "button",
-            class: kind === "lyrics" ? "on" : "",
-            onclick: () => kind !== "lyrics" && this.togglePanel("lyrics"),
-          },
-          ctx.playback.current?.spoken ? "Transcript" : "Lyrics",
+        [
+          ["queue", "Queue"],
+          ["lyrics", ctx.playback.current?.spoken ? "Transcript" : "Lyrics"],
+        ].map(([k, label]) =>
+          h(
+            "button",
+            {
+              type: "button",
+              class: kind === k ? "on" : "",
+              onclick: () => kind !== k && this.togglePanel(k),
+            },
+            label,
+          ),
         ),
       );
       let view;
@@ -682,11 +673,7 @@ export class Shell {
       play.replaceChildren(icon(p.isPlaying ? "pause" : "play"));
       play.title = p.isPlaying ? "Pause" : "Play";
     };
-    const pos = () =>
-      bar.style.setProperty(
-        "--fill",
-        p.duration ? `${(p.position / p.duration) * 100}%` : "0",
-      );
+    const pos = () => fillProgress(bar);
     p.addEventListener("state", draw);
     p.addEventListener("position", pos);
     draw();

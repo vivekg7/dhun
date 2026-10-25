@@ -393,7 +393,6 @@ label.searchfield:focus-within {
   outline: 2px solid var(--accent);
   background: var(--tint);
 }
-body.dragging-songs .navitem[ondrop],
 body.dragging-songs .navitem {
   transition: background var(--out);
 }
@@ -799,6 +798,7 @@ a.row {
   }
   .row {
     gap: 8px;
+    padding-left: 14px;
   }
   /* Narrow, ⋯ takes the time's place under the pointer rather than a column of its own. */
   .row .more {
@@ -823,9 +823,6 @@ a.row {
   .songs .vrows .row .thumb {
     width: 40px;
     height: 40px;
-  }
-  .row {
-    padding-left: 14px;
   }
   .listhead {
     padding: 4px 14px 14px;
@@ -1133,10 +1130,6 @@ h3.section {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.nowsub a {
-  color: inherit;
-  text-decoration: none;
 }
 .nowsub a:hover {
   color: var(--fg);
@@ -1976,9 +1969,6 @@ h2 + .setting:last-child,
 .settinglabel {
   display: flex;
   flex-direction: column;
-}
-.settinglabel small {
-  color: var(--fg2);
 }
 .settinglabel .info {
   margin-left: 6px;

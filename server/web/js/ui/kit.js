@@ -192,18 +192,16 @@ export class VList {
       const d = this.drag;
       d.active = false;
       this.el.classList.remove("dragging");
-      if (d.to !== d.from) {
+      const moved = d.to !== d.from;
+      if (moved) {
         // Shown in the new order at once; the items that come back replace it.
         const items = this.items.slice();
         items.splice(d.to, 0, ...items.splice(d.from, 1));
         this.items = items;
-        this.drag = null;
-        this.paint(true);
-        this.reorderTo(d.from, d.to);
-      } else {
-        this.drag = null;
-        this.paint(true);
       }
+      this.drag = null;
+      this.paint(true);
+      if (moved) this.reorderTo(d.from, d.to);
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);
@@ -234,22 +232,21 @@ export function contextMenu(el, menu, title) {
   return el;
 }
 
-/** A row's More button at its end, and the same menu on a right-click. */
+/** A row's ⋯ button, at its end. */
+export const moreButton = (onclick) =>
+  h(
+    "button.more",
+    { type: "button", title: "More", "aria-label": "More", onclick },
+    icon("more"),
+  );
+
+/** A row's More button, and the same menu on a right-click. */
 export function rowMenu(row, menu, title) {
   row.append(
-    h(
-      "button.more",
-      {
-        type: "button",
-        title: "More",
-        "aria-label": "More",
-        onclick: (e) => {
-          e.preventDefault();
-          menuAt(e.currentTarget, menu(), title);
-        },
-      },
-      icon("more"),
-    ),
+    moreButton((e) => {
+      e.preventDefault();
+      menuAt(e.currentTarget, menu(), title);
+    }),
   );
   return contextMenu(row, menu, title);
 }
@@ -259,13 +256,41 @@ export function closeMenu() {
 }
 
 /**
+ * What a menu or a panel sits on, closing it on Esc or a press outside it,
+ * and when another opens; `closed` then runs.
+ */
+function backdropFor(sheet, closed) {
+  closeMenu();
+  const backdrop = h("div.menu-backdrop", { class: sheet ? "sheet" : "" });
+  const close = () => {
+    backdrop.remove();
+    removeEventListener("keydown", onKey, true);
+    openMenu = null;
+    closed();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    }
+  };
+  backdrop.addEventListener("pointerdown", (e) => e.target === backdrop && close());
+  addEventListener("keydown", onKey, true);
+  openMenu = { close };
+  return { backdrop, close };
+}
+
+/**
  * A menu at the pointer, or a sheet from the bottom on a touch screen.
  * Items: {label, action, disabled, danger, items (a submenu)}, or "-".
  */
 export function showMenu(items, at, title) {
-  closeMenu();
   const sheet = touch() || innerWidth < 600;
-  const backdrop = h("div.menu-backdrop", { class: sheet ? "sheet" : "" });
+  const { backdrop, close } = backdropFor(sheet, () => {
+    removeEventListener("resize", close);
+    restore?.focus?.();
+  });
+  const restore = document.activeElement;
   const build = (list, heading) => {
     const m = h("div.menu", { role: "menu", tabindex: "-1" });
     if (heading) m.append(h("div.menu-title", heading));
@@ -335,31 +360,14 @@ export function showMenu(items, at, title) {
   };
   const m = build(items, sheet ? title : null);
   backdrop.append(m);
-  const close = () => {
-    backdrop.remove();
-    removeEventListener("keydown", onKey, true);
-    removeEventListener("resize", close);
-    openMenu = null;
-    restore?.focus?.();
-  };
-  const onKey = (e) => {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      close();
-    }
-  };
-  const restore = document.activeElement;
-  backdrop.addEventListener("pointerdown", (e) => e.target === backdrop && close());
   backdrop.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (e.target === backdrop) close();
   });
-  addEventListener("keydown", onKey, true);
   addEventListener("resize", close);
   document.body.append(backdrop);
   if (!sheet) position(m, at.x, at.y);
   m.querySelector(".menu-item:not([disabled])")?.focus({ preventScroll: true });
-  openMenu = { close };
 }
 
 /** Puts a menu at (x, y), flipped to stay on screen; `flipX` is where it goes when there is no room on the right. */
@@ -383,26 +391,13 @@ export function menuAt(button, items, title) {
  * `build(close)` makes its content; the panel closes on Esc or a click outside.
  */
 export function popover(button, build) {
-  closeMenu();
   const sheet = innerWidth < 600;
-  const backdrop = h("div.menu-backdrop", { class: sheet ? "sheet" : "" });
+  const { backdrop, close } = backdropFor(sheet, () =>
+    button.focus?.({ preventScroll: true }),
+  );
   const panel = h("div.popover", { role: "dialog" });
-  const close = () => {
-    backdrop.remove();
-    removeEventListener("keydown", onKey, true);
-    openMenu = null;
-    button.focus?.({ preventScroll: true });
-  };
-  const onKey = (e) => {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      close();
-    }
-  };
   panel.append(build(close));
   backdrop.append(panel);
-  backdrop.addEventListener("pointerdown", (e) => e.target === backdrop && close());
-  addEventListener("keydown", onKey, true);
   document.body.append(backdrop);
   if (!sheet) {
     const r = button.getBoundingClientRect();
@@ -412,7 +407,6 @@ export function popover(button, build) {
     panel.style.top = `${above ? r.top - p.height - 8 : r.bottom + 8}px`;
   }
   panel.querySelector("button, input")?.focus({ preventScroll: true });
-  openMenu = { close };
 }
 
 // MARK: Dialogs
@@ -469,12 +463,12 @@ export function dialog(title, body, buttons, { onOpen, cls = "" } = {}) {
 export async function prompt(
   title,
   initial = "",
-  { action = "OK", check = () => "", label = "Name" } = {},
+  { action = "OK", check = () => "" } = {},
 ) {
   const input = h("input", {
     type: "text",
     value: initial,
-    "aria-label": label,
+    "aria-label": "Name",
     autocomplete: "off",
     spellcheck: false,
   });

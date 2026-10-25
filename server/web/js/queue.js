@@ -1,6 +1,8 @@
 // The pure parts of playing, kept apart from the player so Node's tests can
 // load them: the queues' order, the play order, and speed.
 
+import { shuffled } from "./util.js";
+
 /** At most this many queues, Musicolet's limit (plan 020). */
 export const maxQueues = 20;
 /** The synced setting with the queues' order: their ids, as a JSON array. */
@@ -47,11 +49,7 @@ export function playOrder(items, previous, current, shuffle, keep) {
     }
     return kept;
   }
-  const rest = items.filter((id) => id !== current);
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
+  const rest = shuffled(items.filter((id) => id !== current));
   if (current != null && items.includes(current)) rest.unshift(current);
   return rest;
 }
@@ -86,9 +84,8 @@ export function tempoOf(v) {
   };
 }
 
-export const songSetting = (song) => `speed.${song}`;
-/** Every podcast's or every audiobook's speed (`speed.podcast`, `speed.audiobook`), synced (plan 031). */
-export const kindSetting = (kind) => `speed.${kind}`;
+/** A song's own speed (`speed.<id>`), or every podcast's or every audiobook's (`speed.podcast`, `speed.audiobook`, plan 031). */
+export const speedSetting = (songOrKind) => `speed.${songOrKind}`;
 
 /**
  * A long press on Next (plan 009): the chapter after `pos` among chapters

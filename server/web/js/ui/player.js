@@ -22,6 +22,12 @@ import { synced } from "../synced.js";
 
 // MARK: Controls shared by the bar and the page
 
+/** A button's name, shown on hover and said by a screen reader. */
+function setName(b, text) {
+  b.title = text;
+  b.setAttribute("aria-label", text);
+}
+
 /**
  * Previous or Next. A click goes by file; held, it goes by chapter in a file
  * that has them (plan 009), which a click never does: a mistaken one would
@@ -62,8 +68,7 @@ function seekButton(forward) {
         ? ctx.app.setting(synced.seekForward)
         : ctx.app.setting(synced.seekBack);
       seconds.textContent = n;
-      b.title = `${forward ? "Forward" : "Back"} ${n} seconds`;
-      b.setAttribute("aria-label", b.title);
+      setName(b, `${forward ? "Forward" : "Back"} ${n} seconds`);
       b.hidden = !p.current || !p.isLong(p.current);
     },
   };
@@ -121,12 +126,10 @@ function transport(compact = false) {
       const r = p.repeat;
       repeat.classList.toggle("on", r !== "off");
       repeat.replaceChildren(icon(r === "song" ? "repeatOne" : "repeat"));
-      repeat.title = {
-        off: "Repeat",
-        queue: "Repeating the queue",
-        song: "Repeating this song",
-      }[r];
-      repeat.setAttribute("aria-label", repeat.title);
+      setName(
+        repeat,
+        { off: "Repeat", queue: "Repeating the queue", song: "Repeating this song" }[r],
+      );
       if (wasPlaying !== p.isPlaying) {
         // Play and Pause turn into each other (plan 027).
         play.replaceChildren(icon(p.isPlaying ? "pause" : "play"));
@@ -134,8 +137,7 @@ function transport(compact = false) {
           play.animate([{ transform: "scale(.85)" }, { transform: "scale(1)" }], 200);
         wasPlaying = p.isPlaying;
       }
-      play.title = p.isPlaying ? "Pause" : "Play";
-      play.setAttribute("aria-label", play.title);
+      setName(play, p.isPlaying ? "Pause" : "Play");
     },
   };
 }
@@ -203,8 +205,7 @@ function markButton(kind) {
       b.disabled = !s;
       b.classList.toggle("on", marked);
       b.replaceChildren(icon(marked ? on : off));
-      b.title = marked ? remove : add;
-      b.setAttribute("aria-label", b.title);
+      setName(b, marked ? remove : add);
       if (last && last.song === s?.id && !last.marked && marked && !reducedMotion())
         b.animate(
           [
@@ -338,8 +339,7 @@ function sleepButton() {
     update() {
       const label = ctx.playback.sleepLabel;
       b.classList.toggle("on", !!label);
-      b.title = label ? `Sleep ${label}` : "Sleep timer";
-      b.setAttribute("aria-label", b.title);
+      setName(b, label ? `Sleep ${label}` : "Sleep timer");
     },
   };
 }
@@ -550,6 +550,15 @@ function nowCover(px, cls) {
   };
 }
 
+/** Favorites, Listen Later, a bookmark, speed and the sleep timer: beside the controls on the bar and the page. */
+const songActions = () => [
+  markButton("fav"),
+  markButton("later"),
+  bookmarkButton(),
+  speedButton(),
+  sleepButton(),
+];
+
 // MARK: The bar along the bottom of the window
 
 export function nowBar() {
@@ -558,11 +567,7 @@ export function nowBar() {
   const title = nowTitle("", true);
   const t = transport();
   const seek = seeker();
-  const fav = markButton("fav");
-  const later = markButton("later");
-  const mark = bookmarkButton();
-  const speed = speedButton();
-  const sleep = sleepButton();
+  const actions = songActions();
   const lyrics = iconButton(
     "lyrics",
     "Lyrics",
@@ -595,17 +600,13 @@ export function nowBar() {
     h("div.nowcenter", t.el, seek.el),
     h(
       "div.nowright",
-      fav.el,
-      later.el,
-      mark.el,
-      speed.el,
-      sleep.el,
+      actions.map((x) => x.el),
       lyrics,
       queue,
       pip,
     ),
   );
-  const parts = [art, title, t, seek, fav, later, mark, speed, sleep];
+  const parts = [art, title, t, seek, ...actions];
   return {
     el,
     update() {
@@ -658,16 +659,10 @@ export function miniPlayer() {
       art.update();
       title.update();
       play.replaceChildren(icon(p.isPlaying ? "pause" : "play"));
-      play.title = p.isPlaying ? "Pause" : "Play";
-      play.setAttribute("aria-label", play.title);
+      setName(play, p.isPlaying ? "Pause" : "Play");
       this.position();
     },
-    position() {
-      bar.style.setProperty(
-        "--fill",
-        p.duration ? `${(p.position / p.duration) * 100}%` : "0",
-      );
-    },
+    position: () => fillProgress(bar),
   };
 }
 
@@ -678,11 +673,7 @@ export function nowPage() {
   const title = nowTitle("large", true);
   const t = transport();
   const seek = seeker();
-  const fav = markButton("fav");
-  const later = markButton("later");
-  const mark = bookmarkButton();
-  const speed = speedButton();
-  const sleep = sleepButton();
+  const actions = songActions();
   const lyr = lyricsView();
   let showLyrics = false;
   const stage = h("div.stage", art.el, lyr.el);
@@ -724,10 +715,14 @@ export function nowPage() {
       title.el,
       seek.el,
       t.el,
-      h("div.nowactions", fav.el, later.el, mark.el, speed.el, sleep.el, lyricsBtn),
+      h(
+        "div.nowactions",
+        actions.map((x) => x.el),
+        lyricsBtn,
+      ),
     ),
   );
-  const parts = [art, title, t, seek, fav, later, mark, speed, sleep];
+  const parts = [art, title, t, seek, ...actions];
   const draw = () => {
     stage.classList.toggle("lyrics", showLyrics);
     lyricsBtn.classList.toggle("on", showLyrics);
@@ -763,9 +758,16 @@ export function nowPage() {
 }
 
 /** An episode's or a book's lyrics are its transcript (plan 031). */
-function lyricsTitle(b) {
-  b.title = ctx.playback.current?.spoken ? "Transcript" : "Lyrics";
-  b.setAttribute("aria-label", b.title);
+const lyricsTitle = (b) =>
+  setName(b, ctx.playback.current?.spoken ? "Transcript" : "Lyrics");
+
+/** How far the song playing has got, as a thin bar's fill. */
+export function fillProgress(bar) {
+  const p = ctx.playback;
+  bar.style.setProperty(
+    "--fill",
+    p.duration ? `${(p.position / p.duration) * 100}%` : "0",
+  );
 }
 
 /** Horizontal swipes on `el`: −1 for left (next), 1 for right (previous). */
@@ -881,12 +883,8 @@ export function lyricsView() {
   let heldUntil = 0;
   let visible = true;
   let lock = null;
-  el.addEventListener("wheel", () => (heldUntil = Date.now() + 4000), {
-    passive: true,
-  });
-  el.addEventListener("touchmove", () => (heldUntil = Date.now() + 4000), {
-    passive: true,
-  });
+  for (const type of ["wheel", "touchmove"])
+    el.addEventListener(type, () => (heldUntil = Date.now() + 4000), { passive: true });
   const note = (title, name = "lyrics") =>
     h("div.empty", icon(name, "big"), h("p.empty-title", title));
   const load = async (s) => {

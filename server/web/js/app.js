@@ -40,28 +40,38 @@ const retryMax = 120_000;
 
 /** A browser's name for itself, for hand-off ("Continue from Chrome on macOS"). */
 function deviceName() {
-  const ua = navigator.userAgent;
-  const browser = /Edg\//.test(ua)
-    ? "Edge"
-    : /Firefox\//.test(ua)
-      ? "Firefox"
-      : /Chrome\//.test(ua)
-        ? "Chrome"
-        : /Safari\//.test(ua)
-          ? "Safari"
-          : "Browser";
-  const os = /iPhone|iPad/.test(ua)
-    ? "iOS"
-    : /Android/.test(ua)
-      ? "Android"
-      : /Mac OS X/.test(ua)
-        ? "macOS"
-        : /Windows/.test(ua)
-          ? "Windows"
-          : /Linux/.test(ua)
-            ? "Linux"
-            : "";
+  // The first that the user agent names: Edge and Chrome name Safari too.
+  const first = (names) =>
+    Object.entries(names).find(([re]) => new RegExp(re).test(navigator.userAgent))?.[1];
+  const browser =
+    first({
+      "Edg/": "Edge",
+      "Firefox/": "Firefox",
+      "Chrome/": "Chrome",
+      "Safari/": "Safari",
+    }) ?? "Browser";
+  const os = first({
+    "iPhone|iPad": "iOS",
+    Android: "Android",
+    "Mac OS X": "macOS",
+    Windows: "Windows",
+    Linux: "Linux",
+  });
   return os ? `${browser} on ${os}` : browser;
+}
+
+/** The keys of `map` whose entry `keep` accepts, the latest first. */
+const latest = (map, keep) =>
+  [...map]
+    .filter(([, v]) => keep(v))
+    .sort((a, b) => b[1].at - a[1].at)
+    .map(([k]) => k);
+
+/** Puts `x` in place of the item of `list` with its id, or at the end. */
+function upsert(list, x) {
+  const i = list.findIndex((y) => y.id === x.id);
+  if (i < 0) list.push(x);
+  else list[i] = x;
 }
 
 export class App extends EventTarget {
@@ -71,16 +81,7 @@ export class App extends EventTarget {
     this.outbox = load(outboxKey, []);
     this.catalog = new Catalog([]);
     this.rawSongs = [];
-    this.playlists = [];
-    this.queues = [];
-    this.marks = noMarks();
-    this.resumeMap = new Map();
-    /** Bookmarks by id (plan 033). A deleted one is kept, so an older copy from the server never brings it back. */
-    this.bookmarkMap = new Map();
-    this.settings = {};
-    this.playStats = new Map();
-    this.nowPlaying = null;
-    this.thumbs = new Map();
+    this.clearData();
     /** A playlist made here and the server id it became, for a page still showing the old one. */
     this.replaced = new Map();
     this.reachable = true;
@@ -104,8 +105,22 @@ export class App extends EventTarget {
     this.dispatchEvent(new CustomEvent("change", { detail: topic }));
   }
 
+  /** The account's data, none yet: as a new browser starts, and as signing out leaves it. */
+  clearData() {
+    this.playlists = [];
+    this.queues = [];
+    this.marks = noMarks();
+    this.resumeMap = new Map();
+    /** Bookmarks by id (plan 033). A deleted one is kept, so an older copy from the server never brings it back. */
+    this.bookmarkMap = new Map();
+    this.settings = {};
+    this.playStats = new Map();
+    this.nowPlaying = null;
+    this.thumbs = new Map();
+  }
+
   setPref(name, value) {
-    if (value === undefined || value === "" || value === null) delete this.prefs[name];
+    if (value == null || value === "") delete this.prefs[name];
     else this.prefs[name] = value;
     localStorage.setItem(prefsKey, JSON.stringify(this.prefs));
   }
@@ -120,8 +135,7 @@ export class App extends EventTarget {
 
   /** A synced setting from js/synced.js, its default when missing or null (plans 009, 034). */
   setting({ name, def }) {
-    const v = this.settings[name];
-    return v === undefined || v === null ? def : v;
+    return this.settings[name] ?? def;
   }
 
   // MARK: Start, the cache
@@ -290,15 +304,7 @@ export class App extends EventTarget {
     localStorage.setItem(prefsKey, JSON.stringify(kept));
     this.outbox = [];
     localStorage.removeItem(outboxKey);
-    this.playlists = [];
-    this.queues = [];
-    this.marks = noMarks();
-    this.resumeMap = new Map();
-    this.bookmarkMap = new Map();
-    this.settings = {};
-    this.playStats = new Map();
-    this.nowPlaying = null;
-    this.thumbs = new Map();
+    this.clearData();
     this.setSongs([]);
   }
 
@@ -344,10 +350,7 @@ export class App extends EventTarget {
 
   /** The songs of Favorites or Listen Later, newest first (plan 010). */
   marked(kind) {
-    return [...this.marks[kind]]
-      .filter(([, m]) => !m.deleted)
-      .sort((a, b) => b[1].at - a[1].at)
-      .map(([song]) => song);
+    return latest(this.marks[kind], (m) => !m.deleted);
   }
 
   /** What has been heard of the podcasts and audiobooks (plan 031). */
@@ -392,10 +395,7 @@ export class App extends EventTarget {
 
   /** Continue listening: the long files left part-way, the latest first. */
   resumes() {
-    return [...this.resumeMap]
-      .filter(([, r]) => !r.deleted && r.positionMs > 0)
-      .sort((a, b) => b[1].at - a[1].at)
-      .map(([song]) => song);
+    return latest(this.resumeMap, (r) => !r.deleted && r.positionMs > 0);
   }
 
   /**
@@ -429,43 +429,35 @@ export class App extends EventTarget {
   }
 
   putQueue(q) {
-    const i = this.queues.findIndex((x) => x.id === q.id);
-    if (i < 0) this.queues.push({ ...q });
-    else this.queues[i] = { ...q };
+    upsert(this.queues, { ...q });
     this.changed("queues");
   }
 
-  createQueue(q) {
+  /** Puts `q`, and records an op on it; with `key`, only the latest such op is sent. */
+  queueOp(q, type, fields, key) {
     this.putQueue(q);
     this.record(
-      "queue.create",
-      {
-        queue: q.id,
-        name: q.name,
-        songs: q.songs,
-        song: q.currentSong,
-        positionMs: q.positionMs,
-      },
-      { tag: q.id },
+      type,
+      { queue: q.id, ...fields },
+      key ? { key: `${key}:${q.id}` } : { tag: q.id },
     );
+  }
+
+  createQueue(q) {
+    this.queueOp(q, "queue.create", {
+      name: q.name,
+      songs: q.songs,
+      song: q.currentSong,
+      positionMs: q.positionMs,
+    });
   }
 
   replaceQueue(q) {
-    this.putQueue(q);
-    this.record(
-      "queue.replace",
-      { queue: q.id, songs: q.songs },
-      { key: `replace:${q.id}` },
-    );
+    this.queueOp(q, "queue.replace", { songs: q.songs }, "replace");
   }
 
   renameQueue(q) {
-    this.putQueue(q);
-    this.record(
-      "queue.rename",
-      { queue: q.id, name: q.name },
-      { key: `rename:${q.id}` },
-    );
+    this.queueOp(q, "queue.rename", { name: q.name }, "rename");
   }
 
   deleteQueue(id) {
@@ -476,40 +468,28 @@ export class App extends EventTarget {
 
   /** The queue's current song and position; only the latest is worth sending. */
   setCurrent(q) {
-    this.putQueue(q);
-    this.record(
+    this.queueOp(
+      q,
       "queue.set_current",
-      { queue: q.id, song: q.currentSong, positionMs: q.positionMs },
-      { key: `current:${q.id}` },
+      { song: q.currentSong, positionMs: q.positionMs },
+      "current",
     );
   }
 
   setMode(q) {
-    this.putQueue(q);
-    this.record(
-      "queue.set_mode",
-      { queue: q.id, shuffle: q.shuffle, repeat: q.repeat },
-      { key: `mode:${q.id}` },
-    );
+    this.queueOp(q, "queue.set_mode", { shuffle: q.shuffle, repeat: q.repeat }, "mode");
   }
 
   insertIntoQueue(q, songs, after) {
-    this.putQueue(q);
-    this.record(
-      "queue.insert",
-      { queue: q.id, songs, ...(after == null ? {} : { after }) },
-      { tag: q.id },
-    );
+    this.queueOp(q, "queue.insert", { songs, ...(after == null ? {} : { after }) });
   }
 
   removeFromQueue(q, songs) {
-    this.putQueue(q);
-    this.record("queue.remove", { queue: q.id, songs }, { tag: q.id });
+    this.queueOp(q, "queue.remove", { songs });
   }
 
   moveInQueue(q, song, after) {
-    this.putQueue(q);
-    this.record("queue.move", { queue: q.id, song, after }, { tag: q.id });
+    this.queueOp(q, "queue.move", { song, after });
   }
 
   // Playlists (plan 013). One made here has a negative id until the server's
@@ -519,14 +499,14 @@ export class App extends EventTarget {
     return this.playlists.find((p) => p.id === id);
   }
 
-  target(p) {
-    return p.id > 0 ? String(p.id) : `ref:${p.ref}`;
+  /** Records an op on playlist `p`, named by its id or, made here and not yet back, its ref. */
+  playlistOp(p, type, fields = {}) {
+    const playlist = p.id > 0 ? String(p.id) : `ref:${p.ref}`;
+    this.record(type, { playlist, ...fields }, { tag: `pl${p.id}` });
   }
 
   putPlaylist(p) {
-    const i = this.playlists.findIndex((x) => x.id === p.id);
-    if (i < 0) this.playlists.push(p);
-    else this.playlists[i] = p;
+    upsert(this.playlists, p);
     this.playlists.sort(
       (a, b) => Number(b.shared) - Number(a.shared) || a.name.localeCompare(b.name),
     );
@@ -558,11 +538,7 @@ export class App extends EventTarget {
     const adding = unique.filter((s) => !have.has(s));
     if (adding.length) {
       this.putPlaylist({ ...p, songs: [...p.songs, ...adding] });
-      this.record(
-        "playlist.insert",
-        { playlist: this.target(p), songs: adding },
-        { tag: `pl${p.id}` },
-      );
+      this.playlistOp(p, "playlist.insert", { songs: adding });
     }
     return unique.length - adding.length;
   }
@@ -574,11 +550,7 @@ export class App extends EventTarget {
     const songs = p.songs.slice();
     songs.splice(index, 1);
     this.putPlaylist({ ...p, songs });
-    this.record(
-      "playlist.remove",
-      { playlist: this.target(p), song, occurrence },
-      { tag: `pl${p.id}` },
-    );
+    this.playlistOp(p, "playlist.remove", { song, occurrence });
   }
 
   /** Moves the entry at `from` to `to`, both indexes into the playlist's own list. */
@@ -592,42 +564,29 @@ export class App extends EventTarget {
     const after = to === 0 ? 0 : list[to - 1];
     if (to > 0 && after === 0) {
       // An unmatched entry cannot be named as "after" (0 means the start): send the order.
-      this.record(
-        "playlist.replace",
-        { playlist: this.target(p), songs: list },
-        { tag: `pl${p.id}` },
-      );
-      return;
+      return this.playlistOp(p, "playlist.replace", { songs: list });
     }
-    const f = { playlist: this.target(p), song, occurrence, after };
+    const f = { song, occurrence, after };
     if (to > 0)
       f.afterOccurrence = list.slice(0, to - 1).filter((s) => s === after).length;
-    this.record("playlist.move", f, { tag: `pl${p.id}` });
+    this.playlistOp(p, "playlist.move", f);
   }
 
   /** The whole order at once (a sort or reverse). */
   replacePlaylist(p, songs) {
     this.putPlaylist({ ...p, songs });
-    this.record(
-      "playlist.replace",
-      { playlist: this.target(p), songs },
-      { tag: `pl${p.id}` },
-    );
+    this.playlistOp(p, "playlist.replace", { songs });
   }
 
   renamePlaylist(p, name) {
     this.putPlaylist({ ...p, name });
-    this.record(
-      "playlist.rename",
-      { playlist: this.target(p), name },
-      { tag: `pl${p.id}` },
-    );
+    this.playlistOp(p, "playlist.rename", { name });
   }
 
   /** The server keeps a copy of the file. */
   deletePlaylist(p) {
     this.playlists = this.playlists.filter((x) => x.id !== p.id);
-    this.record("playlist.delete", { playlist: this.target(p) }, { tag: `pl${p.id}` });
+    this.playlistOp(p, "playlist.delete");
     this.changed("playlists");
   }
 
@@ -880,9 +839,7 @@ export class App extends EventTarget {
         repeat: q.repeat ?? "off",
         usedAt: parseTime(q.usedAt),
       };
-      const i = this.queues.findIndex((x) => x.id === q.id);
-      if (i < 0) this.queues.push(row);
-      else this.queues[i] = row;
+      upsert(this.queues, row);
     }
     for (const [kind, items] of [
       ["fav", s.favorites ?? []],
@@ -1035,14 +992,11 @@ export class App extends EventTarget {
     try {
       const r = await this.call("GET", `/api/v1/lyrics/${song}`);
       this.lyricsCache.set(song, r.text ?? "");
-      return r.text ?? "";
     } catch (e) {
-      if (e.status === 404) {
-        this.lyricsCache.set(song, null);
-        return null;
-      }
-      throw e;
+      if (e.status !== 404) throw e;
+      this.lyricsCache.set(song, null);
     }
+    return this.lyricsCache.get(song);
   }
 
   /** Songs whose lyrics hold the words, with the line (plan 029). */

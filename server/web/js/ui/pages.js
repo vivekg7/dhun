@@ -20,23 +20,19 @@ import {
   menuAt,
   rowMenu,
   contextMenu,
-  prompt,
   confirm,
   emptyNote,
 } from "./kit.js";
-import {
-  SongList,
-  items,
-  thumb,
-  cover,
-  editable,
-  checkName,
-  songMenu,
-} from "./songs.js";
+import { SongList, items, thumb, cover, editable, askName, songMenu } from "./songs.js";
 import { ctx } from "./ctx.js";
 
-/** Pages get a filter only past this many rows: a shorter list fits on about one screen (plan 011). */
-export const filterOver = 12;
+/**
+ * A page's filter shows only past 12 rows, as a shorter list fits on about
+ * one screen (plan 011), or while it holds a query.
+ */
+export function showFilter(filter, rows, query) {
+  if (filter.parentElement) filter.parentElement.hidden = rows <= 12 && !query;
+}
 
 /** A page's frame: its bar (Back, the title, the filter), then its body. */
 export function frame({ title, back = false, filter, actions = [], body, cls = "" }) {
@@ -168,8 +164,7 @@ function songsPage({
     const all = items(data.songs);
     list.set(all, query ? items(ctx.app.catalog.filter(data.songs, query)) : all);
     header.update(data.subtitle ?? summary(data.songs), data.songs.length > 0);
-    filter.parentElement &&
-      (filter.parentElement.hidden = data.songs.length <= filterOver && !query);
+    showFilter(filter, data.songs.length, query);
     strip?.update();
   };
   const el = frame({ title: data.title, back: true, filter, body: list.el });
@@ -468,9 +463,7 @@ export function folderPage(path) {
     const all = items(f.songs);
     list.set(all, query ? items(ctx.app.catalog.filter(f.songs, query)) : all);
     header?.update(folderSummary(f), true);
-    filter.parentElement &&
-      (filter.parentElement.hidden =
-        f.children.length + f.songs.length <= filterOver && !query);
+    showFilter(filter, f.children.length + f.songs.length, query);
     list.o.empty.replaceChildren(
       children.length || list.items.length
         ? ""
@@ -600,7 +593,7 @@ function spokenCards(app) {
 }
 
 export async function newPlaylist() {
-  const n = await prompt("New playlist", "", { action: "Create", check: checkName });
+  const n = await askName("New playlist", "", "Create");
   if (n) ctx.nav.go("playlist", ctx.app.createPlaylist(n, []).id);
 }
 
@@ -637,10 +630,7 @@ export function playlistPage(id0) {
       {
         label: "Rename…",
         action: async () => {
-          const n = await prompt("Rename playlist", p.name, {
-            action: "Rename",
-            check: checkName,
-          });
+          const n = await askName("Rename playlist", p.name, "Rename");
           if (n) app.renamePlaylist(app.playlist(id()), n);
         },
       },
@@ -734,8 +724,7 @@ export function playlistPage(id0) {
       (p.shared ? "Shared · " : "") + summary(songs.map((it) => it.song)),
       songs.length > 0,
     );
-    filter.parentElement &&
-      (filter.parentElement.hidden = p.songs.length <= filterOver && !query);
+    showFilter(filter, p.songs.length, query);
     titleEl.textContent = p.name;
     header.el.querySelector(".listtitle").textContent = p.name;
   };
@@ -821,20 +810,14 @@ function queueMenu(q) {
     {
       label: "Rename…",
       action: async () => {
-        const n = await prompt("Rename queue", q.name, {
-          action: "Rename",
-          check: checkName,
-        });
+        const n = await askName("Rename queue", q.name, "Rename");
         if (n) p.rename(q.id, n);
       },
     },
     {
       label: "Save as playlist…",
       action: async () => {
-        const n = await prompt("Save as playlist", q.name, {
-          action: "Save",
-          check: checkName,
-        });
+        const n = await askName("Save as playlist", q.name, "Save");
         if (n) app.createPlaylist(n, q.id === p.activeId ? p.items : q.songs);
       },
     },
@@ -1017,10 +1000,11 @@ export function queuePage(id, { compact = false } = {}) {
     remove,
     empty: emptyNote("This queue is empty"),
   });
-  place.addEventListener("click", () => {
+  const toCurrent = () => {
     const i = list.items.findIndex((it) => it.song?.id === currentId());
     if (i >= 0) list.list.scrollTo(i);
-  });
+  };
+  place.addEventListener("click", toCurrent);
   let lastIds = null;
   const show = () => {
     if (!q()) return compact ? null : ctx.nav.replace("queues");
@@ -1029,9 +1013,7 @@ export function queuePage(id, { compact = false } = {}) {
     if (query) showMatches();
     name.textContent = q().name;
     titleEl && (titleEl.textContent = q().name);
-    filter.parentElement &&
-      !compact &&
-      (filter.parentElement.hidden = songs.length <= filterOver && !query);
+    if (!compact) showFilter(filter, songs.length, query);
     sortBtn.disabled = songs.length < 2;
     showPlace(songs);
     lastIds = ids();
@@ -1057,10 +1039,7 @@ export function queuePage(id, { compact = false } = {}) {
   const titleEl = compact ? null : el.querySelector(".pagetitle");
   show();
   // The current song in view when the queue opens.
-  requestAnimationFrame(() => {
-    const i = list.items.findIndex((it) => it.song?.id === currentId());
-    if (i >= 0) list.list.scrollTo(i);
-  });
+  requestAnimationFrame(toCurrent);
   return {
     el,
     title: q().name,

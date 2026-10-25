@@ -3,7 +3,7 @@
 
 import { h, clock, count } from "../util.js";
 import { icon } from "../icons.js";
-import { VList, showMenu, prompt, dialog, touch, toast } from "./kit.js";
+import { VList, showMenu, prompt, dialog, touch, toast, moreButton } from "./kit.js";
 import { ctx } from "./ctx.js";
 
 /** A list row's cover: the thumbnail every cover has, never waiting (plan 019). */
@@ -39,12 +39,15 @@ export function cover(s, px, cls = "cover") {
 /** Shared playlists stay read-only in the app, for every user (plan 013). */
 export const editable = (p) => !p.shared;
 
-/** The two lists' names cannot name a queue or playlist, as on the phone. */
-export const reserved = (name) =>
-  ["favorites", "listen later"].includes(name.toLowerCase());
-/** For a name prompt's `check`: why a name cannot be used, or "". */
-export const checkName = (n) =>
-  reserved(n) ? `“${n}” is the name of one of your lists.` : "";
+/** Asks for a queue's or a playlist's name, which cannot be one of the two lists', as on the phone. */
+export const askName = (title, initial, action) =>
+  prompt(title, initial, {
+    action,
+    check: (n) =>
+      ["favorites", "listen later"].includes(n.toLowerCase())
+        ? `“${n}” is the name of one of your lists.`
+        : "",
+  });
 
 /**
  * The phone's song menu (plan 011): play next, add to the playing queue or
@@ -76,10 +79,7 @@ export function songMenu(songs, { play, extra = [] } = {}) {
         {
           label: "New queue…",
           action: async () => {
-            const n = await prompt("New queue", one?.title ?? "", {
-              action: "Create",
-              check: checkName,
-            });
+            const n = await askName("New queue", one?.title ?? "", "Create");
             if (n) playback.newQueue(n, songs);
           },
         },
@@ -95,10 +95,7 @@ export function songMenu(songs, { play, extra = [] } = {}) {
         {
           label: "New playlist…",
           action: async () => {
-            const n = await prompt("New playlist", "", {
-              action: "Create",
-              check: checkName,
-            });
+            const n = await askName("New playlist", "", "Create");
             if (n) {
               app.createPlaylist(
                 n,
@@ -293,7 +290,7 @@ export class SongList {
           )
         : null,
       this.o.track ? h("span.num", s?.track ? String(s.track) : "") : null,
-      s ? thumb(s) : h("span.thumb.placeholder", icon("note")),
+      thumb(s),
       h(
         "span.main",
         h(
@@ -330,16 +327,7 @@ export class SongList {
       ),
       this.o.album === false ? null : h("span.album", s?.album ?? ""),
       h("span.time", s?.durationMs ? clock(s.durationMs / 1000) : ""),
-      h(
-        "button.more",
-        {
-          type: "button",
-          title: "More",
-          "aria-label": "More",
-          onclick: (e) => this.menuFor(i, e, true),
-        },
-        icon("more"),
-      ),
+      moreButton((e) => this.menuFor(i, e, true)),
     );
     el.addEventListener("click", (e) => this.click(e, i));
     el.addEventListener("dblclick", (e) => {

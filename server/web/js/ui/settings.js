@@ -125,40 +125,25 @@ const row = (label, control, { tip, guide } = {}) =>
 function select(options, value, onChange, def) {
   const s = h(
     "select",
-    { onchange: () => onChange(s.value) },
+    { onchange: () => onChange(options[s.selectedIndex][0]) },
     options.map(([v, label]) =>
-      h(
-        "option",
-        { value: String(v), selected: String(v) === String(value) },
-        v === def ? `${label} (default)` : label,
-      ),
+      h("option", { selected: v === value }, v === def ? `${label} (default)` : label),
     ),
   );
   return s;
 }
 
 /** A synced setting's choices, from js/synced.js; `after` runs once one is picked. */
-function choice(setting, label, after) {
-  const app = ctx.app;
-  const value = app.setting(setting);
-  const s = h(
-    "select",
-    {
-      onchange: () => {
-        app.setSetting(setting.name, setting.options[s.selectedIndex]);
-        after?.();
-      },
+const choice = (setting, label, after) =>
+  select(
+    setting.options.map((o) => [o, label(o)]),
+    ctx.app.setting(setting),
+    (v) => {
+      ctx.app.setSetting(setting.name, v);
+      after?.();
     },
-    setting.options.map((o) =>
-      h(
-        "option",
-        { selected: o === value },
-        o === setting.def ? `${label(o)} (default)` : label(o),
-      ),
-    ),
+    setting.def,
   );
-  return s;
-}
 
 /** The last row of a page's settings: puts them back as installed, after asking. */
 const resetRow = (title, text, reset) =>

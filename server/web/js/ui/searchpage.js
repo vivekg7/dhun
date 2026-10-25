@@ -26,6 +26,12 @@ function find(q) {
   const boost = (s) =>
     (favs.has(s.id) ? 3 : 0) +
     Math.min(2, Math.floor((app.playStats.get(s.id)?.count ?? 0) / 5));
+  const group = (kind) => (g) => ({
+    title: g.name,
+    detail: count(g.songs.length),
+    song: g.songs[0],
+    href: ctx.nav.href(kind, g.name),
+  });
   const section = (kind, index, row, b) => {
     const hits = index.search(q, b);
     if (!hits.length) return null;
@@ -38,24 +44,14 @@ function find(q) {
     };
   };
   const found = [
-    section("Artists", c.index("artists"), (g) => ({
-      title: g.name,
-      detail: count(g.songs.length),
-      song: g.songs[0],
-      href: ctx.nav.href("artist", g.name),
-    })),
+    section("Artists", c.index("artists"), group("artist")),
     section("Albums", c.index("albums"), (a) => ({
       title: a.name,
       detail: [a.artist, a.year > 0 ? a.year : ""].filter(Boolean).join(" · "),
       song: a.songs[0],
       href: ctx.nav.href("album", a.id),
     })),
-    section("Genres", c.index("genres"), (g) => ({
-      title: g.name,
-      detail: count(g.songs.length),
-      song: g.songs[0],
-      href: ctx.nav.href("genre", g.name),
-    })),
+    section("Genres", c.index("genres"), group("genre")),
     // Many folders share a name ("CD1"), so the path says which.
     section("Folders", c.index("folders"), (f) => ({
       title: f.name,
@@ -108,6 +104,25 @@ function find(q) {
     .sort((a, b) => a.best - b.best || a.i - b.i);
 }
 
+/** The search field: the window's, or on a phone the page's own. */
+export const searchField = (value) =>
+  h("input.searchinput", {
+    type: "search",
+    value,
+    placeholder: "Songs, albums, artists, lyrics",
+    "aria-label": "Search",
+    autocomplete: "off",
+    spellcheck: false,
+  });
+
+/** A result that plays rather than opens, by a click or Return. */
+const playRow = (play, ...children) =>
+  h(
+    "div.row.hit.song",
+    { tabindex: "0", onclick: play, onkeydown: (e) => e.key === "Enter" && play() },
+    children,
+  );
+
 /**
  * The results page. On a wide window the query comes from the search field
  * at the top; on a phone the page has its own. `query` is the address's.
@@ -128,16 +143,7 @@ export function searchPage(initial, { field = false } = {}) {
     source: "search",
     onPlayed: () => ctx.app.keepSearch(query),
   });
-  const input = field
-    ? h("input.searchinput", {
-        type: "search",
-        value: initial,
-        placeholder: "Songs, albums, artists, lyrics",
-        "aria-label": "Search",
-        autocomplete: "off",
-        spellcheck: false,
-      })
-    : null;
+  const input = field ? searchField(initial) : null;
   input?.addEventListener("input", () => {
     query = input.value;
     ctx.nav.replace("search", query);
@@ -224,16 +230,7 @@ export function searchPage(initial, { field = false } = {}) {
           ctx.app.keepSearch(query);
           r.play();
         };
-        const row = h(
-          "div.row.hit.song",
-          {
-            tabindex: "0",
-            onclick: play,
-            onkeydown: (e) => e.key === "Enter" && play(),
-          },
-          inner,
-        );
-        return contextMenu(row, () => songMenu([r.song]), r.title);
+        return contextMenu(playRow(play, inner), () => songMenu([r.song]), r.title);
       }),
       !whole && f.rows.length > shown
         ? h(
@@ -252,7 +249,7 @@ export function searchPage(initial, { field = false } = {}) {
       const songs = hits
         .map((x) => ({ song: ctx.app.catalog.byId.get(x.song), line: x.line }))
         .filter((x) => x.song);
-      showLyrics(songs, q);
+      showLyrics(songs);
     } catch {
       if (seq === lyricsSeq) {
         lyricsBox.replaceChildren();
@@ -281,18 +278,19 @@ export function searchPage(initial, { field = false } = {}) {
       h(
         "section.results-section",
         h("h3.section", "In lyrics"),
-        hits.slice(0, lyricsHits).map((x, i) =>
-          h(
-            "div.row.hit.song",
-            {
-              tabindex: "0",
-              onclick: () => playFrom(i),
-              onkeydown: (e) => e.key === "Enter" && playFrom(i),
-            },
-            thumb(x.song),
-            h("span.main", h("span.title", x.song.title), h("span.sub", `“${x.line}”`)),
+        hits
+          .slice(0, lyricsHits)
+          .map((x, i) =>
+            playRow(
+              () => playFrom(i),
+              thumb(x.song),
+              h(
+                "span.main",
+                h("span.title", x.song.title),
+                h("span.sub", `“${x.line}”`),
+              ),
+            ),
           ),
-        ),
       ),
     );
     empty.replaceChildren();

@@ -15,13 +15,12 @@ import {
   playOrder,
   nextIn,
   tempoOf,
-  songSetting,
-  kindSetting,
+  speedSetting,
   chapterAfter,
   chapterBefore,
   rewound,
 } from "./queue.js";
-import { nowMs, parseTime, uuid, distinct } from "./util.js";
+import { nowMs, parseTime, uuid, distinct, count } from "./util.js";
 import { synced } from "./synced.js";
 
 /** A hand-off never starts closer than this to the song's end, nor is a resume point kept there. */
@@ -135,10 +134,15 @@ export class Playback extends EventTarget {
     return Number.isFinite(this.el.duration) ? this.el.duration : 0;
   }
 
+  /** The position as the listens, the queues and the resume points keep it. */
+  get positionMs() {
+    return Math.round(this.position * 1000);
+  }
+
   /** The playing song's own speed, synced; null when it follows this browser's everyday one. */
   get songTempo() {
     return this.current
-      ? tempoOf(this.app.settings[songSetting(this.current.id)])
+      ? tempoOf(this.app.settings[speedSetting(this.current.id)])
       : null;
   }
 
@@ -148,7 +152,7 @@ export class Playback extends EventTarget {
    */
   get kindTempo() {
     const s = this.current;
-    return s?.spoken ? tempoOf(this.app.settings[kindSetting(s.kind)]) : null;
+    return s?.spoken ? tempoOf(this.app.settings[speedSetting(s.kind)]) : null;
   }
 
   /** The file's own, else its collection's, else this browser's everyday one. */
@@ -252,7 +256,7 @@ export class Playback extends EventTarget {
 
   /** A long press on Next: the next chapter, never the next file. False in a file without chapters. */
   chapterOn() {
-    const at = chapterAfter(this.chapterStarts, Math.round(this.position * 1000));
+    const at = chapterAfter(this.chapterStarts, this.positionMs);
     if (at != null) this.seek(at / 1000);
     return this.chapterStarts.length > 0;
   }
@@ -263,11 +267,7 @@ export class Playback extends EventTarget {
    * click it may go back in a long file; never to the previous file.
    */
   chapterBack() {
-    const at = chapterBefore(
-      this.chapterStarts,
-      Math.round(this.position * 1000),
-      3000,
-    );
+    const at = chapterBefore(this.chapterStarts, this.positionMs, 3000);
     if (at != null) this.seek(at / 1000);
     return this.chapterStarts.length > 0;
   }
@@ -292,8 +292,7 @@ export class Playback extends EventTarget {
     // A seek while stopped chose the place, so nothing goes back from it.
     if (!this.isPlaying) this.stoppedAt = 0;
     // Paused, nothing else saves where it now is: a reload or the other devices would get the old place.
-    if (!this.isPlaying && this.active)
-      this.savePlace(this.active, s, Math.round(this.position * 1000));
+    if (!this.isPlaying && this.active) this.savePlace(this.active, s, this.positionMs);
     if (this.ended) {
       this.start(s, this.position, !this.isPlaying);
     } else {
@@ -303,7 +302,6 @@ export class Playback extends EventTarget {
     this.updateSession();
   }
 
-  /** Plays the song at `index` of the active queue's own order. */
   /**
    * Plays `index` of the active queue. A long file already there goes on
    * from its place: starting it again would lose the place to a click.
@@ -435,8 +433,8 @@ export class Playback extends EventTarget {
     );
     this.say(
       next
-        ? `${plural(adding.length)} to play next`
-        : `${plural(adding.length)} added to the queue`,
+        ? `${count(adding.length)} to play next`
+        : `${count(adding.length)} added to the queue`,
     );
     this.updateSleep();
   }
@@ -454,7 +452,7 @@ export class Playback extends EventTarget {
     const row = { ...q, songs: [...q.songs.filter((s) => !set.has(s)), ...adding] };
     if (!row.currentSong) row.currentSong = row.songs[0];
     this.app.insertIntoQueue(row, adding, null);
-    this.say(`${plural(adding.length)} added to “${q.name}”`);
+    this.say(`${count(adding.length)} added to “${q.name}”`);
   }
 
   removeFrom(id, songs) {
@@ -599,14 +597,11 @@ export class Playback extends EventTarget {
   setSpeed(speed, onlyThisSong) {
     const s = this.current;
     if (onlyThisSong && s) {
-      const kept = this.songTempo ?? { semitones: 0 };
-      this.app.setSetting(songSetting(s.id), {
-        speed,
-        semitones: kept.semitones,
-      });
+      const semitones = this.songTempo?.semitones ?? 0;
+      this.app.setSetting(speedSetting(s.id), { speed, semitones });
     } else if (s?.spoken) {
-      const kept = this.kindTempo ?? { semitones: 0 };
-      this.app.setSetting(kindSetting(s.kind), { speed, semitones: kept.semitones });
+      const semitones = this.kindTempo?.semitones ?? 0;
+      this.app.setSetting(speedSetting(s.kind), { speed, semitones });
     } else {
       this.app.setPref("speed", speed === 1 ? undefined : speed);
     }
@@ -615,7 +610,7 @@ export class Playback extends EventTarget {
 
   /** The playing song follows the everyday speed again. */
   clearSongSpeed() {
-    if (this.current) this.app.setSetting(songSetting(this.current.id), null);
+    if (this.current) this.app.setSetting(speedSetting(this.current.id), null);
     this.applyTempo();
   }
 
@@ -785,7 +780,7 @@ export class Playback extends EventTarget {
     const s = this.app.catalog.byId.get(this.items[index]);
     if (!s) return;
     const finished = this.current;
-    const at = Math.round(this.position * 1000);
+    const at = this.positionMs;
     this.close(end, at);
     // Still stopped where it was heard: its point was saved then (saveActive).
     if (finished && !this.stoppedAt) this.saveResume(finished, at);
@@ -839,7 +834,7 @@ export class Playback extends EventTarget {
     const q = this.active;
     const s = this.current;
     if (!q || !s) return;
-    const pos = Math.round(this.position * 1000);
+    const pos = this.positionMs;
     this.app.setCurrent({ ...q, currentSong: s.id, positionMs: pos });
     if (!this.stoppedAt) this.saveResume(s, pos);
   }
@@ -903,9 +898,8 @@ export class Playback extends EventTarget {
     if (this.ticks % 120 === 0 && this.active) {
       const q = this.active;
       const s = this.current;
-      const pos = Math.round(this.position * 1000);
-      this.app.setCurrent({ ...q, currentSong: s.id, positionMs: pos });
-      this.saveResume(s, pos);
+      const pos = this.positionMs;
+      this.savePlace(q, s, pos);
       this.report(q, s, pos, true);
     }
     if (this.ticks % 4 === 0) this.updatePosition();
@@ -921,7 +915,7 @@ export class Playback extends EventTarget {
     if (!s) return this.reachedEnd();
     // Where the player got to, not the song list's length: a file that cannot
     // be read past "finishes" early, and the length would mark it played (plan 031).
-    this.close("finished", Math.round(this.position * 1000));
+    this.close("finished", this.positionMs);
     // Heard to the end: a long file's resume point is done with.
     if (this.isLong(finished)) this.app.setResume(finished.id, null);
     this.onNextSongSleep();
@@ -959,7 +953,7 @@ export class Playback extends EventTarget {
   /** Everything has played: the end of the queue, or a sleep timer's song. */
   reachedEnd() {
     const s = this.current;
-    this.close("finished", Math.round(this.position * 1000));
+    this.close("finished", this.positionMs);
     if (this.isLong(s)) this.app.setResume(s.id, null);
     const bySleep = this.pauseAfter != null && this.sleep.mode;
     this.setPlaying(false);
@@ -1050,7 +1044,7 @@ export class Playback extends EventTarget {
     const q = this.active;
     const s = this.current;
     if (!q || !s) return;
-    const pos = Math.round(this.position * 1000);
+    const pos = this.positionMs;
     this.report(q, s, pos, playing);
     if (!playing) this.savePlace(q, s, pos);
     this.updateSession();
@@ -1113,7 +1107,7 @@ export class Playback extends EventTarget {
     const since = this.stoppedAt;
     this.stoppedAt = 0;
     if (!s || !since || !this.isLong(s)) return;
-    const pos = Math.round(this.position * 1000);
+    const pos = this.positionMs;
     const to = this.rewind(pos, since);
     if (to === pos) return;
     this.position = to / 1000;
@@ -1174,9 +1168,7 @@ export class Playback extends EventTarget {
     this.count(o);
     // A song that never actually played was not a listen.
     if (o.heardMs > 0)
-      this.app.play(
-        this.listen(o, end, toMs ?? Math.round(this.position * 1000), nowMs()),
-      );
+      this.app.play(this.listen(o, end, toMs ?? this.positionMs, nowMs()));
   }
 
   listen(o, end, toMs, endedAt) {
@@ -1199,7 +1191,7 @@ export class Playback extends EventTarget {
     const o = this.open;
     if (!o) return;
     this.count(o);
-    o.lastPos = Math.round(this.position * 1000);
+    o.lastPos = this.positionMs;
     o.lastAt = nowMs();
     const { since, ...kept } = o;
     this.app.setPref("openListen", kept);
@@ -1219,7 +1211,7 @@ export class Playback extends EventTarget {
     if (this.isPlaying) {
       const q = this.active;
       const s = this.current;
-      const pos = Math.round(this.position * 1000);
+      const pos = this.positionMs;
       if (q && s) {
         this.report(q, s, pos, false);
         this.savePlace(q, s, pos);
@@ -1310,13 +1302,9 @@ export class Playback extends EventTarget {
     const m = this.sleep.mode;
     const cur = this.current?.id;
     const stop =
-      m?.kind === "after"
-        ? cur === m.song
-        : m?.kind === "song"
-          ? true
-          : m?.kind === "queue"
-            ? !this.hasNext
-            : false;
+      m?.kind === "song" ||
+      (m?.kind === "after" && cur === m.song) ||
+      (m?.kind === "queue" && !this.hasNext);
     this.pauseAfter = stop ? cur : null;
     this.preloadNext();
     this.emit();
@@ -1345,18 +1333,11 @@ export class Playback extends EventTarget {
   mediaSession() {
     const ms = navigator.mediaSession;
     if (!ms) return;
-    const on = (action, f) => {
-      try {
-        ms.setActionHandler(action, f);
-      } catch {
-        // An action this browser does not know.
-      }
-    };
-    on("play", () => this.play());
-    on("pause", () => this.pause());
-    on("previoustrack", () => this.previous(false));
-    on("nexttrack", () => this.next(false));
-    on("seekto", (d) => this.seek(d.seekTime));
+    setAction(ms, "play", () => this.play());
+    setAction(ms, "pause", () => this.pause());
+    setAction(ms, "previoustrack", () => this.previous(false));
+    setAction(ms, "nexttrack", () => this.next(false));
+    setAction(ms, "seekto", (d) => this.seek(d.seekTime));
   }
 
   /**
@@ -1371,16 +1352,8 @@ export class Playback extends EventTarget {
     const key = s && this.isLong(s) ? `${back}/${on}` : "";
     if (key === this.seekKey) return;
     this.seekKey = key;
-    for (const [action, f] of [
-      ["seekbackward", () => this.seekBack()],
-      ["seekforward", () => this.seekForward()],
-    ]) {
-      try {
-        ms.setActionHandler(action, key ? f : null);
-      } catch {
-        // An action this browser does not know.
-      }
-    }
+    setAction(ms, "seekbackward", key ? () => this.seekBack() : null);
+    setAction(ms, "seekforward", key ? () => this.seekForward() : null);
   }
 
   updateSession() {
@@ -1428,4 +1401,10 @@ export class Playback extends EventTarget {
   }
 }
 
-const plural = (n) => (n === 1 ? "1 song" : `${n} songs`);
+function setAction(ms, action, f) {
+  try {
+    ms.setActionHandler(action, f);
+  } catch {
+    // An action this browser does not know.
+  }
+}

@@ -6,7 +6,7 @@ import { icon } from "../icons.js";
 import { chapterName, day } from "../catalog.js";
 import { rowMenu, emptyNote, iconButton, dialog } from "./kit.js";
 import { SongList, items, thumb, cover } from "./songs.js";
-import { frame, filterBox, missing, namesPage, filterOver } from "./pages.js";
+import { frame, filterBox, missing, namesPage, showFilter } from "./pages.js";
 import { ctx } from "./ctx.js";
 import { synced } from "../synced.js";
 
@@ -123,15 +123,14 @@ export function shelfPage(id) {
     list.set(items(all), query ? items(app.catalog.filter(all, query)) : items(all));
     const fresh = shelf.items.filter((s) => !heard.played.has(s.id)).length;
     sub.textContent = shelf.isBook
-      ? [shelf.author, heard.progress(shelf)].filter(Boolean).join(" · ")
+      ? detail(shelf, heard)
       : `${count(shelf.items.length, "episode")} · ${fresh} not played`;
     play.replaceChildren(icon("play"), heard.begun(shelf) ? "Continue" : "Play");
     hide.replaceChildren(
       icon(hiding ? "eye" : "eyeOff"),
       hiding ? "Show played" : "Hide played",
     );
-    filter.parentElement &&
-      (filter.parentElement.hidden = all.length <= filterOver && !query);
+    showFilter(filter, all.length, query);
     list.o.empty.replaceChildren(
       list.items.length
         ? ""
@@ -154,14 +153,6 @@ export function shelfPage(id) {
   };
 }
 
-/** The chapter playing in `s`, as "Chapter 2 of 20 · Name"; null without chapters. */
-function chapterLabel(s, positionMs) {
-  if (!s?.chapters.length) return null;
-  const i = Math.max(0, chapterAt(s, positionMs));
-  const name = chapterName(s.chapters[i]);
-  return `Chapter ${i + 1} of ${s.chapters.length}` + (name ? ` · ${name}` : "");
-}
-
 const chapterAt = (s, ms) => s.chapters.findLastIndex((c) => c.startMs <= ms);
 
 /** The facts under an episode's or a book file's title: its show and day, or its book and author. */
@@ -172,11 +163,16 @@ export function spokenFacts(s) {
 
 /**
  * The line under the title on Now playing that opens the chapters panel: the
- * chapter playing, or, in a file without chapters, how many bookmarks it
- * has, so a long music file reaches them too (plan 033). Null for neither.
+ * chapter playing ("Chapter 2 of 20 · Name"), or, in a file without
+ * chapters, how many bookmarks it has, so a long music file reaches them too
+ * (plan 033). Null for neither.
  */
 export function chapterLine(s, positionMs) {
-  if (s.spoken && s.chapters.length) return chapterLabel(s, positionMs);
+  if (s.spoken && s.chapters.length) {
+    const i = Math.max(0, chapterAt(s, positionMs));
+    const name = chapterName(s.chapters[i]);
+    return `Chapter ${i + 1} of ${s.chapters.length}` + (name ? ` · ${name}` : "");
+  }
   const n = ctx.app.bookmarks(s.id).length;
   return n ? count(n, "bookmark") : null;
 }
