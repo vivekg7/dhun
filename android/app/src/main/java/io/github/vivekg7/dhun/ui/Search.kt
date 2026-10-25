@@ -34,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -210,7 +211,8 @@ fun SearchScreen(nav: Nav) {
             ) { at, f -> at + 1 + shown(f).size + if (more(f)) 1 else 0 }
             .let { if (lyrics.isNullOrEmpty()) it.dropLast(1) else it }
     var chipsHeight by remember { mutableIntStateOf(0) }
-    val atTop = starts.indexOfLast { it <= list.firstVisibleItemIndex + 1 }.coerceAtLeast(0)
+    // Derived, so a scroll recomposes only when the section on top changes.
+    val atTop by remember(starts) { derivedStateOf { starts.indexOfLast { it <= list.firstVisibleItemIndex + 1 }.coerceAtLeast(0) } }
 
     FastScroll(list, Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), list) {

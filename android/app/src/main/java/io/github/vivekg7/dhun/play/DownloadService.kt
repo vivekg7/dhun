@@ -13,6 +13,7 @@ import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.Downloads
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.sample
@@ -35,6 +36,7 @@ class DownloadService : Service() {
         )
     }
 
+    @OptIn(FlowPreview::class)
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,

@@ -218,7 +218,6 @@ fun ShelfScreen(
                             listOf(
                                 (if (hidePlayed) "Show played episodes" else "Hide played episodes") to {
                                     app.scope.launch { app.store.setting(Synced.hidePlayed.name, JsonPrimitive(!hidePlayed)) }
-                                    Unit
                                 },
                             )
                         },

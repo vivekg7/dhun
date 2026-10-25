@@ -19,6 +19,9 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * The song cache (docs/plans/019_networking_and_caching.md): original files,
@@ -63,7 +66,8 @@ class SongCache(
             var end: Long,
         )
 
-        private val lock = Object()
+        private val lock = ReentrantLock()
+        private val grew = lock.newCondition()
 
         /** Sorted, disjoint, never adjacent. Guarded by [lock]. */
         private val have = ArrayList<Run>()
@@ -101,7 +105,7 @@ class SongCache(
         /** Bumped when [roll] replaces [file]: a reader with the old one open reopens. */
         @Volatile var generation = 0
 
-        fun changed() = synchronized(lock) { lock.notifyAll() }
+        fun changed() = lock.withLock { grew.signalAll() }
 
         /** A read at [pos] is starting: anchors the window once the reader has settled. */
         fun track(pos: Long) {
@@ -113,7 +117,7 @@ class SongCache(
         }
 
         /** Where the bytes run out, reading on from [pos]; [pos] itself when none has arrived there. */
-        fun arrived(pos: Long): Long = synchronized(lock) { end(pos) }
+        fun arrived(pos: Long): Long = lock.withLock { end(pos) }
 
         /** [start] until [end] has been written. */
         fun add(
@@ -121,7 +125,7 @@ class SongCache(
             end: Long,
         ) {
             if (end <= start) return
-            synchronized(lock) {
+            lock.withLock {
                 var s = start
                 var e = end
                 have.removeAll { r ->
@@ -134,15 +138,15 @@ class SongCache(
                 }
                 have.add(Run(s, e))
                 have.sortBy { it.start }
-                lock.notifyAll()
+                grew.signalAll()
             }
         }
 
-        fun clear() = synchronized(lock) { have.clear() }
+        fun clear() = lock.withLock { have.clear() }
 
         /** Every byte of the file is here. */
         val whole: Boolean
-            get() = synchronized(lock) { total > 0 && have.size == 1 && have[0].start == 0L && have[0].end == total }
+            get() = lock.withLock { total > 0 && have.size == 1 && have[0].start == 0L && have[0].end == total }
 
         /**
          * How far a request from [from] goes before stopping: the file's
@@ -156,7 +160,7 @@ class SongCache(
                 val r = readAt
                 g = minOf(g, if (r >= 0 && from >= r && from < r + ahead) r + ahead else from + MIN_FETCH)
             }
-            synchronized(lock) { have.firstOrNull { it.start > from }?.let { g = minOf(g, it.start) } }
+            lock.withLock { have.firstOrNull { it.start > from }?.let { g = minOf(g, it.start) } }
             return g
         }
 
@@ -177,7 +181,7 @@ class SongCache(
         }
 
         /** More than twice [behind] sits before the reader: time to roll. */
-        fun rollDue(): Boolean = ahead > 0 && synchronized(lock) { (have.firstOrNull()?.start ?: readAt) < readAt - 2 * behind }
+        fun rollDue(): Boolean = ahead > 0 && lock.withLock { (have.firstOrNull()?.start ?: readAt) < readAt - 2 * behind }
 
         /**
          * Copies the bytes from [behind] the reader on into a fresh file that
@@ -188,7 +192,7 @@ class SongCache(
          */
         fun roll() {
             val keepFrom = maxOf(0, readAt - behind)
-            val runs = synchronized(lock) { have.filter { it.end > keepFrom }.map { Run(maxOf(it.start, keepFrom), it.end) } }
+            val runs = lock.withLock { have.filter { it.end > keepFrom }.map { Run(maxOf(it.start, keepFrom), it.end) } }
             val tmp = File(file.path + ".tmp")
             RandomAccessFile(file, "r").use { src ->
                 RandomAccessFile(tmp, "rw").use { dst ->
@@ -206,7 +210,7 @@ class SongCache(
                     }
                 }
             }
-            synchronized(lock) {
+            lock.withLock {
                 if (!tmp.renameTo(file)) {
                     tmp.delete()
                     return
@@ -214,13 +218,13 @@ class SongCache(
                 have.clear()
                 have.addAll(runs)
                 generation++
-                lock.notifyAll()
+                grew.signalAll()
             }
         }
 
         /** Blocks until a byte past [pos] has arrived, and returns how many have; or the end, when the file is whole. */
         fun awaitPast(pos: Long): Long {
-            synchronized(lock) {
+            lock.withLock {
                 try {
                     while (true) {
                         if (gone) throw FileNotFoundException("Song $song is no longer on the server")
@@ -230,7 +234,7 @@ class SongCache(
                         if (failing) throw IOException("Waiting for the network")
                         waitingAt = pos
                         try {
-                            lock.wait(250)
+                            grew.await(250, TimeUnit.MILLISECONDS)
                         } catch (e: InterruptedException) {
                             // The player cancelled the load: a seek, a skip, a release.
                             Thread.currentThread().interrupt()

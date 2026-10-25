@@ -114,7 +114,6 @@ private fun SettingsPage.reset(): Pair<String, () -> Unit>? {
         SettingsPage.Playback -> {
             "They follow you, so all your devices change." to {
                 app.scope.launch { for (s in Synced.all) app.store.setting(s.name, JsonNull) }
-                Unit
             }
         }
 

@@ -100,7 +100,7 @@ class Sync(
                 app.prefs.libraryFormat = LIBRARY_FORMAT
                 // More than 500 ops (a long offline stretch) take several rounds.
                 pushedPlaylists = false
-                while (pushAndPull() > 0 && dao.outboxSize() > 0) Unit
+                while (pushAndPull() > 0 && dao.outboxSize() > 0) {}
                 // The server rewrote those playlists: fetch them as written.
                 if (pushedPlaylists) pullLibrary()
                 pullPlays()

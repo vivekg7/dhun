@@ -190,13 +190,17 @@ class Intents(
             fun playlist(p: Playlist) = Pick(p.name, "playlist:${p.id}", catalog.songsOf(songIds(p.songs)))
             val artist = hint(MediaStore.EXTRA_MEDIA_ARTIST)
             val album = hint(MediaStore.EXTRA_MEDIA_ALBUM)
+
+            // Deprecated with MediaStore's own playlists, but a voice search still carries it.
+            @Suppress("DEPRECATION")
+            val playlistName = hint(MediaStore.EXTRA_MEDIA_PLAYLIST)
             val named = listOfNotNull(hint(MediaStore.EXTRA_MEDIA_TITLE), artist, album).joinToString(" ")
             val hinted =
                 when (focus) {
                     ARTIST -> catalog.artistIndex.best(artist)?.let { Pick(it.name, "artist:${it.name}", it.songs) }
                     ALBUM -> catalog.albumIndex.best(listOfNotNull(album, artist).joinToString(" "))?.let { Pick(it.name, "album:${it.key}", it.songs) }
                     GENRE -> catalog.genreIndex.best(hint(MediaStore.EXTRA_MEDIA_GENRE))?.let { Pick(it.name, "genre:${it.name}", it.songs) }
-                    PLAYLIST -> playlistIndex.best(hint(MediaStore.EXTRA_MEDIA_PLAYLIST))?.let(::playlist)
+                    PLAYLIST -> playlistIndex.best(playlistName)?.let(::playlist)
                     TITLE -> songs(catalog.songIndex, named)
                     else -> null
                 }
