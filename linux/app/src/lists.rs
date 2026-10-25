@@ -3,6 +3,7 @@
 
 use crate::app::App;
 use dhun_core::catalog::{SongRef, VIEW_SIZE};
+use dhun_core::model::PlayStat;
 use dhun_core::store;
 use dhun_core::time::now_ms;
 
@@ -78,8 +79,12 @@ impl ListKind {
         let c = app.catalog();
         let m = app.marks.borrow();
         let db = app.db.lock().unwrap();
-        let stats = || db.play_stats().unwrap_or_default().into_values().collect::<Vec<_>>();
-        let top = |ids: Vec<i64>| c.songs_of(&ids).into_iter().take(VIEW_SIZE).collect();
+        // The songs played whose stats `keep` passes, most first by `key`.
+        let top = |keep: &dyn Fn(&PlayStat) -> bool, key: fn(&PlayStat) -> i64| -> Vec<SongRef> {
+            let mut s: Vec<_> = db.play_stats().unwrap_or_default().into_values().filter(|s| keep(s)).collect();
+            s.sort_by_key(|s| (std::cmp::Reverse(key(s)), s.song));
+            c.songs_of(&s.iter().map(|s| s.song).collect::<Vec<_>>()).into_iter().take(VIEW_SIZE).collect()
+        };
         match self {
             ListKind::Favorites => c.songs_of(&m.favs),
             ListKind::ListenLater => c.songs_of(&m.later),
@@ -87,22 +92,12 @@ impl ListKind {
                 c.songs_of(&db.resumes().unwrap_or_default().iter().map(|r| r.song).collect::<Vec<_>>())
             }
             ListKind::RecentlyAdded => c.recently_added.clone(),
-            ListKind::RecentlyPlayed => {
-                let mut s: Vec<_> = stats().into_iter().filter(|s| s.last_played_at > 0).collect();
-                s.sort_by_key(|s| (std::cmp::Reverse(s.last_played_at), s.song));
-                top(s.into_iter().map(|s| s.song).collect())
-            }
-            ListKind::MostPlayed => {
-                let mut s: Vec<_> = stats().into_iter().filter(|s| s.count > 0).collect();
-                s.sort_by_key(|s| (std::cmp::Reverse(s.count), s.song));
-                top(s.into_iter().map(|s| s.song).collect())
-            }
+            ListKind::RecentlyPlayed => top(&|s| s.last_played_at > 0, |s| s.last_played_at),
+            ListKind::MostPlayed => top(&|s| s.count > 0, |s| s.count),
             ListKind::NotLately => {
                 // Played at least 3 times, and not in the last 90 days: favourites you have drifted away from.
                 let cutoff = now_ms() - 90 * 86_400_000;
-                let mut s: Vec<_> = stats().into_iter().filter(|s| s.count >= 3 && s.last_played_at < cutoff).collect();
-                s.sort_by_key(|s| (std::cmp::Reverse(s.count), s.song));
-                top(s.into_iter().map(|s| s.song).collect())
+                top(&|s| s.count >= 3 && s.last_played_at < cutoff, |s| s.count)
             }
         }
     }

@@ -3,6 +3,7 @@
 //! (plans 017, 020, 024).
 
 use crate::app::{App, Change};
+use crate::playback::Playback;
 use crate::widgets::{self, clock, cover, row};
 use adw::prelude::*;
 use dhun_core::catalog::SongRef;
@@ -85,22 +86,20 @@ pub fn bar(
         gtk::Scale::builder().hexpand(true).width_request(120).draw_value(false).valign(gtk::Align::Center).build();
     scale.set_range(0.0, 1.0);
     let dur = gtk::Label::builder().css_classes(["caption", "numeric", "dim-label"]).width_chars(7).xalign(0.0).build();
-    let shuffle = gtk::ToggleButton::builder()
-        .icon_name("media-playlist-shuffle-symbolic")
-        .tooltip_text("Shuffle")
-        .css_classes(["flat", "circular"])
-        .valign(gtk::Align::Center)
-        .build();
-    let repeat = button("media-playlist-repeat-symbolic", "Repeat: off");
-    // The panel beside the page, on the playing queue or the lyrics: a click
-    // shows that page, or hides the panel when it already shows it.
-    let side = |icon: &str, tip: &str, page: &'static str| {
-        let b = gtk::ToggleButton::builder()
+    let toggle = |icon: &str, tip: &str| {
+        gtk::ToggleButton::builder()
             .icon_name(icon)
             .tooltip_text(tip)
             .css_classes(["flat", "circular"])
             .valign(gtk::Align::Center)
-            .build();
+            .build()
+    };
+    let shuffle = toggle("media-playlist-shuffle-symbolic", "Shuffle");
+    let repeat = button("media-playlist-repeat-symbolic", "Repeat: off");
+    // The panel beside the page, on the playing queue or the lyrics: a click
+    // shows that page, or hides the panel when it already shows it.
+    let side = |icon: &str, tip: &str, page: &'static str| {
+        let b = toggle(icon, tip);
         let (pl, pg) = (panel.clone(), pages.clone());
         b.connect_clicked(move |_| {
             let showing = pl.shows_sidebar() && pg.visible_child_name().as_deref() == Some(page);
@@ -216,18 +215,16 @@ pub fn bar(
     outer.append(&b);
 
     let pb = app.playback().clone();
-    let p = pb.clone();
-    prev.connect_clicked(move |_| p.previous(true));
-    let p = pb.clone();
-    play.connect_clicked(move |_| p.toggle());
-    let p = pb.clone();
-    next.connect_clicked(move |_| p.next(true));
-    let p = pb.clone();
-    repeat.connect_clicked(move |_| p.cycle_repeat());
-    let p = pb.clone();
-    back.connect_clicked(move |_| p.seek_back());
-    let p = pb.clone();
-    on.connect_clicked(move |_| p.seek_forward());
+    let click = |b: &gtk::Button, f: fn(&Rc<Playback>)| {
+        let p = pb.clone();
+        b.connect_clicked(move |_| f(&p));
+    };
+    click(&prev, |p| p.previous(true));
+    click(&play, Playback::toggle);
+    click(&next, |p| p.next(true));
+    click(&repeat, Playback::cycle_repeat);
+    click(&back, Playback::seek_back);
+    click(&on, Playback::seek_forward);
     // Set from the player, the scale's moves are not the user's.
     let quiet = Rc::new(Cell::new(false));
     let (p, q) = (pb.clone(), quiet.clone());
@@ -243,7 +240,7 @@ pub fn bar(
     });
 
     let update_position = {
-        let (pb, scale, pos, dur, quiet) = (pb.clone(), scale.clone(), pos.clone(), dur.clone(), quiet.clone());
+        let (pb, quiet) = (pb.clone(), quiet.clone());
         move || {
             let d = pb.duration_ms();
             quiet.set(true);
@@ -256,7 +253,7 @@ pub fn bar(
     };
     let marks = {
         let (app, pb) = (app.clone(), pb.clone());
-        move || {
+        Rc::new(move || {
             let m = app.marks.borrow();
             let id = pb.current().map_or(0, |s| s.id);
             let (f, l) = (m.has(store::FAV, id), m.has(store::LATER, id));
@@ -266,9 +263,8 @@ pub fn bar(
             for (b, on) in [(&fav, f), (&later, l)] {
                 if on { b.add_css_class("accent") } else { b.remove_css_class("accent") }
             }
-        }
+        })
     };
-    let marks = Rc::new(marks);
     // The line under the title: the chapter playing, else the bookmarks; who
     // and from what; the sleep timer.
     let line = {
@@ -282,20 +278,7 @@ pub fn bar(
         })
     };
     let update = {
-        let marks = marks.clone();
-        let (app, pb, b, art, title, play, shuffle, repeat, quiet, up) = (
-            app.clone(),
-            pb.clone(),
-            b.clone(),
-            art,
-            title,
-            play.clone(),
-            shuffle,
-            repeat,
-            quiet,
-            update_position.clone(),
-        );
-        let (details, back, on, mark, line) = (details, back, on, mark, line.clone());
+        let (app, up, marks, line) = (app.clone(), update_position.clone(), marks.clone(), line.clone());
         let shown = Cell::new(i64::MIN);
         move || {
             let cur = pb.current();
@@ -336,26 +319,25 @@ pub fn bar(
                 _ => "Repeat: off",
             }));
             if mode == "off" {
-                repeat.remove_css_class("accent")
+                repeat.remove_css_class("accent");
             } else {
-                repeat.add_css_class("accent")
+                repeat.add_css_class("accent");
             }
             marks();
             up();
         }
     };
     update();
-    let line2 = line.clone();
     app.listen(move |c| {
         match c {
             Change::Playback | Change::Queues | Change::Thumbs => update(),
             Change::Position => {
                 update_position();
-                line2();
+                line();
             }
             Change::Marks => {
                 marks();
-                line2();
+                line();
             }
             _ => {}
         }
@@ -371,7 +353,7 @@ fn artists_of(s: &SongRef) -> Vec<String> {
 
 /// "Chapter 3 of 20 · Name · Author · Book", "Artist · Album · Sleep in 12
 /// min", as markup: the artists, the album, and the show or book are links.
-fn subtitle(app: &App, pb: &crate::playback::Playback) -> String {
+fn subtitle(app: &App, pb: &Playback) -> String {
     let Some(s) = pb.current() else { return String::new() };
     let text = |t: &str| gtk::glib::markup_escape_text(t).to_string();
     let link = |to: &str, t: &str| {
@@ -519,7 +501,7 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
     let songs = RefCell::new(Vec::<SongRef>::new());
     let store = RefCell::new(None::<gtk::gio::ListStore>);
     let update = {
-        let (app, holder, current) = (app.clone(), holder.clone(), current.clone());
+        let app = app.clone();
         move || {
             name.set_label(&pb.active_with(|q| q.name.clone()).unwrap_or_else(|| "No queue".into()));
             let key = (pb.active_id(), pb.items(), Arc::as_ptr(&app.catalog()) as usize);
@@ -584,11 +566,10 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
                     move |(i, _)| p.play_at(*i)
                 },
             );
-            let pk = picked.clone();
             let group = widgets::song_actions(
                 &app,
                 list.upcast_ref(),
-                Rc::new(move || pk.borrow().clone()),
+                Rc::new(move || picked.borrow().clone()),
                 Rc::new(Vec::new),
                 &play,
                 &widgets::Edit::None,
@@ -626,7 +607,7 @@ pub fn queue_panel(app: &Rc<App>) -> gtk::Box {
 /// The queues, to switch between: numbered from 1 in the user's order, as
 /// in Musicolet (plan 020). Each can be renamed or removed from here, and
 /// every queue but the one playing removed at once, as on the phone.
-pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
+fn picker(app: &Rc<App>) -> gtk::MenuButton {
     let list =
         gtk::ListBox::builder().css_classes(["navigation-sidebar"]).selection_mode(gtk::SelectionMode::None).build();
     let others = gtk::Button::builder().label("Remove All Other Queues…").css_classes(["flat"]).margin_top(4).build();
@@ -648,7 +629,7 @@ pub fn picker(app: &Rc<App>) -> gtk::MenuButton {
         .css_classes(["flat"])
         .build();
     let pb = app.playback().clone();
-    let ids: Rc<std::cell::RefCell<Vec<String>>> = Rc::default();
+    let ids: Rc<RefCell<Vec<String>>> = Rc::default();
     let (p, i, popover) = (pb.clone(), ids.clone(), pop.clone());
     list.connect_row_activated(move |_, r| {
         let id = i.borrow().get(r.index() as usize).cloned();

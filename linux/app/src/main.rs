@@ -94,10 +94,9 @@ fn main() -> glib::ExitCode {
     gapp.connect_activate(move |gapp| {
         show(gapp, &sh);
     });
-    let sh = shell.clone();
     gapp.connect_open(move |gapp, files, _| {
         // The playing queue pauses where it is, and is not resumed after (plan 021).
-        if let Some(app) = sh.app.get() {
+        if let Some(app) = shell.app.get() {
             app.playback().pause();
         }
         if let Some(f) = files.first() {
@@ -122,7 +121,7 @@ fn show(gapp: &adw::Application, shell: &Shell) -> Rc<App> {
         let window = window::build(gapp, &app);
         if let Some((w, h)) = std::env::var("DHUN_SIZE")
             .ok()
-            .and_then(|s| Some(s.split_once('x')?).and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))))
+            .and_then(|s| s.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))))
         {
             window.set_default_size(w, h);
         }
@@ -210,7 +209,7 @@ fn shortcut(app: &Rc<App>, shell: &Shell, name: &str) {
 /// own library and sign-in, as on the Mac; else the user's data folder
 /// (inside the Flatpak, the app's own).
 fn data_dir() -> PathBuf {
-    std::env::var_os("DHUN_DATA").map(PathBuf::from).unwrap_or_else(|| glib::user_data_dir().join("dhun"))
+    std::env::var_os("DHUN_DATA").map_or_else(|| glib::user_data_dir().join("dhun"), PathBuf::from)
 }
 
 fn start(gapp: &adw::Application) -> Rc<App> {
@@ -222,31 +221,21 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     // On quitting: the open listen and the place are kept, as on pause.
     let a = app.clone();
     gapp.connect_shutdown(move |_| a.playback().quitting());
-    let action = |name: &str, f: Box<dyn Fn()>| {
+    let action = |name: &str, f: fn(&adw::Application, &Rc<App>)| {
         let a = gio::SimpleAction::new(name, None);
-        a.connect_activate(move |_, _| f());
+        let (g, app) = (gapp.clone(), app.clone());
+        a.connect_activate(move |_, _| f(&g, &app));
         gapp.add_action(&a);
     };
-    let a = app.clone();
-    action("sync", Box::new(move || a.sync_soon(Duration::ZERO)));
-    let a = app.clone();
-    action(
-        "sign-out",
-        Box::new({
-            let g = gapp.clone();
-            move || {
-                // Asked first, as Settings asks: unsent changes go, and the downloads if not kept.
-                let Some(w) = g.active_window() else { return };
-                crate::settings::ask_sign_out(&w, &a, || {});
-            }
-        }),
-    );
-    let g = gapp.clone();
-    action("about", Box::new(move || about(&g)));
-    let (g, a) = (gapp.clone(), app.clone());
-    action("mini", Box::new(move || mini::open(&g, &a)));
-    let g = gapp.clone();
-    action("quit", Box::new(move || g.quit()));
+    action("sync", |_, a| a.sync_soon(Duration::ZERO));
+    action("sign-out", |g, a| {
+        // Asked first, as Settings asks: unsent changes go, and the downloads if not kept.
+        let Some(w) = g.active_window() else { return };
+        settings::ask_sign_out(&w, a, || {});
+    });
+    action("about", |g, _| about(g));
+    action("mini", mini::open);
+    action("quit", |g, _| g.quit());
     gapp.set_accels_for_action("app.quit", &["<Control>q"]);
     // The kept copy at once, then what changed on the server.
     if app.signed_in() {
@@ -272,7 +261,6 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     let a = app.clone();
     gio::bus_get(gio::BusType::System, None::<&gio::Cancellable>, move |bus| {
         let Ok(bus) = bus else { return };
-        let a = a.clone();
         let sub = bus.subscribe_to_signal(
             Some("org.freedesktop.login1"),
             Some("org.freedesktop.login1.Manager"),

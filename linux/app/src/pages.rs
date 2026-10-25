@@ -81,18 +81,11 @@ impl Nav {
         let weak = Rc::downgrade(&nav);
         nav.search.connect_search_changed(move |e| {
             let Some(n) = weak.upgrade() else { return };
-            if e.text().is_empty() {
-                n.refill_search();
-            } else if n.current() != Some(Route::Search) {
+            // Opened, or back to the results from a page opened from them.
+            if !e.text().is_empty() && (n.current() != Some(Route::Search) || n.routes.borrow().len() > 1) {
                 n.open(Route::Search);
             } else {
-                // Back to the results from a page opened from them.
-                let depth = n.routes.borrow().len();
-                if depth > 1 {
-                    n.open(Route::Search);
-                } else {
-                    n.refill_search();
-                }
+                n.refill_search();
             }
         });
         // A click into the empty field shows the recent searches, as Ctrl+F does.
@@ -306,10 +299,7 @@ impl Nav {
                 }
             }
         };
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&adw::HeaderBar::new());
-        toolbar.set_content(Some(&child));
-        adw::NavigationPage::builder().title(title).child(&toolbar).build()
+        adw::NavigationPage::builder().title(title).child(&widgets::with_header(&child)).build()
     }
 }
 
@@ -346,13 +336,17 @@ fn empty(app: &Rc<App>) -> gtk::Widget {
 }
 
 fn filter_entry(placeholder: &str) -> gtk::SearchEntry {
-    gtk::SearchEntry::builder()
-        .placeholder_text(placeholder)
-        .margin_start(18)
-        .margin_end(18)
-        .margin_top(6)
-        .margin_bottom(6)
-        .build()
+    let e = widgets::filter_entry(placeholder);
+    e.set_margin_top(6);
+    e
+}
+
+/// A list sharing the page with another, no taller than `max` unless scrolled.
+fn bounded(scroll: &gtk::ScrolledWindow, max: i32) {
+    scroll.set_vexpand(false);
+    scroll.set_min_content_height(120);
+    scroll.set_max_content_height(max);
+    scroll.set_propagate_natural_height(true);
 }
 
 /// Every album as a grid of covers, filtered as search matches (plan 029).
@@ -562,7 +556,7 @@ fn album_page(app: &Rc<App>, a: &Album) -> gtk::Widget {
         app,
         Some(top.upcast()),
         a.songs.clone(),
-        Columns { track: true, album: false, ..Default::default() },
+        Columns { track: true, ..Default::default() },
         play,
         Edit::None,
     )
@@ -582,7 +576,6 @@ fn groups_page(nav: &Rc<Nav>, groups: &[Arc<Group>], artists: bool) -> gtk::Widg
         let view = widgets::list(
             list,
             {
-                let a = a.clone();
                 move |g: &Arc<Group>| {
                     let r = row(&cover(&a, g.songs.first(), 36), &g.name, &summary(&g.songs));
                     r.append(&widgets::pin_mark(&a, if artists { dl::ARTIST } else { dl::GENRE }, &g.name));
@@ -685,15 +678,7 @@ fn group_page(nav: &Rc<Nav>, g: &Group, artist: bool) -> gtk::Widget {
     }
     let play =
         Play::List { name: g.name.clone(), source: format!("{}:{}", if artist { "artist" } else { "genre" }, g.name) };
-    songs_page(
-        app,
-        Some(top.upcast()),
-        songs,
-        Columns { track: false, album: true, ..Default::default() },
-        play,
-        Edit::None,
-    )
-    .upcast()
+    songs_page(app, Some(top.upcast()), songs, Columns::WITH_ALBUM, play, Edit::None).upcast()
 }
 
 /// The real NAS folder tree: subfolders, then the folder's own songs.
@@ -716,8 +701,7 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
         b.append(&top);
     }
     if !f.children.is_empty() {
-        let (n, a) = (nav.clone(), app.clone());
-        let cat = c.clone();
+        let (n, a, cat) = (nav.clone(), app.clone(), c.clone());
         let list = widgets::list(
             &f.children,
             move |p: &String| {
@@ -736,10 +720,7 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
         );
         let scroll = widgets::scrolled(&list);
         if !f.songs.is_empty() {
-            scroll.set_vexpand(false);
-            scroll.set_min_content_height(120);
-            scroll.set_max_content_height(260);
-            scroll.set_propagate_natural_height(true);
+            bounded(&scroll, 260);
         }
         b.append(&scroll);
     }
@@ -748,14 +729,7 @@ fn folder_page(nav: &Rc<Nav>, path: &str) -> gtk::Widget {
             b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
         let play = Play::List { name: f.name().to_string(), source: format!("folder:{}", f.path) };
-        b.append(&songs_page(
-            app,
-            None,
-            f.songs.clone(),
-            Columns { track: false, album: true, ..Default::default() },
-            play,
-            Edit::None,
-        ));
+        b.append(&songs_page(app, None, f.songs.clone(), Columns::WITH_ALBUM, play, Edit::None));
     }
     b.upcast()
 }
@@ -941,7 +915,7 @@ fn queue_page(nav: &Rc<Nav>, q: &dhun_core::model::QueueRow) -> gtk::Widget {
         let t = top.downgrade();
         act.connect_activate(move |_, v| {
             if let Some(t) = t.upgrade() {
-                f(t.upcast_ref(), v)
+                f(t.upcast_ref(), v);
             }
         });
         group.add_action(&act);
@@ -1002,14 +976,8 @@ fn queue_page(nav: &Rc<Nav>, q: &dhun_core::model::QueueRow) -> gtk::Widget {
             widgets::confirm(w, &heading, "", "Remove", move || a.playback().delete_others(&id));
         }),
     );
-    let page = songs_page(
-        app,
-        Some(top.clone().upcast()),
-        songs,
-        Columns { track: false, album: true, ..Default::default() },
-        Play::Queue(q.id.clone()),
-        Edit::None,
-    );
+    let page =
+        songs_page(app, Some(top.clone().upcast()), songs, Columns::WITH_ALBUM, Play::Queue(q.id.clone()), Edit::None);
     page.insert_action_group("queue", Some(&group));
     page.upcast()
 }
@@ -1039,7 +1007,7 @@ fn playlist_page(nav: &Rc<Nav>, p: &Playlist) -> gtk::Widget {
     let pin = (p.id > 0).then(|| (dl::PLAYLIST, p.id.to_string()));
     let top = header(app, songs.first(), &p.name, &format!("{shared}{}", summary(&songs)), pin);
     let play = Play::List { name: p.name.clone(), source: format!("playlist:{}", p.id) };
-    let cols = Columns { track: false, album: true, ..Default::default() };
+    let cols = Columns::WITH_ALBUM;
     if p.shared {
         return songs_page(app, Some(top.upcast()), songs, cols, play, Edit::None).upcast();
     }
@@ -1066,7 +1034,7 @@ fn playlist_page(nav: &Rc<Nav>, p: &Playlist) -> gtk::Widget {
         act.connect_activate(move |_, v| {
             let found = a.playlists.borrow().iter().find(|p| p.id == id).cloned();
             if let (Some(t), Some(p)) = (t.upgrade(), found) {
-                f(t.upcast_ref(), &p, v)
+                f(t.upcast_ref(), &p, v);
             }
         });
         group.add_action(&act);
@@ -1159,15 +1127,13 @@ fn list_page(app: &Rc<App>, k: ListKind) -> gtk::Widget {
     let top = header(app, songs.first(), k.title(), &summary(&songs), pin);
     let play = Play::List { name: k.title().into(), source: k.source().into() };
     let edit = k.mark().map_or(Edit::None, |m| Edit::Mark(m, k.title()));
-    songs_page(app, Some(top.upcast()), songs, Columns { track: false, album: true, ..Default::default() }, play, edit)
-        .upcast()
+    songs_page(app, Some(top.upcast()), songs, Columns::WITH_ALBUM, play, edit).upcast()
 }
 
 fn pin_keys(app: &App) -> Vec<String> {
     let mut songs: Vec<i64> = app.downloaded.borrow().keys().copied().collect();
-    songs.sort();
-    let pins = app.pins.borrow().iter().map(|p| p.key.clone()).collect::<Vec<_>>();
-    pins.into_iter().chain(songs.iter().map(|s| s.to_string())).collect()
+    songs.sort_unstable();
+    app.pins.borrow().iter().map(|p| p.key.clone()).chain(songs.into_iter().map(|s| s.to_string())).collect()
 }
 
 /// What is kept on this computer (plan 012): how far along it is, each
@@ -1301,14 +1267,8 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
         |_| {},
     );
     let scroll = widgets::scrolled(&list);
-    let bounded = |scroll: &gtk::ScrolledWindow| {
-        scroll.set_vexpand(false);
-        scroll.set_min_content_height(120);
-        scroll.set_max_content_height(220);
-        scroll.set_propagate_natural_height(true);
-    };
     if !songs.is_empty() || !spoken.is_empty() {
-        bounded(&scroll);
+        bounded(&scroll, 220);
     }
     b.append(&scroll);
     let heading = |text: String| {
@@ -1319,14 +1279,7 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
         b.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         b.append(&heading(format!("Songs on this computer · {}", summary(&songs))));
         let play = Play::List { name: "Downloads".into(), source: "downloads".into() };
-        b.append(&songs_page(
-            app,
-            None,
-            songs,
-            Columns { track: false, album: true, ..Default::default() },
-            play,
-            Edit::None,
-        ));
+        b.append(&songs_page(app, None, songs, Columns::WITH_ALBUM, play, Edit::None));
     }
     // Each plays its own show or book from it, as on their pages.
     if !spoken.is_empty() {
@@ -1334,10 +1287,9 @@ fn downloads_page(nav: &Rc<Nav>) -> gtk::Widget {
         let (n, ms) = (spoken.len(), spoken.iter().map(|s| s.duration_ms).sum());
         let files = if n == 1 { "1 file".to_string() } else { format!("{n} files") };
         b.append(&heading(format!("Podcasts and audiobooks · {files} · {}", widgets::clock(ms))));
-        let cols = Columns { track: false, album: true, ..Default::default() };
-        let list = widgets::scrolled(&widgets::song_list(app, &spoken, cols, Play::Spoken, Edit::None));
+        let list = widgets::scrolled(&widgets::song_list(app, &spoken, Columns::WITH_ALBUM, Play::Spoken, Edit::None));
         if any_songs {
-            bounded(&list);
+            bounded(&list, 220);
         }
         b.append(&list);
     }

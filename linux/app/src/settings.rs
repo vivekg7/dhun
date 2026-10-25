@@ -4,7 +4,7 @@
 //! it works. Also the theme and accent the window wears.
 
 use crate::app::{App, Change};
-use crate::widgets::confirm;
+use crate::widgets::{confirm, with_header};
 use adw::prelude::*;
 use dhun_core::downloads::format_bytes;
 use dhun_core::store;
@@ -555,7 +555,7 @@ fn family(app: &Rc<App>) -> adw::NavigationPage {
     page.add(&list);
     let rows: Rc<RefCell<Vec<gtk::Widget>>> = Rc::default();
     let load: Rc<dyn Fn()> = {
-        let (app, list, rows) = (app.clone(), list.downgrade(), rows.clone());
+        let (app, list) = (app.clone(), list.downgrade());
         Rc::new(move || {
             let (api, list, rows, app) = (app.api.clone(), list.clone(), rows.clone(), app.clone());
             glib::spawn_future_local(async move {
@@ -602,10 +602,7 @@ fn family(app: &Rc<App>) -> adw::NavigationPage {
         let save = move |name: String, pw: String| api.add_member(&name, &pw).map_err(|e| e.to_string());
         member_form(b, "Add a family member", true, save, move || l());
     });
-    let tv = adw::ToolbarView::new();
-    tv.add_top_bar(&adw::HeaderBar::new());
-    tv.set_content(Some(&page));
-    adw::NavigationPage::builder().title("Family Members").child(&tv).build()
+    adw::NavigationPage::builder().title("Family Members").child(&with_header(&page)).build()
 }
 
 /// "Signed in on 2 devices · seen 3 hours ago", as on the phone.
@@ -734,20 +731,15 @@ fn guide_text() -> (gtk::Box, Vec<(String, gtk::Label)>) {
     for (kind, text) in guide_blocks() {
         // Selectable, but not focused: a focused label selects all of itself.
         let l = gtk::Label::builder().use_markup(true).xalign(0.0).wrap(true).selectable(true).can_focus(false).build();
+        l.set_markup(&if kind == 9 { format!("•  {}", markup(&text)) } else { markup(&text) });
         match kind {
-            0 => l.set_markup(&markup(&text)),
-            9 => l.set_markup(&format!("•  {}", markup(&text))),
-            1 => {
-                l.set_markup(&markup(&text));
-                l.add_css_class("title-2");
-            }
+            0 | 9 => {}
+            1 => l.add_css_class("title-2"),
             2 => {
-                l.set_markup(&markup(&text));
                 l.add_css_class("title-4");
                 l.set_margin_top(10);
             }
             _ => {
-                l.set_markup(&markup(&text));
                 l.add_css_class("heading");
                 l.set_margin_top(4);
             }
@@ -776,8 +768,7 @@ fn guide_subpage(section: &str) -> adw::NavigationPage {
     text.set_margin_end(18);
     text.set_margin_top(12);
     text.set_margin_bottom(18);
-    let scroll =
-        gtk::ScrolledWindow::builder().child(&text).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
+    let scroll = crate::widgets::scrolled(&text);
     if let Some((_, label)) = headings.into_iter().find(|(h, _)| h == section) {
         // Once laid out, or there is nothing to scroll to yet.
         let s = scroll.downgrade();
@@ -790,8 +781,5 @@ fn guide_subpage(section: &str) -> adw::NavigationPage {
             });
         });
     }
-    let tv = adw::ToolbarView::new();
-    tv.add_top_bar(&adw::HeaderBar::new());
-    tv.set_content(Some(&scroll));
-    adw::NavigationPage::builder().title("How it works").child(&tv).build()
+    adw::NavigationPage::builder().title("How it works").child(&with_header(&scroll)).build()
 }

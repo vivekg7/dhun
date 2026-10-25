@@ -59,7 +59,8 @@ const XML: &str = r#"<node>
 /// Takes the bus name and serves the player while the app runs.
 pub fn start(gapp: &adw::Application, app: &Rc<App>) {
     let (gapp, app) = (gapp.clone(), app.clone());
-    let owner = gio::bus_own_name(
+    // Held for the app's life: the name is given up only by `bus_unown_name`.
+    let _ = gio::bus_own_name(
         gio::BusType::Session,
         "org.mpris.MediaPlayer2.dhun",
         gio::BusNameOwnerFlags::NONE,
@@ -67,17 +68,15 @@ pub fn start(gapp: &adw::Application, app: &Rc<App>) {
         |_, _| {},
         |_, _| {},
     );
-    // Held for the app's life: the name is given up only by `bus_unown_name`.
-    let _ = owner;
 }
 
 fn serve(conn: &gio::DBusConnection, gapp: &adw::Application, app: &Rc<App>) {
     let node = gio::DBusNodeInfo::for_xml(XML).expect("MPRIS introspection");
     for iface in [ROOT, PLAYER] {
         let info = node.lookup_interface(iface).unwrap();
-        let (g, a) = (gapp.clone(), app.clone());
-        let a2 = app.clone();
-        let reg = conn
+        let (g, a, a2) = (gapp.clone(), app.clone(), app.clone());
+        // Served until the connection closes; nothing unregisters it.
+        let _ = conn
             .register_object(PATH, &info)
             .method_call(move |_, _, _, _, method, params, invocation| {
                 call(&g, &a, method, &params);
@@ -85,8 +84,6 @@ fn serve(conn: &gio::DBusConnection, gapp: &adw::Application, app: &Rc<App>) {
             })
             .property(move |_, _, _, iface, name| property(&a2, iface, name))
             .build();
-        // Served until the connection closes; nothing unregisters it.
-        let _ = reg;
     }
     // Every change the controls show, said on the bus.
     let (c, a) = (conn.clone(), app.clone());
@@ -158,10 +155,10 @@ fn property(app: &Rc<App>, iface: &str, name: &str) -> Variant {
     let pb = app.playback();
     let cur = pb.current();
     match (iface, name) {
-        (ROOT, "CanQuit") | (ROOT, "CanRaise") => true.to_variant(),
+        (ROOT, "CanQuit" | "CanRaise") => true.to_variant(),
         (ROOT, "HasTrackList") => false.to_variant(),
         (ROOT, "Identity") => "Dhun".to_variant(),
-        (ROOT, "DesktopEntry") => "io.github.vivekg7.dhun".to_variant(),
+        (ROOT, "DesktopEntry") => crate::ID.to_variant(),
         (ROOT, _) => Vec::<String>::new().to_variant(),
         (_, "PlaybackStatus") => match (&cur, pb.is_playing()) {
             (None, _) => "Stopped",

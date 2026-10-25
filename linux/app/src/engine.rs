@@ -62,8 +62,6 @@ pub struct Engine {
     pitch: std::cell::Cell<Option<f64>>,
     /// The shift asked for, put in when the next song opens.
     want_pitch: std::cell::Cell<Option<f64>>,
-    /// Where to seek once the song opened by `play` has prerolled.
-    pending_seek: std::cell::Cell<Option<(u64, bool)>>,
     _bus: gst::bus::BusWatchGuard,
 }
 
@@ -165,31 +163,19 @@ impl Engine {
                     gst::MessageView::Element(e)
                         if e.structure().is_some_and(|s| s.name() == "dhun-output-changed") =>
                     {
-                        on_event(Event::OutputChanged)
+                        on_event(Event::OutputChanged);
                     }
                     _ => {}
                 }
                 glib::ControlFlow::Continue
             })
             .expect("a bus watch");
-        Engine {
-            playbin,
-            shared,
-            pitch: Default::default(),
-            want_pitch: Default::default(),
-            pending_seek: Default::default(),
-            _bus: guard,
-        }
+        Engine { playbin, shared, pitch: Default::default(), want_pitch: Default::default(), _bus: guard }
     }
 
     /// Whether pitch can be shifted: the Flatpak builds `pitch`, a system may lack it.
     pub fn can_pitch() -> bool {
         gst::ElementFactory::find("pitch").is_some()
-    }
-
-    /// Each song's speed, for the songs that may play next; the rest play at 1×.
-    pub fn set_speeds(&self, speeds: HashMap<i64, f64>) {
-        *self.shared.speeds.lock().unwrap() = speeds;
     }
 
     /// `song` at `speed` and `semitones`: the speed from its next segment,
@@ -226,8 +212,10 @@ impl Engine {
         self.playbin.set_property("volume", v.clamp(0.0, 1.0));
     }
 
-    /// The queue's songs and play order, for what follows by itself.
-    pub fn set_upcoming(&self, up: Upcoming, songs: HashMap<i64, SongRef>) {
+    /// The queue's songs and play order, for what follows by itself, and
+    /// the speed of each that may play next; the rest play at 1×.
+    pub fn set_upcoming(&self, up: Upcoming, songs: HashMap<i64, SongRef>, speeds: HashMap<i64, f64>) {
+        *self.shared.speeds.lock().unwrap() = speeds;
         *self.shared.upcoming.lock().unwrap() = up;
         *self.shared.songs.lock().unwrap() = songs;
     }
@@ -242,20 +230,17 @@ impl Engine {
         }
         let uri = self.shared.register(song, source);
         self.playbin.set_property("uri", &uri);
-        self.pending_seek.set((from_ms > 0).then_some((from_ms as u64, paused)));
         let state = if paused || from_ms > 0 { gst::State::Paused } else { gst::State::Playing };
         let _ = self.playbin.set_state(state);
         if from_ms > 0 {
-            self.seek_when_ready();
+            self.seek_when_ready(from_ms as u64, paused);
         }
     }
 
     /// The seek `play` asked for, once the song has prerolled: a seek
     /// before it would be lost.
-    fn seek_when_ready(&self) {
+    fn seek_when_ready(&self, ms: u64, paused: bool) {
         let pb = self.playbin.downgrade();
-        let pending = self.pending_seek.take();
-        let Some((ms, paused)) = pending else { return };
         // Another song opened before this one was ready: the seek was this one's.
         let (shared, opened) = (self.shared.clone(), self.shared.serial.load(Ordering::SeqCst));
         glib::timeout_add_local(std::time::Duration::from_millis(30), move || {
@@ -493,7 +478,7 @@ mod sparse {
                     };
                     // FFmpeg writes LAME's tag under its own name, which GStreamer's
                     // parser does not read, so its gapless trim is lost (plan 039).
-                    if let Some(at) = at.filter(|&a| a + 4 > offset && a < offset + bytes.len() as u64) {
+                    if let Some(at) = at {
                         for (i, b) in b"LAME".iter().enumerate() {
                             let p = at + i as u64;
                             if p >= offset && p < offset + bytes.len() as u64 {

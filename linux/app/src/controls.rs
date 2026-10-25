@@ -38,21 +38,34 @@ fn caption(text: &str) -> gtk::Label {
         .build()
 }
 
-/// Speed and pitch for the song playing, or as this computer's everyday one.
-pub fn speed_button(app: &Rc<App>) -> gtk::MenuButton {
+/// A button on the bar whose popover is built as it opens, for the song playing then.
+fn popover_button(icon: &str, tip: &str, panel: impl Fn(&gtk::Popover) -> gtk::Widget + 'static) -> gtk::MenuButton {
     let pop = gtk::Popover::new();
-    let button = gtk::MenuButton::builder()
-        .icon_name("power-profile-performance-symbolic")
-        .tooltip_text("Speed and pitch")
+    pop.connect_show(move |pop| pop.set_child(Some(&panel(pop))));
+    gtk::MenuButton::builder()
+        .icon_name(icon)
+        .tooltip_text(tip)
         .popover(&pop)
         .css_classes(["flat", "circular"])
         .valign(gtk::Align::Center)
-        .build();
-    let pb = app.playback().clone();
-    // Built as it opens, for the song playing then.
-    let p = pb.clone();
-    pop.connect_show(move |pop| pop.set_child(Some(&speed_panel(&p))));
-    let (b, p) = (button.clone(), pb.clone());
+        .build()
+}
+
+/// Closes `pop` once a choice in it is made.
+fn closer(pop: &gtk::Popover) -> impl Fn() + Clone + 'static {
+    let pop = pop.downgrade();
+    move || {
+        if let Some(p) = pop.upgrade() {
+            p.popdown();
+        }
+    }
+}
+
+/// Speed and pitch for the song playing, or as this computer's everyday one.
+pub fn speed_button(app: &Rc<App>) -> gtk::MenuButton {
+    let p = app.playback().clone();
+    let button = popover_button("power-profile-performance-symbolic", "Speed and pitch", move |_| speed_panel(&p));
+    let (b, p) = (button.clone(), app.playback().clone());
     let update = move || match p.tempo().label() {
         Some(l) => {
             b.set_label(&l);
@@ -93,7 +106,7 @@ fn speed_panel(pb: &Rc<crate::playback::Playback>) -> gtk::Widget {
     };
     // The speed under the pointer shows at once, and is applied, and synced, once it rests.
     let pending: Rc<Cell<Option<glib::SourceId>>> = Rc::default();
-    let (s, title, p) = (set.clone(), title.clone(), pb.clone());
+    let (s, p) = (set.clone(), pb.clone());
     scale.connect_value_changed(move |sc| {
         let v = (sc.value() * 20.0).round() / 20.0;
         title.set_label(&format!("Speed {}×", tempo::format(v)));
@@ -141,29 +154,26 @@ fn speed_panel(pb: &Rc<crate::playback::Playback>) -> gtk::Widget {
     };
     let row = gtk::Box::builder().spacing(8).build();
     row.append(&gtk::Label::builder().label(format!("Only for this {one}")).xalign(0.0).hexpand(true).build());
-    let switch = gtk::Switch::builder().active(only.get()).valign(gtk::Align::Center).build();
-    switch.set_sensitive(pb.current().is_some());
+    let switch =
+        gtk::Switch::builder().active(only.get()).valign(gtk::Align::Center).sensitive(pb.current().is_some()).build();
     row.append(&switch);
     b.append(&row);
-    let note = caption(if only.get() { "" } else { every });
-    if only.get() {
-        note.set_label(&format!("This {one} keeps its own, on all your devices."));
-    }
+    let own = format!("This {one} keeps its own, on all your devices.");
+    let note = caption(if only.get() { own.as_str() } else { every });
     b.append(&note);
-    let (p, o, n) = (pb.clone(), only.clone(), note.clone());
+    let (p, o, n) = (pb.clone(), only, note);
     switch.connect_active_notify(move |sw| {
         let on = sw.is_active();
         o.set(on);
         if on {
             p.set_tempo(p.tempo(), true);
-            n.set_label(&format!("This {one} keeps its own, on all your devices."));
+            n.set_label(&own);
         } else {
             p.clear_song_tempo();
             n.set_label(every);
         }
     });
-    let reset = gtk::Button::builder().label("Reset").halign(gtk::Align::Start).build();
-    reset.set_sensitive(t != Tempo::NORMAL);
+    let reset = gtk::Button::builder().label("Reset").halign(gtk::Align::Start).sensitive(t != Tempo::NORMAL).build();
     let pop = b.clone();
     reset.connect_clicked(move |_| {
         set(Tempo::NORMAL);
@@ -177,16 +187,8 @@ fn speed_panel(pb: &Rc<crate::playback::Playback>) -> gtk::Widget {
 
 /// The sleep timer.
 pub fn sleep_button(app: &Rc<App>) -> gtk::MenuButton {
-    let pop = gtk::Popover::new();
-    let button = gtk::MenuButton::builder()
-        .icon_name("weather-clear-night-symbolic")
-        .tooltip_text("Sleep timer")
-        .popover(&pop)
-        .css_classes(["flat", "circular"])
-        .valign(gtk::Align::Center)
-        .build();
     let a = app.clone();
-    pop.connect_show(move |pop| pop.set_child(Some(&sleep_panel(&a, pop))));
+    let button = popover_button("weather-clear-night-symbolic", "Sleep timer", move |pop| sleep_panel(&a, pop));
     let (b, p) = (button.clone(), app.playback().clone());
     let update = move || {
         let label = p.sleep_label();
@@ -208,14 +210,7 @@ fn sleep_panel(app: &Rc<App>, pop: &gtk::Popover) -> gtk::Widget {
     let b = popover_box();
     b.set_width_request(260);
     b.append(&heading(&pb.sleep_label().map_or("Sleep timer".into(), |l| format!("Stops {l}"))));
-    let done = {
-        let pop = pop.downgrade();
-        move || {
-            if let Some(p) = pop.upgrade() {
-                p.popdown();
-            }
-        }
-    };
+    let done = closer(pop);
     // Remembered on this computer, as on the phone (plan 034).
     let finish =
         gtk::CheckButton::builder().label("Let the song finish").active(app.prefs.get().sleep_finish_song).build();
@@ -306,17 +301,8 @@ pub fn chapter_label(s: &Song, pos: i64) -> Option<String> {
 
 /// A long file's bookmarks and chapters, each a click away, and its notes.
 pub fn details_button(app: &Rc<App>) -> gtk::MenuButton {
-    let pop = gtk::Popover::new();
-    let button = gtk::MenuButton::builder()
-        .icon_name("view-list-bullet-symbolic")
-        .tooltip_text("Chapters and notes")
-        .popover(&pop)
-        .css_classes(["flat", "circular"])
-        .valign(gtk::Align::Center)
-        .build();
     let a = app.clone();
-    pop.connect_show(move |pop| pop.set_child(Some(&details_panel(&a, pop))));
-    button
+    popover_button("view-list-bullet-symbolic", "Chapters and notes", move |pop| details_panel(&a, pop))
 }
 
 fn details_panel(app: &Rc<App>, pop: &gtk::Popover) -> gtk::Widget {
@@ -325,14 +311,7 @@ fn details_panel(app: &Rc<App>, pop: &gtk::Popover) -> gtk::Widget {
     let b = popover_box();
     b.set_spacing(4);
     b.append(&gtk::Label::builder().label(&song.title).xalign(0.0).wrap(true).css_classes(["heading"]).build());
-    let close = {
-        let pop = pop.downgrade();
-        move || {
-            if let Some(p) = pop.upgrade() {
-                p.popdown();
-            }
-        }
-    };
+    let close = closer(pop);
     let place_row = |at: i64, text: &str, under: &str, current: bool| {
         let row = gtk::Box::builder().spacing(10).build();
         row.append(
@@ -362,17 +341,16 @@ fn details_panel(app: &Rc<App>, pop: &gtk::Popover) -> gtk::Widget {
         });
         btn
     };
-    let chapter_name = |at: i64| {
-        song.chapters.iter().rposition(|c| c.start_ms <= at).map(|i| {
-            let t = &song.chapters[i].title;
-            if t.is_empty() { format!("Chapter {}", i + 1) } else { t.clone() }
-        })
+    let chapter_name = |i: usize| {
+        let t = &song.chapters[i].title;
+        if t.is_empty() { format!("Chapter {}", i + 1) } else { t.clone() }
     };
     let marks: Vec<Bookmark> = app.marks.borrow().bookmarks.iter().filter(|b| b.song == song.id).cloned().collect();
     if !marks.is_empty() {
         b.append(&caption("Bookmarks"));
         for m in marks {
-            let chapter = chapter_name(m.position_ms).unwrap_or_default();
+            let at = song.chapters.iter().rposition(|c| c.start_ms <= m.position_ms);
+            let chapter = at.map(chapter_name).unwrap_or_default();
             let (text, under) = if m.note.is_empty() {
                 (if chapter.is_empty() { "Bookmark".to_string() } else { chapter }, String::new())
             } else {
@@ -388,8 +366,7 @@ fn details_panel(app: &Rc<App>, pop: &gtk::Popover) -> gtk::Widget {
         b.append(&caption("Chapters"));
         let now = song.chapters.iter().rposition(|c| c.start_ms <= pb.position_ms());
         for (i, c) in song.chapters.iter().enumerate() {
-            let name = if c.title.is_empty() { format!("Chapter {}", i + 1) } else { c.title.clone() };
-            b.append(&place_row(c.start_ms, &name, "", Some(i) == now));
+            b.append(&place_row(c.start_ms, &chapter_name(i), "", Some(i) == now));
         }
     }
     if !song.notes.is_empty() {

@@ -76,34 +76,31 @@ pub fn open(gapp: &adw::Application, file: &gio::File) {
     let playing = Rc::new(Cell::new(true));
     // Ended: Play starts it again.
     let ended = Rc::new(Cell::new(false));
-    let show_playing = {
+    let show = {
         let (play, playing) = (play.clone(), playing.clone());
-        move |on: bool| {
+        Rc::new(move |on: bool| {
             playing.set(on);
             play.set_icon_name(if on { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" });
             play.set_tooltip_text(Some(if on { "Pause (Space)" } else { "Play (Space)" }));
-        }
+        })
     };
-    let show_playing = Rc::new(show_playing);
     let toggle = {
-        let (p, playing, ended, show) = (player.clone(), playing.clone(), ended.clone(), show_playing.clone());
-        move || {
+        let (p, ended, show) = (player.clone(), ended.clone(), show.clone());
+        Rc::new(move || {
             if ended.replace(false) {
                 let _ = p.seek_simple(gst::SeekFlags::FLUSH, gst::ClockTime::ZERO);
             }
             let on = !playing.get();
             let _ = p.set_state(if on { gst::State::Playing } else { gst::State::Paused });
             show(on);
-        }
+        })
     };
-    let toggle = Rc::new(toggle);
     let t = toggle.clone();
     play.connect_clicked(move |_| t());
     let keys = gtk::EventControllerKey::new();
-    let t = toggle.clone();
     keys.connect_key_pressed(move |_, key, _, _| {
         if key == gdk::Key::space {
-            t();
+            toggle();
             return glib::Propagation::Stop;
         }
         glib::Propagation::Proceed
@@ -117,17 +114,16 @@ pub fn open(gapp: &adw::Application, file: &gio::File) {
         glib::Propagation::Proceed
     });
     let bus = player.bus().unwrap();
-    let (a, t, ar, show, e) = (art.clone(), title.clone(), artist.clone(), show_playing.clone(), ended.clone());
     let watch = bus
         .add_watch_local(move |_, msg| {
             match msg.view() {
                 gst::MessageView::Tag(tag) => {
                     let tags = tag.tags();
                     if let Some(v) = tags.get::<gst::tags::Title>().filter(|v| !v.get().is_empty()) {
-                        t.set_label(v.get());
+                        title.set_label(v.get());
                     }
                     if let Some(v) = tags.get::<gst::tags::Artist>() {
-                        ar.set_label(v.get());
+                        artist.set_label(v.get());
                     }
                     let image = tags.get::<gst::tags::Image>().or_else(|| tags.get::<gst::tags::PreviewImage>());
                     let bytes =
@@ -135,16 +131,16 @@ pub fn open(gapp: &adw::Application, file: &gio::File) {
                     if let Some(tex) =
                         bytes.and_then(|b| gdk::Texture::from_bytes(&glib::Bytes::from(b.as_slice())).ok())
                     {
-                        a.set_paintable(Some(&tex));
+                        art.set_paintable(Some(&tex));
                     }
                 }
                 gst::MessageView::Eos(_) => {
-                    e.set(true);
+                    ended.set(true);
                     show(false);
                 }
                 // A playlist arrives as audio too: said in the artist's place.
                 gst::MessageView::Error(_) => {
-                    ar.set_label("Cannot play this file");
+                    artist.set_label("Cannot play this file");
                     show(false);
                 }
                 _ => {}
@@ -152,12 +148,12 @@ pub fn open(gapp: &adw::Application, file: &gio::File) {
             glib::ControlFlow::Continue
         })
         .expect("a bus watch");
-    let (p, s) = (player.clone(), scale.clone());
+    let p = player.clone();
     let tick = glib::timeout_add_local(Duration::from_millis(250), move || {
         let pos = p.query_position::<gst::ClockTime>().map_or(0, |c| c.mseconds() as i64);
         let dur = p.query_duration::<gst::ClockTime>().map_or(0, |c| c.mseconds() as i64);
-        s.set_range(0.0, dur.max(1) as f64 / 1000.0);
-        s.set_value(pos as f64 / 1000.0);
+        scale.set_range(0.0, dur.max(1) as f64 / 1000.0);
+        scale.set_value(pos as f64 / 1000.0);
         time.set_label(&format!("{} / {}", clock(pos), clock(dur)));
         glib::ControlFlow::Continue
     });

@@ -47,9 +47,9 @@ impl Playback {
                 p.fading.borrow_mut().take();
                 // Paused already, there is no song to finish.
                 if p.is_playing() {
-                    p.set_sleep(Sleep::EndOfSong)
+                    p.set_sleep(Sleep::EndOfSong);
                 } else {
-                    p.sleep_cancel()
+                    p.sleep_cancel();
                 }
                 return glib::ControlFlow::Break;
             }
@@ -113,10 +113,7 @@ impl Playback {
         let stop = match self.sleep.borrow().as_ref()? {
             Sleep::AfterSong(song, _) => *song == current,
             Sleep::EndOfSong => true,
-            Sleep::EndOfQueue => {
-                let wrap = self.repeat_mode() == "queue";
-                self.current_index().and_then(|i| self.next_index(i, wrap)).is_none()
-            }
+            Sleep::EndOfQueue => self.following().is_none(),
             _ => false,
         };
         stop.then_some(current)

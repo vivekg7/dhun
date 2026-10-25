@@ -10,7 +10,7 @@ use dhun_core::catalog::SongRef;
 use dhun_core::downloads as dl;
 use dhun_core::search::{self, Query};
 use gtk::{gio, glib};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -177,6 +177,13 @@ fn pin_of(r: &Route) -> Option<(&'static str, String)> {
     }
 }
 
+/// A section's heading, a row of its own.
+fn heading(text: &str) -> gtk::ListBoxRow {
+    let l =
+        gtk::Label::builder().label(text).xalign(0.0).css_classes(["heading"]).margin_top(12).margin_start(6).build();
+    gtk::ListBoxRow::builder().child(&l).activatable(false).selectable(false).build()
+}
+
 /// A right-click on a song found opens the song menu for it, as in any song list.
 fn menu_on(nav: &Nav, r: &gtk::ListBoxRow, song: &SongRef, picked: &Rc<RefCell<Vec<SongRef>>>) {
     let g = gtk::GestureClick::builder().button(3).build();
@@ -283,15 +290,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                 routes.push(None);
             }
             for f in found {
-                let heading = gtk::Label::builder()
-                    .label(f.kind)
-                    .xalign(0.0)
-                    .css_classes(["heading"])
-                    .margin_top(12)
-                    .margin_start(6)
-                    .build();
-                let r = gtk::ListBoxRow::builder().child(&heading).activatable(false).selectable(false).build();
-                list.append(&r);
+                list.append(&heading(f.kind));
                 routes.push(None);
                 let all = expanded.borrow().contains(f.kind);
                 let total = f.hits.len();
@@ -315,10 +314,10 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                         menu_on(&nav, &r, s, &picked);
                     }
                     list.append(&r);
-                    routes.push(match h.route {
-                        Some(r) => Some(Action::Open(r)),
-                        None => Some(Action::Play(text.to_string(), found.clone(), i)),
-                    });
+                    routes.push(Some(match h.route {
+                        Some(r) => Action::Open(r),
+                        None => Action::Play(text.to_string(), found.clone(), i),
+                    }));
                 }
                 if total > SHOWN && !all {
                     let more = gtk::Button::builder()
@@ -357,7 +356,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let lyrics_list =
         gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
     let found_in: Rc<RefCell<(String, Rc<Vec<SongRef>>)>> = Rc::default();
-    let pending: Rc<std::cell::Cell<Option<glib::SourceId>>> = Rc::default();
+    let pending: Rc<Cell<Option<glib::SourceId>>> = Rc::default();
     let fill_lyrics: Rc<dyn Fn()> = {
         let (nav, l, found_in, main, picked) =
             (Rc::downgrade(nav), lyrics_list.downgrade(), found_in.clone(), list.downgrade(), picked.clone());
@@ -372,25 +371,10 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             if q.lyrics.chars().count() < 3 {
                 return;
             }
-            let heading = |t: &str| {
-                gtk::ListBoxRow::builder()
-                    .child(
-                        &gtk::Label::builder()
-                            .label(t)
-                            .xalign(0.0)
-                            .css_classes(["heading"])
-                            .margin_top(12)
-                            .margin_start(6)
-                            .build(),
-                    )
-                    .activatable(false)
-                    .selectable(false)
-                    .build()
-            };
             l.append(&heading("In lyrics"));
             l.append(&heading("Searching lyrics…"));
             let (nav2, l2, found_in, pending2, main, picked) =
-                (nav.clone(), l.downgrade(), found_in.clone(), pending.clone(), main.clone(), picked.clone());
+                (nav, l.downgrade(), found_in.clone(), pending.clone(), main.clone(), picked.clone());
             pending.set(Some(glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
                 pending2.take();
                 glib::spawn_future_local(async move {
@@ -443,11 +427,10 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let both = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     both.append(&list);
     both.append(&lyrics_list);
-    let p = picked.clone();
     let group = widgets::song_actions(
         &nav.app,
         both.upcast_ref(),
-        Rc::new(move || p.borrow().clone()),
+        Rc::new(move || picked.borrow().clone()),
         Rc::new(Vec::new),
         &widgets::Play::List { name: String::new(), source: "search".into() },
         &widgets::Edit::None,

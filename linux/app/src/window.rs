@@ -7,6 +7,7 @@ use crate::pages::{Nav, Route};
 use adw::prelude::*;
 use dhun_core::prefs::server_url;
 use gtk::{gio, glib};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -63,8 +64,7 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     window.add_breakpoint(narrow);
     // Ctrl+F searches.
     let find = gio::SimpleAction::new("find", None);
-    let n = nav.clone();
-    let s = split.clone();
+    let (n, s) = (nav.clone(), split.clone());
     find.connect_activate(move |_, _| {
         s.set_show_content(false);
         n.search.grab_focus();
@@ -195,10 +195,9 @@ fn open_when_loaded(
                         } else {
                             (arg.clone(), None)
                         };
-                        if let Some(v) = shown::<gtk::ColumnView>(s.upcast_ref()) {
-                            if let Err(e) = v.activate_action(&target.0, target.1.as_ref()) {
-                                eprintln!("do: {e}");
-                            }
+                        let view = shown::<gtk::ColumnView>(s.upcast_ref());
+                        if let Some(Err(e)) = view.map(|v| v.activate_action(&target.0, target.1.as_ref())) {
+                            eprintln!("do: {e}");
                         }
                     });
                     continue;
@@ -300,9 +299,9 @@ fn open_when_loaded(
                 "search" => {
                     // `search:` alone is the empty field's page.
                     if arg.is_empty() {
-                        n.show_recent()
+                        n.show_recent();
                     } else {
-                        n.search.set_text(arg)
+                        n.search.set_text(arg);
                     }
                     continue;
                 }
@@ -390,7 +389,7 @@ fn open_when_loaded(
     });
 }
 
-/// The first `T` on screen under `w`, for the `activate` and `nav` test steps.
+/// The first `T` on screen under `w`, for the test steps.
 fn shown<T: IsA<gtk::Widget>>(w: &gtk::Widget) -> Option<T> {
     if !w.is_mapped() {
         return None;
@@ -435,7 +434,7 @@ fn keys(window: &adw::ApplicationWindow, app: &Rc<App>) {
 fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
     let split = adw::NavigationSplitView::builder().min_sidebar_width(220.0).max_sidebar_width(280.0).build();
     let list = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
-    let routes: Rc<std::cell::RefCell<Vec<Option<Route>>>> = Rc::default();
+    let routes: Rc<RefCell<Vec<Option<Route>>>> = Rc::default();
     let fill = {
         let (app, list, routes, nav) = (app.clone(), list.clone(), routes.clone(), nav.clone());
         move || {
@@ -511,10 +510,9 @@ fn main_view(app: &Rc<App>, nav: &Rc<Nav>) -> adw::NavigationSplitView {
         }
     };
     fill();
-    let refill = fill.clone();
     app.listen(move |c| {
         if matches!(c, Change::Catalog | Change::Playlists | Change::Account | Change::Section) {
-            refill();
+            fill();
         }
         true
     });
@@ -591,7 +589,7 @@ fn status(app: &Rc<App>) -> gtk::Box {
     b.append(&spinner);
     b.append(&label);
     let update = {
-        let (app, spinner, label) = (app.clone(), spinner.clone(), label.clone());
+        let app = app.clone();
         move || {
             spinner.set_spinning(app.syncing.get());
             spinner.set_visible(app.syncing.get());
@@ -605,7 +603,7 @@ fn status(app: &Rc<App>) -> gtk::Box {
                 (String::new(), String::new())
             };
             label.set_label(&text);
-            label.set_tooltip_text(Some(&tip).filter(|t| !t.is_empty()).map(|t| t.as_str()));
+            label.set_tooltip_text(Some(tip.as_str()).filter(|t| !t.is_empty()));
         }
     };
     update();
@@ -644,8 +642,7 @@ fn sign_in(app: &Rc<App>) -> gtk::Widget {
         .child(&adw::Clamp::builder().maximum_size(420).child(&b).build())
         .build();
     let go = {
-        let (app, server, user, password, button, error) =
-            (app.clone(), server.clone(), user.clone(), password.clone(), button.clone(), error.clone());
+        let (app, password, button) = (app.clone(), password.clone(), button.clone());
         move || {
             let (s, u, p) = (server_url(&server.text()), user.text().trim().to_string(), password.text().to_string());
             if s.is_empty() || u.is_empty() || p.is_empty() {
@@ -667,8 +664,5 @@ fn sign_in(app: &Rc<App>) -> gtk::Widget {
     let g = go.clone();
     button.connect_clicked(move |_| g());
     password.connect_entry_activated(move |_| go());
-    let tv = adw::ToolbarView::new();
-    tv.add_top_bar(&adw::HeaderBar::new());
-    tv.set_content(Some(&page));
-    tv.upcast()
+    crate::widgets::with_header(&page).upcast()
 }

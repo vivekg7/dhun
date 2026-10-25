@@ -357,14 +357,13 @@ impl App {
         let app = self.clone();
         let id = glib::timeout_add_local_once(after, move || {
             app.pending.borrow_mut().take();
-            let app2 = app.clone();
             glib::spawn_future_local(async move {
-                if app2.sync_now().await {
-                    app2.retry.set(RETRY_MIN);
+                if app.sync_now().await {
+                    app.retry.set(RETRY_MIN);
                 } else {
-                    let d = (app2.retry.get() * 2).min(RETRY_MAX);
-                    app2.retry.set(d);
-                    app2.sync_soon(Duration::from_secs(d));
+                    let d = (app.retry.get() * 2).min(RETRY_MAX);
+                    app.retry.set(d);
+                    app.sync_soon(Duration::from_secs(d));
                 }
             });
         });
@@ -384,14 +383,13 @@ impl App {
         self.running.set(true);
         self.syncing.set(true);
         self.changed(Change::Status);
-        let mut ok;
-        loop {
+        let ok = loop {
             self.again.set(false);
-            ok = self.round().await;
+            let ok = self.round().await;
             if !(self.again.get() && ok) {
-                break;
+                break ok;
             }
-        }
+        };
         self.running.set(false);
         self.syncing.set(false);
         self.changed(Change::Status);
@@ -400,8 +398,7 @@ impl App {
 
     async fn round(self: &Rc<Self>) -> bool {
         let (api, db) = (self.api.clone(), self.db.clone());
-        let pulled = gio::spawn_blocking(move || sync::round(&api, &db)).await;
-        let pulled = match pulled {
+        let pulled = match gio::spawn_blocking(move || sync::round(&api, &db)).await {
             Ok(Ok(p)) => p,
             Ok(Err(e)) => {
                 self.set_offline(e.code() == 0);
@@ -443,14 +440,11 @@ impl App {
         if let Some(d) = self.downloads.get() {
             d.poke();
         }
-        let (api, db) = (self.api.clone(), self.db.clone());
-        let app = self.clone();
+        let (api, db, app) = (self.api.clone(), self.db.clone(), self.clone());
         glib::spawn_future_local(async move {
-            if let Ok(n) = gio::spawn_blocking(move || covers::fetch_thumbs(&api, &db)).await {
-                if n > 0 {
-                    app.thumbs.borrow_mut().retain(|_, t| t.is_some());
-                    app.changed(Change::Thumbs);
-                }
+            if gio::spawn_blocking(move || covers::fetch_thumbs(&api, &db)).await.is_ok_and(|n| n > 0) {
+                app.thumbs.borrow_mut().retain(|_, t| t.is_some());
+                app.changed(Change::Thumbs);
             }
         });
         true
@@ -512,8 +506,7 @@ impl App {
             }
             c.waiting.insert(name.clone(), vec![Box::new(done)]);
         }
-        let (api, files) = (self.api.clone(), self.files.clone());
-        let app = self.clone();
+        let (api, files, app) = (self.api.clone(), self.files.clone(), self.clone());
         glib::spawn_future_local(async move {
             let key = covers::key(&s);
             let bytes = gio::spawn_blocking(move || {

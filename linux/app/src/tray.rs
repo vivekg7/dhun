@@ -97,8 +97,7 @@ const ITEMS: [Option<Item>; 10] = [
 pub fn start(gapp: &adw::Application, app: &Rc<App>) {
     let Some(conn) = gapp.dbus_connection() else { return };
     let node = gio::DBusNodeInfo::for_xml(XML).expect("tray introspection");
-    let (g, a) = (gapp.clone(), app.clone());
-    let a2 = app.clone();
+    let (g, a, a2) = (gapp.clone(), app.clone(), app.clone());
     let _ = conn
         .register_object(ITEM, &node.lookup_interface("org.kde.StatusNotifierItem").unwrap())
         .method_call(move |_, _, _, _, method, _, invocation| {
@@ -130,8 +129,7 @@ pub fn start(gapp: &adw::Application, app: &Rc<App>) {
                 }
                 "GetProperty" => {
                     let (id, name) = params.get::<(i32, String)>().unwrap_or_default();
-                    let item = ITEMS.iter().flatten().find(|&&i| i as i32 == id).copied();
-                    let v = props(&a, item).remove(&name).unwrap_or_else(|| "".to_variant());
+                    let v = props(&a, item(id)).remove(&name).unwrap_or_else(|| "".to_variant());
                     Some((v,).to_variant())
                 }
                 "Event" => {
@@ -184,7 +182,8 @@ pub fn start(gapp: &adw::Application, app: &Rc<App>) {
         }
         true
     });
-    let watch = gio::bus_watch_name_on_connection(
+    // Watched for the app's life.
+    let _ = gio::bus_watch_name_on_connection(
         &conn,
         WATCHER,
         gio::BusNameWatcherFlags::NONE,
@@ -208,8 +207,6 @@ pub fn start(gapp: &adw::Application, app: &Rc<App>) {
         },
         |_, _| {},
     );
-    // Watched for the app's life.
-    let _ = watch;
 }
 
 fn item_property(app: &Rc<App>, name: &str) -> Variant {
@@ -278,15 +275,19 @@ fn layout(app: &App) -> (i32, HashMap<String, Variant>, Vec<Variant>) {
     (0, props(app, None), children)
 }
 
+fn item(id: i32) -> Option<Item> {
+    ITEMS.iter().flatten().find(|&&i| i as i32 == id).copied()
+}
+
 fn clicked(gapp: &adw::Application, app: &Rc<App>, id: i32) {
     let pb = app.playback();
-    match id {
-        x if x == Item::Play as i32 => pb.toggle(),
-        x if x == Item::Previous as i32 => pb.previous(true),
-        x if x == Item::Next as i32 => pb.next(true),
-        x if x == Item::Mini as i32 => crate::mini::open(gapp, app),
-        x if x == Item::Show as i32 => gapp.activate(),
-        x if x == Item::Quit as i32 => gapp.quit(),
+    match item(id) {
+        Some(Item::Play) => pb.toggle(),
+        Some(Item::Previous) => pb.previous(true),
+        Some(Item::Next) => pb.next(true),
+        Some(Item::Mini) => crate::mini::open(gapp, app),
+        Some(Item::Show) => gapp.activate(),
+        Some(Item::Quit) => gapp.quit(),
         _ => {}
     }
 }

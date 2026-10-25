@@ -181,7 +181,10 @@ impl Playback {
     }
 
     pub fn active(&self) -> Option<QueueRow> {
-        let id = self.active_id();
+        self.queue(&self.active_id())
+    }
+
+    fn queue(&self, id: &str) -> Option<QueueRow> {
         self.app.queues.borrow().iter().find(|q| q.id == id).cloned()
     }
 
@@ -282,8 +285,7 @@ impl Playback {
                 return self.seek_forward();
             }
         }
-        let wrap = self.repeat_mode() == "queue";
-        if let Some(n) = self.current_index().and_then(|i| self.next_index(i, wrap)) {
+        if let Some(n) = self.following() {
             self.jump(n, "skipped", None);
         }
     }
@@ -293,8 +295,11 @@ impl Playback {
     /// would be saved as the place to resume (plan 009).
     pub fn previous(self: &Rc<Self>, on_screen: bool) {
         let (Some(i), Some(s)) = (self.current_index(), self.current()) else { return };
-        let settings = self.app.settings.borrow().clone();
-        let long = synced::PREVIOUS.get(&settings).to_string();
+        // Read at once: the seek or jump below may reload the settings.
+        let (long, restart) = {
+            let set = self.app.settings.borrow();
+            (synced::PREVIOUS.get(&set).to_string(), synced::PREVIOUS_RESTART.get(&set))
+        };
         let keep = self.is_long(&s) && long != "songs";
         if keep && !on_screen && long == "ignore" {
             return;
@@ -302,7 +307,7 @@ impl Playback {
         if keep && !on_screen && long == "seek" {
             return self.seek_back();
         }
-        let restart = !keep && synced::PREVIOUS_RESTART.get(&settings);
+        let restart = !keep && restart;
         if restart && self.position_ms() as f64 > RESTART_WINDOW * 1000.0 {
             return self.seek(0);
         }
@@ -379,7 +384,7 @@ impl Playback {
             }
             return;
         }
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         self.save_active();
         q.current_song = song;
         q.position_ms = 0;
@@ -467,11 +472,16 @@ impl Playback {
             unique = format!("{name} ({n})");
             n += 1;
         }
-        let c = self.app.catalog();
-        let adding = distinct(songs.iter().map(|s| s.id).filter(|i| c.by_id.contains_key(i)));
+        let adding = self.known(songs);
         let first = adding.first().copied().unwrap_or(0);
         self.create(&unique, adding, first, now_ms());
         self.app.reload_queues();
+    }
+
+    /// The ids of `songs` the library has, each once.
+    fn known(&self, songs: &[SongRef]) -> Vec<i64> {
+        let c = self.app.catalog();
+        distinct(songs.iter().map(|s| s.id).filter(|i| c.by_id.contains_key(i)))
     }
 
     /// Drag in the queue list: queue `from` goes to `to`, counting from 0.
@@ -500,9 +510,8 @@ impl Playback {
         if id == self.active_id() {
             return self.add_to_queue(songs);
         }
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
-        let c = self.app.catalog();
-        let adding = distinct(songs.iter().map(|s| s.id).filter(|i| c.by_id.contains_key(i)));
+        let Some(mut q) = self.queue(id) else { return };
+        let adding = self.known(songs);
         if adding.is_empty() {
             return;
         }
@@ -518,7 +527,7 @@ impl Playback {
     /// A drag in queue `id`: `song` goes where `target` is, after it when
     /// moving down and before it when moving up.
     pub fn move_in(self: &Rc<Self>, id: &str, song: i64, target: i64) {
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         let active = id == self.active_id();
         let mut list = if active { self.items() } else { q.songs.clone() };
         let (Some(from), Some(to)) = (list.iter().position(|&s| s == song), list.iter().position(|&s| s == target))
@@ -544,7 +553,7 @@ impl Playback {
     /// Queue `id` in a new order of the same songs (a sort, Randomize,
     /// Reverse). The playing song plays on.
     pub fn reorder(self: &Rc<Self>, id: &str, order: Vec<i64>) {
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         if id == self.active_id() {
             let loaded: HashSet<i64> = self.items().into_iter().collect();
             let items: Vec<i64> = order.into_iter().filter(|s| loaded.contains(s)).collect();
@@ -563,7 +572,7 @@ impl Playback {
         if id == self.active_id() {
             return;
         }
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         self.save_active();
         q.used_at = now_ms();
         self.load(q, true, None);
@@ -580,8 +589,8 @@ impl Playback {
     fn insert(self: &Rc<Self>, songs: &[SongRef], next: bool) {
         let Some(mut q) = self.active() else { return self.play_list("Queue", "", songs, 0) };
         let playing = self.current().map(|s| s.id);
-        let c = self.app.catalog();
-        let adding = distinct(songs.iter().map(|s| s.id).filter(|&i| Some(i) != playing && c.by_id.contains_key(&i)));
+        let mut adding = self.known(songs);
+        adding.retain(|&i| Some(i) != playing);
         if adding.is_empty() {
             return;
         }
@@ -604,7 +613,7 @@ impl Playback {
     }
 
     pub fn remove_from(self: &Rc<Self>, id: &str, songs: &HashSet<i64>) {
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         if songs.is_empty() {
             return;
         }
@@ -659,7 +668,7 @@ impl Playback {
     }
 
     pub fn rename(self: &Rc<Self>, id: &str, name: &str) {
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == id).cloned() else { return };
+        let Some(mut q) = self.queue(id) else { return };
         q.name = name.into();
         self.app.store(|db| store::rename_queue(db, &q));
         self.app.reload_queues();
@@ -822,7 +831,7 @@ impl Playback {
 
     /// Takes over from another device: its queue (queues are synced), its song, and its place.
     pub fn continue_from(self: &Rc<Self>, np: &NowPlaying) {
-        let Some(mut q) = self.app.queues.borrow().iter().find(|q| q.id == np.queue).cloned() else { return };
+        let Some(mut q) = self.queue(&np.queue) else { return };
         if !self.app.catalog().by_id.contains_key(&np.song) {
             return;
         }
@@ -845,11 +854,11 @@ impl Playback {
     }
 
     /// Tells the server what this device plays, for the others' hand-off.
-    fn report(self: &Rc<Self>, q: &QueueRow, s: &SongRef, pos: i64, playing: bool) {
+    fn report(self: &Rc<Self>, queue: &str, s: &SongRef, pos: i64, playing: bool) {
         let now = now_ms();
         self.st.borrow_mut().state_at = now;
         self.app.prefs.update(|p| p.state_at = now);
-        self.app.store(|db| store::playback_state(db, &q.id, s.id, pos, playing));
+        self.app.store(|db| store::playback_state(db, queue, s.id, pos, playing));
     }
 
     /// On sign-out: the open listen belongs to the account being left, and is dropped.
@@ -919,12 +928,12 @@ impl Playback {
         let index = songs.iter().position(|s| s.id == q.current_song).unwrap_or(0);
         let song = songs[index].clone();
         self.st.borrow_mut().heard_at = 0;
-        let mut start = position;
-        if start.is_some() {
+        let start = if position.is_some() {
             self.st.borrow_mut().offer_resume = None;
+            position
         } else {
-            start = self.start_position(&song);
-        }
+            self.start_position(&song)
+        };
         let mut start = start.unwrap_or(if song.id == q.current_song { q.position_ms } else { 0 });
         // Saved at the very end: start the song over, as Media3 does on Play,
         // rather than finishing it again at once.
@@ -982,10 +991,8 @@ impl Playback {
             }
         }
         self.st.borrow_mut().heard_at = 0;
-        let mut start = self.start_position(&s).unwrap_or(0);
-        if finished.as_ref().is_some_and(|f| f.id == s.id) {
-            start = 0;
-        }
+        let start =
+            if finished.as_ref().is_some_and(|f| f.id == s.id) { 0 } else { self.start_position(&s).unwrap_or(0) };
         let paused = !play.unwrap_or(self.is_playing());
         self.start(&s, start, paused);
         // Next while paused: the file has been stopped as long as its place.
@@ -1010,7 +1017,7 @@ impl Playback {
         self.app.changed(Change::Queues);
         // The next song, for a hand-off from another device.
         if self.is_playing() {
-            self.report(&q, s, start_ms, true);
+            self.report(&q.id, s, start_ms, true);
         }
     }
 
@@ -1034,8 +1041,7 @@ impl Playback {
 
     fn set_active(&self, id: &str) {
         self.st.borrow_mut().active_id = id.into();
-        let id = id.to_string();
-        self.app.prefs.update(|p| p.active_queue = id);
+        self.app.prefs.update(|p| p.active_queue = id.into());
     }
 
     /// Records where the outgoing queue was, before another is loaded. A
@@ -1098,6 +1104,12 @@ impl Playback {
         st.items.iter().position(|s| s == id)
     }
 
+    /// The index of the song after the playing one, wrapping when the queue repeats.
+    fn following(&self) -> Option<usize> {
+        let wrap = self.repeat_mode() == "queue";
+        self.current_index().and_then(|i| self.next_index(i, wrap))
+    }
+
     fn previous_index(&self, i: usize) -> Option<usize> {
         let st = self.st.borrow();
         let item = *st.items.get(i)?;
@@ -1126,9 +1138,9 @@ impl Playback {
         // Each song's speed, for a gapless start at it.
         let (settings, everyday) = (self.app.settings.borrow(), self.app.prefs.get().everyday());
         let speeds = songs.values().map(|s| (s.id, tempo_in(s, &settings, everyday).speed));
-        self.engine.set_speeds(speeds.filter(|x| x.1 != 1.0).collect());
+        let speeds = speeds.filter(|x| x.1 != 1.0).collect();
         drop(settings);
-        self.engine.set_upcoming(up, songs);
+        self.engine.set_upcoming(up, songs, speeds);
         drop(st);
         self.poke_cache();
     }
@@ -1199,7 +1211,7 @@ impl Playback {
             }
             Event::Ended => {
                 glib::g_info!("Dhun", "end of the queue");
-                self.reached_end()
+                self.reached_end();
             }
             Event::Failed(song, why, output) => {
                 glib::g_warning!("Dhun", "song {song} failed: {why}");
@@ -1235,12 +1247,9 @@ impl Playback {
                 st.decoded_ms = dur;
             }
         }
-        let song = self.current().map_or(0, |s| s.id);
-        let failing = self.app.cache.failing(song);
         let playing = self.is_playing();
-        let was = self.st.borrow().waiting;
-        self.st.borrow_mut().waiting = playing && failing;
-        if was != (playing && failing) {
+        let waiting = playing && self.app.cache.failing(self.current().map_or(0, |s| s.id));
+        if std::mem::replace(&mut self.st.borrow_mut().waiting, waiting) != waiting {
             self.changed();
         }
         if !playing {
@@ -1257,13 +1266,10 @@ impl Playback {
             self.save_listen();
         }
         if ticks % 120 == 0 {
-            if let (Some(mut q), Some(s)) = (self.active(), self.current()) {
-                let pos = self.position_ms();
-                q.current_song = s.id;
-                q.position_ms = pos;
-                self.app.store(|db| store::set_current(db, &q));
-                self.save_resume(&s, pos);
-                self.report(&q, &s, pos, true);
+            if let (Some(q), Some(s)) = (self.active(), self.current()) {
+                let (id, pos) = (q.id.clone(), self.position_ms());
+                self.save_place(q, &s, pos);
+                self.report(&id, &s, pos, true);
             }
         }
     }
@@ -1291,9 +1297,10 @@ impl Playback {
         if let Some(ms) = start {
             self.seek(ms);
         }
-        self.open_listen(s, start.unwrap_or(0));
+        let start = start.unwrap_or(0);
+        self.open_listen(s, start);
         self.apply_tempo();
-        self.after_song_change(s, start.unwrap_or(0));
+        self.after_song_change(s, start);
         self.changed();
     }
 
@@ -1307,17 +1314,15 @@ impl Playback {
         }
         let by_sleep = self.pause_after().is_some();
         self.set_playing(false);
-        let wrap = self.repeat_mode() == "queue";
-        let next = self.current_index().and_then(|i| self.next_index(i, wrap));
-        let next = next.and_then(|n| self.st.borrow().items.get(n).copied());
-        if let (true, Some(next)) = (by_sleep, next.and_then(|n| self.app.catalog().by_id.get(&n).cloned())) {
+        let next = self.following().and_then(|n| self.st.borrow().items.get(n).copied());
+        let next = next.and_then(|n| self.app.catalog().by_id.get(&n).cloned());
+        self.sleep_paused_at_end();
+        if let (true, Some(next)) = (by_sleep, next) {
             // Paused where the song ended; Play goes on with the next one.
-            self.sleep_paused_at_end();
             self.start(&next, 0, true);
             self.after_song_change(&next, 0);
             return;
         }
-        self.sleep_paused_at_end();
         self.st.borrow_mut().ended = true;
         self.changed();
     }
@@ -1338,12 +1343,11 @@ impl Playback {
             st.failures += 1;
             st.failures
         };
-        let wrap = self.repeat_mode() == "queue";
         if self.current().is_none_or(|c| c.id != song) || failures >= self.st.borrow().items.len().max(1) {
             self.set_playing(false);
             return self.changed();
         }
-        if let Some(n) = self.current_index().and_then(|i| self.next_index(i, wrap)) {
+        if let Some(n) = self.following() {
             self.jump(n, "skipped", None);
         }
     }
@@ -1369,15 +1373,13 @@ impl Playback {
             }
             changed
         };
-        if changed {
-            self.poke_cache();
-        }
-        let (Some(q), Some(s)) = (self.active(), self.current()) else { return };
         if !changed {
             return;
         }
+        self.poke_cache();
+        let (Some(q), Some(s)) = (self.active(), self.current()) else { return };
         let pos = self.position_ms();
-        self.report(&q, &s, pos, playing);
+        self.report(&q.id, &s, pos, playing);
         if !playing {
             self.save_place(q, &s, pos);
         }
@@ -1410,7 +1412,7 @@ impl Playback {
         let mode = synced::RESUME.get(&self.app.settings.borrow()).to_string();
         match mode.as_str() {
             "auto" => {
-                self.st.borrow_mut().heard_at = if pos != r.position_ms { now_ms() } else { r.at };
+                self.st.borrow_mut().heard_at = if pos == r.position_ms { r.at } else { now_ms() };
                 Some(pos)
             }
             "ask" => {

@@ -142,11 +142,7 @@ fn panel(app: &Rc<App>) -> gtk::Widget {
             }
             for (i, on) in [(v.at, false), (at, true)] {
                 if let Some(label) = i.and_then(|i| v.labels.get(i)) {
-                    if on {
-                        label.remove_css_class("dim-label");
-                    } else {
-                        label.add_css_class("dim-label");
-                    }
+                    if on { label.remove_css_class("dim-label") } else { label.add_css_class("dim-label") }
                 }
             }
             v.at = at;
@@ -204,7 +200,7 @@ fn panel(app: &Rc<App>) -> gtk::Widget {
     };
     // Loaded only while the lyrics are on screen: the queue's page is the usual one.
     let awake = {
-        let (app, view, holder) = (app.clone(), view.clone(), holder.clone());
+        let (app, holder) = (app.clone(), holder.clone());
         move || {
             let gapp = gio::Application::default().and_downcast::<gtk::Application>();
             let on = holder.is_mapped() && app.playback().is_playing();

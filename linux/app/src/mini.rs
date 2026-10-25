@@ -72,7 +72,7 @@ pub fn open(gapp: &adw::Application, app: &Rc<App>) {
     });
     text.add_controller(twice);
     let update = {
-        let (app, art, title, artist, play) = (app.clone(), art.downgrade(), title, artist, play);
+        let (app, art) = (app.clone(), art.downgrade());
         move || -> bool {
             let Some(art) = art.upgrade() else { return false };
             let cur = pb.current();

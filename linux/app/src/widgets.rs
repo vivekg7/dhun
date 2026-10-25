@@ -65,10 +65,8 @@ pub fn set_cover(
     }
     let weak = target.downgrade();
     app.cover(song, px, move |t| {
-        if let Some(w) = weak.upgrade() {
-            if still.as_ref().is_none_or(|f| f()) {
-                put(&w, t);
-            }
+        if let Some(w) = weak.upgrade().filter(|_| still.as_ref().is_none_or(|f| f())) {
+            put(&w, t);
         }
     });
 }
@@ -241,7 +239,8 @@ pub fn pin_button(app: &Rc<App>, kind: &str, r#ref: String, name: &str) -> gtk::
         move || {
             let Some(b) = b.upgrade() else { return false };
             let d = app.downloads();
-            let (icon, label) = if d.pinned(&kind, &r#ref) {
+            let pinned = d.pinned(&kind, &r#ref);
+            let (icon, label) = if pinned {
                 let songs = d.songs(&kind, &r#ref);
                 let have = app.downloaded.borrow();
                 let done = songs.iter().filter(|s| have.contains_key(&s.id)).count();
@@ -254,11 +253,7 @@ pub fn pin_button(app: &Rc<App>, kind: &str, r#ref: String, name: &str) -> gtk::
                 ("folder-download-symbolic", "Download".to_string())
             };
             b.set_child(Some(&adw::ButtonContent::builder().icon_name(icon).label(label).build()));
-            b.set_tooltip_text(Some(if d.pinned(&kind, &r#ref) {
-                "Remove the download"
-            } else {
-                "Keep on this computer"
-            }));
+            b.set_tooltip_text(Some(if pinned { "Remove the download" } else { "Keep on this computer" }));
             true
         }
     };
@@ -268,7 +263,7 @@ pub fn pin_button(app: &Rc<App>, kind: &str, r#ref: String, name: &str) -> gtk::
     button.connect_clicked(move |b| {
         let d = app.downloads().clone();
         if d.pinned(&kind, &r#ref) {
-            let key = dhun_core::downloads::key(&kind, &r#ref);
+            let key = dl::key(&kind, &r#ref);
             confirm_unpin(b.upcast_ref(), &name, move || d.unpin(&key));
         } else {
             d.pin(&kind, &r#ref, &name);
@@ -331,11 +326,8 @@ pub fn ask_name(
     done: impl Fn(String) + 'static,
 ) {
     let entry = gtk::Entry::builder().text(initial).build();
-    let dialog = adw::AlertDialog::builder().heading(heading).extra_child(&entry).build();
-    dialog.add_responses(&[("cancel", "Cancel"), ("ok", action)]);
+    let dialog = entry_dialog(heading, &entry, action, done);
     dialog.set_default_response(Some("ok"));
-    dialog.set_close_response("cancel");
-    dialog.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
     dialog.set_response_enabled("ok", !initial.trim().is_empty());
     let d = dialog.downgrade();
     entry.connect_changed(move |e| {
@@ -349,15 +341,6 @@ pub fn ask_name(
         });
         d.set_response_enabled("ok", !name.is_empty() && !reserved);
     });
-    // Return names it: the field's own, since a field in a dialog does not reach the default button.
-    let d = dialog.downgrade();
-    entry.connect_activate(move |_| {
-        if let Some(d) = d.upgrade().filter(|d| d.is_response_enabled("ok")) {
-            d.emit_by_name_with_details::<()>("response", glib::Quark::from_str("ok"), &[&"ok"]);
-            d.force_close();
-        }
-    });
-    dialog.connect_response(Some("ok"), move |_, _| done(entry.text().trim().to_string()));
     dialog.present(Some(parent));
 }
 
@@ -372,19 +355,26 @@ pub fn ask_text(
 ) {
     let entry =
         gtk::Entry::builder().text(initial).max_length(max as i32).placeholder_text("What happens here").build();
-    let dialog = adw::AlertDialog::builder().heading(heading).extra_child(&entry).build();
+    entry_dialog(heading, &entry, action, done).present(Some(parent));
+}
+
+/// A dialog around `entry`, whose `action` hands `done` its text, trimmed.
+fn entry_dialog(heading: &str, entry: &gtk::Entry, action: &str, done: impl Fn(String) + 'static) -> adw::AlertDialog {
+    let dialog = adw::AlertDialog::builder().heading(heading).extra_child(entry).build();
     dialog.add_responses(&[("cancel", "Cancel"), ("ok", action)]);
     dialog.set_close_response("cancel");
     dialog.set_response_appearance("ok", adw::ResponseAppearance::Suggested);
+    // Return picks it: the field's own, since a field in a dialog does not reach the default button.
     let d = dialog.downgrade();
     entry.connect_activate(move |_| {
-        if let Some(d) = d.upgrade() {
+        if let Some(d) = d.upgrade().filter(|d| d.is_response_enabled("ok")) {
             d.emit_by_name_with_details::<()>("response", glib::Quark::from_str("ok"), &[&"ok"]);
             d.force_close();
         }
     });
-    dialog.connect_response(Some("ok"), move |_, _| done(entry.text().trim().to_string()));
-    dialog.present(Some(parent));
+    let e = entry.clone();
+    dialog.connect_response(Some("ok"), move |_, _| done(e.text().trim().to_string()));
+    dialog
 }
 
 /// A list of things in a `GtkListView`, which builds rows only for what is
@@ -417,6 +407,13 @@ pub fn scrolled(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
     gtk::ScrolledWindow::builder().child(child).vexpand(true).hscrollbar_policy(gtk::PolicyType::Never).build()
 }
 
+/// `child` under a header bar of its own.
+pub fn with_header(child: &impl IsA<gtk::Widget>) -> adw::ToolbarView {
+    let tv = adw::ToolbarView::builder().content(child).build();
+    tv.add_top_bar(&adw::HeaderBar::new());
+    tv
+}
+
 /// The columns of a song list. An album shows track numbers and leaves the
 /// album out; elsewhere the album shows. A book's or a show's files have
 /// their own (plan 031).
@@ -425,6 +422,11 @@ pub struct Columns {
     pub track: bool,
     pub album: bool,
     pub shelf: Option<Rc<ShelfColumns>>,
+}
+
+impl Columns {
+    /// Most lists': each song's album shows.
+    pub const WITH_ALBUM: Columns = Columns { track: false, album: true, shelf: None };
 }
 
 /// A show's dates, or a book's parts ("2 of 39"); and how much of each was heard.
@@ -487,8 +489,7 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
     let menu = gio::Menu::new();
     // A right-click selects the row under it, unless it is in the selection already, and opens the menu.
     let menu_on = {
-        let (sel, menu, app, selected, play, edit) =
-            (sel.clone(), menu.clone(), app.clone(), selected.clone(), play.clone(), edit.clone());
+        let (app, selected, play, edit) = (app.clone(), selected.clone(), play.clone(), edit.clone());
         move |cell: &gtk::Widget, item: &gtk::ListItem| {
             let g = gtk::GestureClick::builder().button(3).build();
             let (sel, menu, item, cell2) = (sel.clone(), menu.clone(), item.downgrade(), cell.downgrade());
@@ -633,22 +634,17 @@ pub fn song_list(app: &Rc<App>, songs: &[SongRef], cols: Columns, play: Play, ed
     }
     view.append_column(&column("Time", false, Box::new(|s| clock(s.duration_ms)), true, true));
 
-    let (a, l, p) = (app.clone(), list.clone(), play.clone());
+    let (a, l, p) = (app.clone(), list, play.clone());
     view.connect_activate(move |_, pos| {
-        let pb = a.playback();
-        match &p {
-            Play::List { name, source } => pb.play_list(name, source, &l, pos as usize),
-            Play::Queue(id) => pb.play_queue_at(id, l[pos as usize].id),
-            Play::Shelf(id) => {
-                if let Some(shelf) = a.catalog().shelves.get(id).cloned() {
-                    crate::pages::play_shelf(&a, &shelf, Some(&l[pos as usize]));
-                }
-            }
-            Play::Spoken => {
-                if let Some(shelf) = a.catalog().shelf_of(&l[pos as usize]).cloned() {
-                    crate::pages::play_shelf(&a, &shelf, Some(&l[pos as usize]));
-                }
-            }
+        let (pb, c, s) = (a.playback(), a.catalog(), &l[pos as usize]);
+        let shelf = match &p {
+            Play::List { name, source } => return pb.play_list(name, source, &l, pos as usize),
+            Play::Queue(id) => return pb.play_queue_at(id, s.id),
+            Play::Shelf(id) => c.shelves.get(id),
+            Play::Spoken => c.shelf_of(s),
+        };
+        if let Some(shelf) = shelf.cloned() {
+            crate::pages::play_shelf(&a, &shelf, Some(s));
         }
     });
     let group = song_actions(app, view.upcast_ref(), Rc::new(selected), Rc::new(rows), &play, &edit);
@@ -988,12 +984,7 @@ pub fn play_buttons(app: &Rc<App>, top: &impl IsA<gtk::Widget>, name: &str, sour
 /// whole, so a song can be dragged with its neighbours in view.
 fn find_in_queue(app: &Rc<App>, view: &gtk::ColumnView, songs: Vec<SongRef>) -> gtk::Box {
     let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-    let entry = gtk::SearchEntry::builder()
-        .placeholder_text("Find in queue")
-        .margin_start(18)
-        .margin_end(18)
-        .margin_bottom(6)
-        .build();
+    let entry = filter_entry("Find in queue");
     let matches = gtk::ListBox::builder().css_classes(["navigation-sidebar"]).build();
     let shown = gtk::ScrolledWindow::builder()
         .child(&matches)
@@ -1076,7 +1067,7 @@ fn find_in_queue(app: &Rc<App>, view: &gtk::ColumnView, songs: Vec<SongRef>) -> 
     });
     let p = pick.clone();
     matches.connect_row_activated(move |_, r| p(r.index() as usize));
-    let (m, p) = (matches.downgrade(), pick.clone());
+    let (m, p) = (matches.downgrade(), pick);
     entry.connect_activate(move |_| {
         if let Some(r) = m.upgrade().and_then(|m| m.selected_row()) {
             p(r.index() as usize);
@@ -1111,6 +1102,11 @@ fn find_in_queue(app: &Rc<App>, view: &gtk::ColumnView, songs: Vec<SongRef>) -> 
     b
 }
 
+/// The field over a list that filters or finds in it.
+pub fn filter_entry(placeholder: &str) -> gtk::SearchEntry {
+    gtk::SearchEntry::builder().placeholder_text(placeholder).margin_start(18).margin_end(18).margin_bottom(6).build()
+}
+
 /// A song list that filters itself when it is long (plan 011), as search does (plan 029).
 pub fn songs_page(
     app: &Rc<App>,
@@ -1127,19 +1123,12 @@ pub fn songs_page(
         }
         b.append(&top);
     }
-    let holder = adw::Bin::new();
-    holder.set_vexpand(true);
     let list = song_list(app, &songs, cols.clone(), play.clone(), edit.clone());
-    holder.set_child(Some(&scrolled(&list)));
+    let holder = adw::Bin::builder().vexpand(true).child(&scrolled(&list)).build();
     if songs.len() > FILTER_OVER && matches!(play, Play::Queue(_)) {
         b.append(&find_in_queue(app, &list, songs));
     } else if songs.len() > FILTER_OVER {
-        let entry = gtk::SearchEntry::builder()
-            .placeholder_text("Filter songs")
-            .margin_start(18)
-            .margin_end(18)
-            .margin_bottom(6)
-            .build();
+        let entry = filter_entry("Filter songs");
         let (app, h) = (app.clone(), holder.clone());
         entry.connect_search_changed(move |e| {
             let shown = app.catalog().filter(&songs, &e.text());
