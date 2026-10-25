@@ -370,5 +370,14 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   goes through glycin's sandbox, 3 ms a thumbnail): 0.5 ms with the
   decode instead of 0.3, and the GPU stays at 59 MB, memory 216 MB
   instead of 252.
+- **Left: the albums grid still takes 42–55 % of a core to scroll**, and
+  it is GTK's. It gives cells other albums at every frame, about 20 a
+  frame, where a new row comes in every 15 frames
+  ([GTK #4633][gtk-4633]). Our bind is 7 % of the main thread; laying
+  out, shaping the labels' new text (Pango and HarfBuzz, 27 %), styling
+  and drawing are the rest. Nothing here would bring it down short of a
+  list of our own.
 - The scroll runs need the display on: with it asleep, the compositor
   draws no frames and the page did not move.
+
+[gtk-4633]: https://gitlab.gnome.org/GNOME/gtk/-/issues/4633
