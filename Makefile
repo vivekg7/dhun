@@ -57,7 +57,7 @@ fmt:
 	gofmt -w server
 	$(GRADLE) ktlintFormat
 	$(SWIFT_FORMAT) format -i -r $(SWIFT_SRC)
-	$(CARGO) fmt
+	$(if $(LINUX),$(CARGO) fmt)
 
 lint: lint-server lint-android lint-macos $(LINUX:%=lint-%)
 
