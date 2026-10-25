@@ -1,6 +1,6 @@
 # 040 — At most 1,000 songs in a queue
 
-**Status:** `RELEASED` — in the 0.18.0 GitHub release (2026-10-25), on every platform; not yet installed or deployed
+**Status:** `RELEASED` — in the 0.18.0 GitHub release (2026-10-25), on every platform; 0.18.0 on the owner's phone, Mac and laptop, and `server-v0.18.0` on the NAS (2026-10-25)
 **Started:** 2026-10-25
 
 ## Problem

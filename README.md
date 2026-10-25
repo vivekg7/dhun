@@ -10,11 +10,11 @@ player, rebuilt for a music collection that lives on a NAS.
 [0.18.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.18.0): the
 APK, the Mac app, the Linux Flatpak and the server image.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.16.0`: the library
+- **Server** (`server/`), on the owner's NAS as `server-v0.18.0`: the library
   scan, streaming, offline sync of queues and playlists (`.m3u8` files), a
   log of every listen, resume points for long files, Favorites and Listen
   Later.
-- **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.16.2
+- **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.18.0
   on the owner's phone: downloads, playlist editing, the sleep timer,
   lyrics, speed and pitch, hand-off, a song cache, playback that waits out a
   network drop ([019](docs/plans/019_networking_and_caching.md)),
@@ -24,10 +24,10 @@ APK, the Mac app, the Linux Flatpak and the server image.
   managing family members ([023](docs/plans/023_users_on_android.md)), and
   songs already on the phone ([025](docs/plans/025_phone_local_songs.md)),
   playable without signing in ([026](docs/plans/026_without_an_account.md)).
-- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.16.1 on
+- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.18.0 on
   the owner's Mac: the Android app's level, offline included, with a menu
   bar control, a floating mini player and Open With from Finder.
-- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.17.1 on
+- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.18.0 on
   the owner's laptop, in Rust and GTK: the same level, with a tray icon, a
   mini window, the desktop's media controls and Open With from the file
   manager.
