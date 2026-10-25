@@ -23,6 +23,9 @@ import (
 // maxQueues is Musicolet's limit, kept on purpose (REQUIREMENTS).
 const maxQueues = 20
 
+// maxQueueSongs is the most a queue holds (docs/plans/040_queue_size_cap.md).
+const maxQueueSongs = 1000
+
 // opTime is fixed-width, so client times compare correctly as strings in
 // "the later change wins" rules; RFC 3339 with variable fractions does not
 // ("03.5Z" sorts before "03Z").
@@ -330,8 +333,8 @@ func label(s string, n int) string {
 
 const (
 	maxOpsPerPush  = 500
-	maxSongsPerOp  = 20000 // a queue of the whole library, with room to grow
-	songsPerLookup = 500   // well under SQLite's limit on query parameters
+	maxSongsPerOp  = 100000 // a playlist of the whole library, at the size we design for
+	songsPerLookup = 500    // well under SQLite's limit on query parameters
 )
 
 // songLookups splits the distinct songs of ids into lookups of
@@ -461,7 +464,7 @@ func (a *applier) queueCreate(o op) error {
 	if exists {
 		return rejected("queue %s already exists", o.Queue)
 	}
-	songs := dedupe(o.Songs) // a queue never holds a song twice
+	songs := capQueue(dedupe(o.Songs), o.Song) // a queue never holds a song twice
 	if err := a.songsExist(songs); err != nil {
 		return err
 	}
@@ -493,6 +496,17 @@ func (a *applier) queueCreate(o op) error {
 		o.Queue, a.sess.UserID, name, string(data), current, max(o.PositionMS, 0), a.at, a.now, a.now)
 }
 
+// capQueue trims songs to maxQueueSongs: the ones from current on, wrapping
+// round to the start, as every app trims a list it plays. Apps from before
+// the cap send the whole list, and get it back trimmed.
+func capQueue(songs []int64, current int64) []int64 {
+	if len(songs) <= maxQueueSongs {
+		return songs
+	}
+	i := max(slices.Index(songs, current), 0)
+	return append(songs[i:], songs[:i]...)[:maxQueueSongs]
+}
+
 // insertAt is where songs go after the given occurrence of `after` in ids:
 // nil or a song not there is the end, 0 the start.
 func insertAt(ids []int64, after *int64, occurrence int) int {
@@ -509,9 +523,21 @@ func insertAt(ids []int64, after *int64, occurrence int) int {
 }
 
 // insertAfter puts songs after `after` (see insertAt), moving any that are
-// already in the list rather than duplicating them.
+// already in the list rather than duplicating them. New songs go in only
+// while the queue has room; a song that moves never grows it.
 func insertAfter(list, songs []int64, after *int64) []int64 {
-	songs = dedupe(songs)
+	queued := make(map[int64]bool, len(list))
+	for _, id := range list {
+		queued[id] = true
+	}
+	room := maxQueueSongs - len(list)
+	songs = slices.DeleteFunc(dedupe(songs), func(id int64) bool {
+		if queued[id] {
+			return false
+		}
+		room--
+		return room < 0
+	})
 	moving := map[int64]bool{}
 	for _, id := range songs {
 		moving[id] = true
@@ -557,7 +583,7 @@ func (a *applier) queueEdit(o op) error {
 		}
 		q.Songs = slices.DeleteFunc(q.Songs, func(id int64) bool { return drop[id] })
 	case "queue.replace": // a sort or shuffle: the whole order, last writer wins
-		songs := dedupe(o.Songs)
+		songs := capQueue(dedupe(o.Songs), q.CurrentSong)
 		if err := a.songsExist(songs); err != nil {
 			return err
 		}
@@ -813,7 +839,7 @@ func (a *applier) loadPlaylist(ref string) (*playlistRow, error) {
 
 func (a *applier) songEntries(ids []int64) ([]library.WriteEntry, error) {
 	// The songs are fetched in the same chunks songsExist uses, not one query
-	// each: a replaced playlist may name 20,000 songs.
+	// each: a replaced playlist may name the whole library.
 	lookups, err := songLookups(ids)
 	if err != nil {
 		return nil, err

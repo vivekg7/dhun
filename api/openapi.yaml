@@ -324,7 +324,8 @@ paths:
 
         At most 500 operations are applied per request: the rest get no
         result, stay in the outbox and go with the next sync. An operation
-        may name at most 20,000 songs. An `at` in the future counts as the
+        may name at most 100,000 songs, and a queue holds at most 1,000
+        (trimmed, never refused). An `at` in the future counts as the
         server's now.
       requestBody:
         required: true
@@ -735,13 +736,13 @@ components:
 
         | type | fields | merge rule |
         | --- | --- | --- |
-        | queue.create | queue, name, songs, song?, positionMs? | name made unique; past 20 queues the least recently used is removed |
+        | queue.create | queue, name, songs, song?, positionMs? | name made unique; past 20 queues the least recently used is removed; past 1,000 songs, kept from `song` on, wrapping round |
         | queue.rename | queue, name | name made unique |
         | queue.delete | queue | delete wins over later edits |
-        | queue.insert | queue, songs, after? | songs already queued are moved, never duplicated |
+        | queue.insert | queue, songs, after? | songs already queued are moved, never duplicated; new songs only while the queue holds fewer than 1,000 |
         | queue.remove | queue, songs | |
         | queue.move | queue, song, after? | |
-        | queue.replace | queue, songs | whole order (sort, shuffle); last writer wins |
+        | queue.replace | queue, songs | whole order (sort, shuffle); last writer wins; past 1,000 songs, kept from the current song on |
         | queue.set_current | queue, song, positionMs | later `at` wins |
         | queue.set_mode | queue, shuffle?, repeat? | |
         | favorite.set / favorite.unset | song | later `at` wins |

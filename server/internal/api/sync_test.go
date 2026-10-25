@@ -569,3 +569,28 @@ func TestClearedSettingsDoNotCountTowardTheCap(t *testing.T) {
 		t.Errorf("after clearing one: %+v", r.Results)
 	}
 }
+
+// A queue holds at most 1,000 songs (plan 040). An app from before the cap
+// sends a whole long list: it is trimmed to the 1,000 from the song played
+// on, wrapping round, rather than refused. Adding to a full queue moves songs
+// already in it but adds no new ones.
+func TestQueueHoldsAtMostAThousandSongs(t *testing.T) {
+	e, phone, _ := syncEnv(t, 1005)
+	all := make([]int64, 1005)
+	for i := range all {
+		all[i] = int64(i + 1)
+	}
+	res := e.push(phone, 0, o("queue.create", map[string]any{"queue": "q1", "name": "Songs", "songs": all, "song": 11}))
+	if res.Results[0].Status != "applied" {
+		t.Fatalf("create = %s (%s), want applied", res.Results[0].Status, res.Results[0].Error)
+	}
+	q := e.queue(phone, "q1")
+	if want := append(slices.Clone(all[10:]), all[:5]...); !slices.Equal(q.Songs, want) {
+		t.Fatalf("queue = %d songs from %d, want 1000 from 11 wrapping to 5", len(q.Songs), q.Songs[0])
+	}
+
+	e.push(phone, 0, o("queue.insert", map[string]any{"queue": "q1", "songs": []int64{6, 20}, "after": 0}))
+	if q := e.queue(phone, "q1"); len(q.Songs) != 1000 || q.Songs[0] != 20 || slices.Contains(q.Songs, 6) {
+		t.Errorf("insert into a full queue = %d songs starting %v; want 20 moved to the start, 6 not added", len(q.Songs), q.Songs[:2])
+	}
+}

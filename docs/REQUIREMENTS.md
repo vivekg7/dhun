@@ -160,6 +160,10 @@ the numbers. Where Dhun stands:
 - **Queues are separate from playlists**, and this is the most important
   feature. A queue is a temporary list being played right now. At most
   **20**, Musicolet's limit, confirmed from its APK.
+- **A queue holds at most 1,000 songs** (owner, 2026-10-25;
+  [plan 040](plans/040_queue_size_cap.md)). Playing a longer list queues the
+  song played and the 999 after it, wrapping round; adding to a full queue
+  adds no new songs. A note says how many were left out.
 - **The Queues tab is Musicolet's** (owner, 2026-10-08;
   [plan 020](plans/020_queue_screen.md)): queues are **numbered in a fixed
   order**, a new one last, reordered by dragging; a 21st removes the first.

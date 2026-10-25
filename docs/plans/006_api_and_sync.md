@@ -173,7 +173,8 @@ An adversarial review before running on the NAS added:
   responses a `sandbox` CSP. Read and idle timeouts are set; there is no write
   timeout, because a stream may be long.
 - **Sync:** at most 500 operations are applied per request (the rest stay in
-  the outbox for the next one) and 20,000 songs per operation. A client time
+  the outbox for the next one) and 100,000 songs per operation; a queue
+  holds at most 1,000 ([040](040_queue_size_cap.md)). A client time
   in the future counts as now, so a phone with a fast clock cannot win every
   later conflict.
 - **Art:** sizes round up to 128, 256, 512 or 1024; an image over 40
