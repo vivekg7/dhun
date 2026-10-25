@@ -16,14 +16,12 @@ pub const RESTART_WINDOW: f64 = 3.0;
 /// The queues in the user's order: those the synced order names, in it,
 /// then the rest by use, oldest first, as Musicolet appends.
 pub fn order_of(queues: &[QueueRow], order: Option<&Value>) -> Vec<QueueRow> {
-    let ids: Vec<&str> =
-        order.and_then(Value::as_array).map_or(vec![], |a| a.iter().filter_map(Value::as_str).collect());
+    let ids = order.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str);
     let by_id: HashMap<&str, &QueueRow> = queues.iter().map(|q| (q.id.as_str(), q)).collect();
     let mut seen = HashSet::new();
     let mut out: Vec<QueueRow> =
-        ids.into_iter().filter(|id| seen.insert(*id)).filter_map(|id| by_id.get(id).map(|q| (*q).clone())).collect();
-    let named: HashSet<String> = out.iter().map(|q| q.id.clone()).collect();
-    let mut rest: Vec<QueueRow> = queues.iter().filter(|q| !named.contains(&q.id)).cloned().collect();
+        ids.filter(|id| seen.insert(*id)).filter_map(|id| by_id.get(id).map(|&q| q.clone())).collect();
+    let mut rest: Vec<QueueRow> = queues.iter().filter(|q| !seen.contains(q.id.as_str())).cloned().collect();
     rest.sort_by_key(|q| q.used_at);
     out.extend(rest);
     out
@@ -55,11 +53,7 @@ impl Upcoming {
             return Some(after);
         }
         let at = self.order.iter().position(|&s| s == after)?;
-        match self.order.get(at + 1) {
-            Some(&n) => Some(n),
-            None if self.repeat_mode == "queue" => self.order.first().copied(),
-            None => None,
-        }
+        self.order.get(at + 1).or_else(|| self.order.first().filter(|_| self.repeat_mode == "queue")).copied()
     }
 }
 

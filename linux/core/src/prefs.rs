@@ -90,10 +90,8 @@ impl Prefs {
         let mut v = self.values.lock().unwrap();
         f(&mut v);
         let tmp = self.file.with_extension("json.tmp");
-        if let Ok(text) = serde_json::to_vec_pretty(&*v) {
-            if fs::write(&tmp, text).is_ok() {
-                let _ = fs::rename(&tmp, &self.file);
-            }
+        if serde_json::to_vec_pretty(&*v).is_ok_and(|text| fs::write(&tmp, text).is_ok()) {
+            let _ = fs::rename(&tmp, &self.file);
         }
     }
 

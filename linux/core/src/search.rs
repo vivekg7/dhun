@@ -38,11 +38,6 @@ pub fn words(s: &str) -> Vec<String> {
     out
 }
 
-/// The words of `s` joined by single spaces.
-pub fn text(s: &str) -> String {
-    words(s).join(" ")
-}
-
 const APOSTROPHES: [char; 5] = ['\'', '‘', '’', 'ʼ', '`'];
 
 /// In order. "ch" is set aside while a lone "c" becomes "k".
@@ -84,12 +79,8 @@ pub fn key(word: &str) -> String {
             k = k.replace(from, to);
         }
     }
-    let mut b: Vec<char> = Vec::with_capacity(k.len());
-    for c in k.chars() {
-        if b.last() != Some(&c) {
-            b.push(c);
-        }
-    }
+    let mut b: Vec<char> = k.chars().collect();
+    b.dedup();
     let n = b.len();
     if n > 2 && b[n - 1] == 'h' && "aeiou".contains(b[n - 2]) {
         b.pop();
@@ -346,7 +337,7 @@ impl Query {
     pub fn new(text: &str) -> Query {
         let mut terms = Vec::new();
         for (field, value, whole) in tokens(text) {
-            let field = field.map(|f| f.to_lowercase()).filter(|f| FIELDS.contains(&f.as_str()));
+            let field = field.map(str::to_lowercase).filter(|f| FIELDS.contains(&f.as_str()));
             let value = unquote(if field.is_some() { value } else { whole });
             if field.as_deref() == Some("year") {
                 if let Some((a, b)) = year_range(value) {
@@ -420,7 +411,7 @@ fn tokens(text: &str) -> Vec<(Option<&str>, &str, &str)> {
 
 fn year_range(s: &str) -> Option<(i64, i64)> {
     let (a, b) = s.split_once("..").or_else(|| s.split_once('-'))?;
-    let four = |x: &str| (x.len() == 4 && x.bytes().all(|c| c.is_ascii_digit())).then(|| x.parse().ok()).flatten();
+    let four = |x: &str| x.parse().ok().filter(|_| x.len() == 4 && x.bytes().all(|c| c.is_ascii_digit()));
     Some((four(a)?, four(b)?))
 }
 
@@ -741,7 +732,7 @@ mod tests {
         assert!(lines.len() > 20);
         for line in lines {
             let cols: Vec<&str> = line.split('\t').collect();
-            assert_eq!(text(cols[0]), cols[1], "{}", cols[0]);
+            assert_eq!(words(cols[0]).join(" "), cols[1], "{}", cols[0]);
             assert_eq!(words(cols[0]).iter().map(|w| key(w)).collect::<Vec<_>>().join(" "), cols[2], "{}", cols[0]);
         }
     }
@@ -777,7 +768,7 @@ mod tests {
         assert_eq!(find("composer:rahman"), [4]);
         assert!(find("title:arijit").is_empty());
         let mut years = find("year:1970-2000");
-        years.sort();
+        years.sort_unstable();
         assert_eq!(years, [4, 6]);
         assert_eq!(find("artist:\"arijit singh\" tum"), [1]);
     }

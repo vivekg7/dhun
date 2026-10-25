@@ -51,13 +51,13 @@ pub fn round(api: &Api, db: &Mutex<Db>) -> api::Result<Pulled> {
         out.songs += again.songs;
         out.playlists |= again.playlists;
     }
-    let plays = api.plays()?;
-    let stats: Vec<PlayStat> = plays
+    let stats: Vec<PlayStat> = api
+        .plays()?
         .into_iter()
         .map(|p| PlayStat {
             song: p.song,
             count: p.count.unwrap_or(0),
-            last_played_at: parse(p.last_played_at.as_deref().unwrap_or("")),
+            last_played_at: p.last_played_at.as_deref().map_or(0, parse),
         })
         .collect();
     db.lock().unwrap().replace_play_stats(&stats).map_err(fail)?;
@@ -119,14 +119,14 @@ fn apply(db: &Db, s: SyncState, out: &mut Pulled) -> rusqlite::Result<()> {
             position_ms: q.position_ms.unwrap_or(0),
             shuffle: q.shuffle.unwrap_or(false),
             repeat_mode: q.repeat.unwrap_or_else(|| "off".into()),
-            used_at: parse(q.used_at.as_deref().unwrap_or("")),
+            used_at: q.used_at.as_deref().map_or(0, parse),
             id: q.id,
         })?;
     }
     for (kind, items) in [(FAV, s.favorites), (LATER, s.listen_later), (PLAYED, s.played)] {
         for i in items.unwrap_or_default() {
             out.state = true;
-            let at = parse(i.at.as_deref().unwrap_or(""));
+            let at = i.at.as_deref().map_or(0, parse);
             if pending.contains(&format!("{kind}:{}", i.song)) || db.mark(kind, i.song)?.is_some_and(|m| m.at > at) {
                 continue;
             }
@@ -135,7 +135,7 @@ fn apply(db: &Db, s: SyncState, out: &mut Pulled) -> rusqlite::Result<()> {
     }
     for r in s.resume.unwrap_or_default() {
         out.state = true;
-        let at = parse(r.at.as_deref().unwrap_or(""));
+        let at = r.at.as_deref().map_or(0, parse);
         if pending.contains(&format!("resume:{}", r.song)) || db.resume(r.song)?.is_some_and(|l| l.at > at) {
             continue;
         }
@@ -148,7 +148,7 @@ fn apply(db: &Db, s: SyncState, out: &mut Pulled) -> rusqlite::Result<()> {
     }
     for b in s.bookmarks.unwrap_or_default() {
         out.state = true;
-        let at = parse(b.at.as_deref().unwrap_or(""));
+        let at = b.at.as_deref().map_or(0, parse);
         let local = db.bookmark(&b.id)?;
         let deleted = b.deleted.unwrap_or(false);
         // A delete wins over any edit, as on the server (plan 033).
@@ -190,7 +190,7 @@ pub fn pull_library(api: &Api, db: &Mutex<Db>) -> api::Result<Pulled> {
         prefs.update(|p| p.library_version = 0);
     }
     let lib = api.library(prefs.get().library_version)?;
-    let songs: Vec<_> = lib.songs.unwrap_or_default().into_iter().map(|s| s.song()).collect();
+    let songs: Vec<_> = lib.songs.unwrap_or_default().into_iter().map(api::SongDto::song).collect();
     let mut out = Pulled { songs: songs.len(), ..Default::default() };
     let mut db = db.lock().unwrap();
     if !songs.is_empty() {
@@ -204,9 +204,9 @@ pub fn pull_library(api: &Api, db: &Mutex<Db>) -> api::Result<Pulled> {
         out.playlists = true;
         if p.deleted == Some(true) {
             if edited(p.id) {
-                skipped = true
+                skipped = true;
             } else {
-                db.delete_playlist(p.id).map_err(fail)?
+                db.delete_playlist(p.id).map_err(fail)?;
             }
             continue;
         }

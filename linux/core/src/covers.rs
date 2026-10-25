@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 pub const THUMB: u32 = 128;
@@ -35,11 +36,12 @@ pub fn size_for(px: u32) -> u32 {
 /// next sync carries on. Thumbnails no song shows any more are dropped.
 /// Returns how many arrived.
 pub fn fetch_thumbs(api: &Api, db: &Mutex<Db>) -> usize {
-    let (keys, have) = {
+    let (keys, have): (HashSet<String>, HashSet<String>) = {
         let db = db.lock().unwrap();
-        let keys: HashSet<String> = db.art_keys().unwrap_or_default().into_iter().collect();
-        let have: HashSet<String> = db.thumb_keys().unwrap_or_default().into_iter().collect();
-        (keys, have)
+        (
+            db.art_keys().unwrap_or_default().into_iter().collect(),
+            db.thumb_keys().unwrap_or_default().into_iter().collect(),
+        )
     };
     if keys.is_empty() {
         return 0;
@@ -62,13 +64,13 @@ pub fn fetch_thumbs(api: &Api, db: &Mutex<Db>) -> usize {
 
 pub struct Files {
     dir: PathBuf,
-    written: Mutex<usize>,
+    written: AtomicUsize,
 }
 
 impl Files {
     pub fn new(dir: PathBuf) -> Files {
         let _ = fs::create_dir_all(&dir);
-        Files { dir, written: Mutex::new(0) }
+        Files { dir, written: AtomicUsize::new(0) }
     }
 
     /// The kept file for `key` of at least `size` px. One per key: a larger fetch replaces it.
@@ -90,12 +92,7 @@ impl Files {
         for s in SIZES.into_iter().filter(|&s| s < size) {
             let _ = fs::remove_file(self.dir.join(format!("{key}.{s}")));
         }
-        let n = {
-            let mut w = self.written.lock().unwrap();
-            *w += 1;
-            *w
-        };
-        if n % 25 == 0 {
+        if (self.written.fetch_add(1, Ordering::Relaxed) + 1) % 25 == 0 {
             evict(&self.dir);
         }
         Some(file)

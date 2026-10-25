@@ -127,7 +127,7 @@ impl SongDto {
             size: self.size.unwrap_or(0),
             has_art: self.has_art.unwrap_or(false),
             has_lyrics: self.has_lyrics.unwrap_or(false),
-            added_at: time::parse(self.added_at.as_deref().unwrap_or("")),
+            added_at: self.added_at.as_deref().map_or(0, time::parse),
             missing: self.missing.unwrap_or(false),
             art: self.art.unwrap_or_default(),
             kind: self.kind.unwrap_or_default(),
@@ -222,8 +222,8 @@ struct Members {
 }
 
 #[derive(Deserialize)]
-pub struct LyricsHits {
-    pub hits: Option<Vec<crate::lyrics::Hit>>,
+struct LyricsHits {
+    hits: Option<Vec<crate::lyrics::Hit>>,
 }
 
 #[derive(Deserialize, Default)]
@@ -443,14 +443,10 @@ impl Api {
             r.send(body.map_or_else(String::new, |b| b.to_string()))
         };
         let resp = result.map_err(|e| Error::Network(e.to_string()))?;
-        if auth {
-            // The server's release, for Settings; sent only to a signed-in device.
-            if let Some(v) = resp.headers().get("Dhun-Version").and_then(|v| v.to_str().ok()) {
-                if v != self.prefs.get().server_version {
-                    let v = v.to_string();
-                    self.prefs.update(|p| p.server_version = v);
-                }
-            }
+        // The server's release, for Settings; sent only to a signed-in device.
+        let version = resp.headers().get("Dhun-Version").and_then(|v| v.to_str().ok()).filter(|_| auth);
+        if let Some(v) = version.filter(|v| *v != self.prefs.get().server_version) {
+            self.prefs.update(|p| p.server_version = v.to_string());
         }
         Ok(resp)
     }
@@ -459,11 +455,7 @@ impl Api {
     fn call_done(&self, method: &str, path: &str, body: serde_json::Value) -> Result<()> {
         let mut resp = self.send(method, &format!("{}{path}", self.server()), Some(body), true)?;
         let status = resp.status().as_u16();
-        if (200..300).contains(&status) {
-            return Ok(());
-        }
-        let msg = serde_json::from_reader::<_, ErrorBody>(resp.body_mut().as_reader()).ok().and_then(|b| b.message);
-        Err(Error::Http { code: status, message: msg.unwrap_or_else(|| format!("HTTP {status}")) })
+        if (200..300).contains(&status) { Ok(()) } else { Err(http_error(status, resp.body_mut().as_reader())) }
     }
 
     fn call<T: DeserializeOwned>(
@@ -479,10 +471,15 @@ impl Api {
         // Read as it arrives: the first library pull is tens of megabytes of JSON.
         let reader = resp.body_mut().as_reader();
         if !(200..300).contains(&status) {
-            let msg = serde_json::from_reader::<_, ErrorBody>(reader).ok().and_then(|b| b.message);
-            return Err(Error::Http { code: status, message: msg.unwrap_or_else(|| format!("HTTP {status}")) });
+            return Err(http_error(status, reader));
         }
         serde_json::from_reader(std::io::BufReader::with_capacity(1 << 16, reader))
             .map_err(|e| Error::Network(e.to_string()))
     }
+}
+
+/// An error status, with the server's message when its body has one.
+fn http_error(code: u16, body: impl std::io::Read) -> Error {
+    let message = serde_json::from_reader::<_, ErrorBody>(body).ok().and_then(|b| b.message);
+    Error::Http { code, message: message.unwrap_or_else(|| format!("HTTP {code}")) }
 }

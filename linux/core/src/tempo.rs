@@ -76,7 +76,6 @@ pub fn format(speed: f64) -> String {
 mod tests {
     use super::*;
 
-    // A song's setting comes from another device, maybe a newer app: never trusted to be in range.
     #[test]
     fn a_song_setting_is_read_defensively() {
         let t = |s: &str| Tempo::of(Some(&serde_json::from_str(s).unwrap()));

@@ -5,7 +5,7 @@
 
 use crate::db::{Db, Result};
 use crate::model::{Bookmark, Mark, Playlist, QueueRow, Resume};
-use crate::time;
+use crate::time::{self, now_ms};
 use serde_json::{Map, Value, json};
 
 pub const FAV: &str = "fav";
@@ -35,10 +35,7 @@ pub struct Listen {
 /// overwrite it with an older server copy while the op is still unsent.
 fn record(db: &mut Db, kind: &str, key: Option<String>, tag: &str, at: i64, fields: Value) -> Result<()> {
     let id = uuid();
-    let mut op: Map<String, Value> = match fields {
-        Value::Object(m) => m,
-        _ => Map::new(),
-    };
+    let mut op = if let Value::Object(m) = fields { m } else { Map::new() };
     op.insert("id".into(), id.clone().into());
     op.insert("type".into(), kind.into());
     op.insert("at".into(), time::format(at).into());
@@ -47,14 +44,10 @@ fn record(db: &mut Db, kind: &str, key: Option<String>, tag: &str, at: i64, fiel
     db.add_op(&id, &key, &Value::Object(op).to_string(), replacing)
 }
 
-fn now() -> i64 {
-    time::now_ms()
-}
-
 /// A song into or out of Favorites, Listen Later or the played marks; only
 /// the last toggle of a song is worth sending.
 pub fn mark(db: &mut Db, kind: &str, song: i64, on: bool) -> Result<()> {
-    let at = now();
+    let at = now_ms();
     db.put_mark(&Mark { kind: kind.into(), song, at, deleted: !on })?;
     let kind_op = match (kind, on) {
         (FAV, true) => "favorite.set",
@@ -69,7 +62,7 @@ pub fn mark(db: &mut Db, kind: &str, song: i64, on: bool) -> Result<()> {
 
 /// Makes, changes or removes a bookmark (plan 033), sent whole each time.
 pub fn bookmark(db: &mut Db, b: &Bookmark) -> Result<()> {
-    let at = now();
+    let at = now_ms();
     db.put_bookmark(&Bookmark { at, ..b.clone() })?;
     let key = Some(format!("bookmark:{}", b.id));
     if b.deleted {
@@ -82,12 +75,12 @@ pub fn bookmark(db: &mut Db, b: &Bookmark) -> Result<()> {
 
 pub fn setting(db: &mut Db, name: &str, value: Value) -> Result<()> {
     db.put_setting(name, &value)?;
-    record(db, "setting.set", Some(format!("setting:{name}")), "", now(), json!({ "name": name, "value": value }))
+    record(db, "setting.set", Some(format!("setting:{name}")), "", now_ms(), json!({ "name": name, "value": value }))
 }
 
 /// Where a long file was left, or None once it was heard to the end (plan 009).
 pub fn resume(db: &mut Db, song: i64, position_ms: Option<i64>) -> Result<()> {
-    let at = now();
+    let at = now_ms();
     db.put_resume(&Resume { song, position_ms: position_ms.unwrap_or(0), at, deleted: position_ms.is_none() })?;
     let key = Some(format!("resume:{song}"));
     match position_ms {
@@ -102,7 +95,7 @@ pub fn create_queue(db: &mut Db, q: &QueueRow) -> Result<()> {
     db.put_queue(q)?;
     let f =
         json!({ "queue": q.id, "name": q.name, "songs": q.songs, "song": q.current_song, "positionMs": q.position_ms });
-    record(db, "queue.create", None, &format!(":{}", q.id), now(), f)
+    record(db, "queue.create", None, &format!(":{}", q.id), now_ms(), f)
 }
 
 pub fn replace_queue(db: &mut Db, q: &QueueRow) -> Result<()> {
@@ -112,32 +105,32 @@ pub fn replace_queue(db: &mut Db, q: &QueueRow) -> Result<()> {
         "queue.replace",
         Some(format!("replace:{}", q.id)),
         "",
-        now(),
+        now_ms(),
         json!({ "queue": q.id, "songs": q.songs }),
     )
 }
 
 pub fn rename_queue(db: &mut Db, q: &QueueRow) -> Result<()> {
     db.put_queue(q)?;
-    record(db, "queue.rename", Some(format!("rename:{}", q.id)), "", now(), json!({ "queue": q.id, "name": q.name }))
+    record(db, "queue.rename", Some(format!("rename:{}", q.id)), "", now_ms(), json!({ "queue": q.id, "name": q.name }))
 }
 
 pub fn delete_queue(db: &mut Db, id: &str) -> Result<()> {
     db.delete_queue(id)?;
-    record(db, "queue.delete", None, &format!(":{id}"), now(), json!({ "queue": id }))
+    record(db, "queue.delete", None, &format!(":{id}"), now_ms(), json!({ "queue": id }))
 }
 
 /// The queue's current song and position; only the latest is worth sending.
 pub fn set_current(db: &mut Db, q: &QueueRow) -> Result<()> {
     db.set_current(&q.id, q.current_song, q.position_ms)?;
     let f = json!({ "queue": q.id, "song": q.current_song, "positionMs": q.position_ms });
-    record(db, "queue.set_current", Some(format!("current:{}", q.id)), "", now(), f)
+    record(db, "queue.set_current", Some(format!("current:{}", q.id)), "", now_ms(), f)
 }
 
 pub fn set_mode(db: &mut Db, q: &QueueRow) -> Result<()> {
     db.put_queue(q)?;
     let f = json!({ "queue": q.id, "shuffle": q.shuffle, "repeat": q.repeat_mode });
-    record(db, "queue.set_mode", Some(format!("mode:{}", q.id)), "", now(), f)
+    record(db, "queue.set_mode", Some(format!("mode:{}", q.id)), "", now_ms(), f)
 }
 
 pub fn insert_into_queue(db: &mut Db, q: &QueueRow, songs: &[i64], after: Option<i64>) -> Result<()> {
@@ -146,18 +139,18 @@ pub fn insert_into_queue(db: &mut Db, q: &QueueRow, songs: &[i64], after: Option
     if let Some(a) = after {
         f["after"] = a.into();
     }
-    record(db, "queue.insert", None, &format!(":{}", q.id), now(), f)
+    record(db, "queue.insert", None, &format!(":{}", q.id), now_ms(), f)
 }
 
 pub fn remove_from_queue(db: &mut Db, q: &QueueRow, songs: &[i64]) -> Result<()> {
     db.put_queue(q)?;
-    record(db, "queue.remove", None, &format!(":{}", q.id), now(), json!({ "queue": q.id, "songs": songs }))
+    record(db, "queue.remove", None, &format!(":{}", q.id), now_ms(), json!({ "queue": q.id, "songs": songs }))
 }
 
 pub fn move_in_queue(db: &mut Db, q: &QueueRow, song: i64, after: i64) -> Result<()> {
     db.put_queue(q)?;
     let f = json!({ "queue": q.id, "song": song, "after": after });
-    record(db, "queue.move", None, &format!(":{}", q.id), now(), f)
+    record(db, "queue.move", None, &format!(":{}", q.id), now_ms(), f)
 }
 
 // Playlists (plan 013). The songs given are music only: a playlist is an
@@ -170,7 +163,7 @@ fn target(p: &Playlist) -> String {
 
 fn record_on(db: &mut Db, p: &Playlist, kind: &str, mut fields: Value) -> Result<()> {
     fields["playlist"] = target(p).into();
-    record(db, kind, None, &format!(":pl{}", p.id), now(), fields)
+    record(db, kind, None, &format!(":pl{}", p.id), now_ms(), fields)
 }
 
 /// A new playlist of the user's own, with a negative id until the server
@@ -186,7 +179,7 @@ pub fn create_playlist(db: &mut Db, name: &str, songs: &[i64]) -> Result<Playlis
     };
     db.put_playlist(&p)?;
     let f = json!({ "ref": p.r#ref, "name": name, "songs": p.songs });
-    record(db, "playlist.create", None, &format!(":pl{}", p.id), now(), f)?;
+    record(db, "playlist.create", None, &format!(":pl{}", p.id), now_ms(), f)?;
     Ok(p)
 }
 
@@ -203,17 +196,20 @@ pub fn add_to_playlist(db: &mut Db, p: &Playlist, songs: &[i64]) -> Result<usize
     Ok(distinct.len() - adding.len())
 }
 
+/// Which of its song's entries the one at `i` is: a song can be in a playlist twice.
+fn occurrence(list: &[i64], i: usize) -> usize {
+    list[..i].iter().filter(|&&s| s == list[i]).count()
+}
+
 /// Removes the entry at `index` of the playlist's own list, unmatched entries included.
 pub fn remove_from_playlist(db: &mut Db, p: &Playlist, index: usize) -> Result<Playlist> {
     let mut q = p.clone();
     if index >= p.songs.len() {
         return Ok(q);
     }
-    let song = p.songs[index];
-    let occurrence = p.songs[..index].iter().filter(|&&s| s == song).count();
-    q.songs.remove(index);
+    let song = q.songs.remove(index);
     db.put_playlist(&q)?;
-    record_on(db, p, "playlist.remove", json!({ "song": song, "occurrence": occurrence }))?;
+    record_on(db, p, "playlist.remove", json!({ "song": song, "occurrence": occurrence(&p.songs, index) }))?;
     Ok(q)
 }
 
@@ -221,23 +217,23 @@ pub fn remove_from_playlist(db: &mut Db, p: &Playlist, index: usize) -> Result<P
 /// list. A song can be in a playlist twice, so each end is named by its
 /// song and which of its entries it is.
 pub fn move_in_playlist(db: &mut Db, p: &Playlist, from: usize, to: usize) -> Result<()> {
-    let mut list = p.songs.clone();
-    if from >= list.len() || to >= list.len() || from == to {
+    let n = p.songs.len();
+    if from >= n || to >= n || from == to {
         return Ok(());
     }
-    let song = list[from];
-    let occurrence = list[..from].iter().filter(|&&s| s == song).count();
-    let moved = list.remove(from);
-    list.insert(to, moved);
-    db.put_playlist(&Playlist { songs: list.clone(), ..p.clone() })?;
+    let mut q = p.clone();
+    let song = q.songs.remove(from);
+    q.songs.insert(to, song);
+    db.put_playlist(&q)?;
+    let list = &q.songs;
     let after = if to == 0 { 0 } else { list[to - 1] };
     if to > 0 && after == 0 {
         // An unmatched entry cannot be named as "after" (0 means the start): send the order.
         return record_on(db, p, "playlist.replace", json!({ "songs": list }));
     }
-    let mut f = json!({ "song": song, "occurrence": occurrence, "after": after });
+    let mut f = json!({ "song": song, "occurrence": occurrence(&p.songs, from), "after": after });
     if to > 0 {
-        f["afterOccurrence"] = list[..to - 1].iter().filter(|&&s| s == after).count().into();
+        f["afterOccurrence"] = occurrence(list, to - 1).into();
     }
     record_on(db, p, "playlist.move", f)
 }
@@ -263,7 +259,7 @@ pub fn delete_playlist(db: &mut Db, p: &Playlist) -> Result<()> {
 /// Feeds /now-playing, for "Continue from …" on another device.
 pub fn playback_state(db: &mut Db, queue: &str, song: i64, position_ms: i64, playing: bool) -> Result<()> {
     let f = json!({ "queue": queue, "song": song, "positionMs": position_ms, "playing": playing });
-    record(db, "playback.state", Some("playback".into()), "", now(), f)
+    record(db, "playback.state", Some("playback".into()), "", now_ms(), f)
 }
 
 /// One listen (plan 008).

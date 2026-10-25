@@ -19,16 +19,10 @@ fn try_parse(s: &str) -> Option<i64> {
     let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
     let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
-    let mut i = 19;
-    let mut ms = 0;
-    if b.get(i) == Some(&b'.') {
-        let start = i + 1;
-        i = start;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        let frac = &s[start..i];
-        ms = format!("{frac:0<3}")[..3].parse().ok()?;
+    let (mut i, mut ms) = (19, 0);
+    if b[19] == b'.' {
+        i = 20 + b[20..].iter().take_while(|c| c.is_ascii_digit()).count();
+        ms = format!("{:0<3}", &s[20..i])[..3].parse().ok()?;
     }
     let offset = match b.get(i)? {
         b'Z' | b'z' => 0,

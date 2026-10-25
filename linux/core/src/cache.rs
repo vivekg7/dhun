@@ -148,12 +148,11 @@ impl SongCache {
         let mut g = self.inner.lock().unwrap();
         let plan: Vec<&SongRef> = plan.iter().filter(|s| !g.downloaded.contains_key(&s.id)).collect();
         let wanted: HashSet<i64> = plan.iter().map(|s| s.id).collect();
-        let dir = self.dir.clone();
         g.entries.retain(|_, p| match p.ended() {
             // With the cache off, a song is fetched only to play it.
             Some(End::Whole) if limit == 0 => {
                 if let Some(s) = songs.get(&p.song) {
-                    let _ = std::fs::remove_file(dir.join(s.file_name()));
+                    let _ = std::fs::remove_file(self.dir.join(s.file_name()));
                 }
                 false
             }
@@ -166,10 +165,8 @@ impl SongCache {
             let next = plan.iter().find(|s| !g.entries.contains_key(&s.id) && !self.dir.join(s.file_name()).exists());
             if let Some(next) = next.filter(|n| limit > 0 || n.id == plan[0].id) {
                 // The next file's window starts at its start; the one playing anchors on its reader.
-                if let Some(p) = self.start(&mut g, next) {
-                    if next.id != plan[0].id {
-                        p.anchor_at_start();
-                    }
+                if let Some(p) = self.start(&mut g, next).filter(|_| next.id != plan[0].id) {
+                    p.anchor_at_start();
                 }
             }
         }
@@ -203,7 +200,7 @@ impl SongCache {
     fn trim(&self, g: &mut Inner, limit: u64, keep: &HashSet<i64>, songs: &HashMap<i64, SongRef>) {
         let mut rest = vec![];
         for f in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
-            let name = f.file_name().to_string_lossy().to_string();
+            let name = f.file_name().to_string_lossy().into_owned();
             let Some(id) = song_id(&name).filter(|_| is_whole(&name)) else { continue };
             let windowed = songs.get(&id).is_some_and(|s| window(g.long, s).0 > 0);
             if g.downloaded.contains_key(&id) || (windowed && !keep.contains(&id)) {
@@ -231,7 +228,7 @@ impl SongCache {
         for f in std::fs::read_dir(&self.dir).into_iter().flatten().flatten() {
             // Blocks, not length: a window is a sparse file as long as the whole book.
             used += f.metadata().map_or(0, |m| m.blocks() * 512);
-            let name = f.file_name().to_string_lossy().to_string();
+            let name = f.file_name().to_string_lossy().into_owned();
             if is_whole(&name) {
                 songs.extend(song_id(&name));
             }

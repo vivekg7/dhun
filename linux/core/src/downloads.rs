@@ -6,7 +6,6 @@
 use crate::api::{Api, Error, Result};
 use crate::catalog::{Catalog, Group, SongRef};
 use crate::model::{Mark, Pin, Playlist, Song};
-use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -27,7 +26,7 @@ pub const GB: u64 = 1 << 30;
 pub const RESERVE: u64 = 200 << 20;
 
 pub fn key(kind: &str, r#ref: &str) -> String {
-    format!("{kind}:{}", r#ref)
+    format!("{kind}:{ref}")
 }
 
 /// The songs `pins` cover, newest pin first so what was just clicked starts
@@ -43,35 +42,26 @@ pub fn covered(
     if c.by_id.is_empty() {
         return None;
     }
-    let mut ids = vec![];
-    let mut seen = HashSet::new();
-    let mut add = |id: i64| {
-        if seen.insert(id) {
-            ids.push(id);
-        }
-    };
+    let ids_of = |songs: &[SongRef]| songs.iter().map(|s| s.id).collect::<Vec<_>>();
     let mut pins: Vec<&Pin> = pins.iter().collect();
     pins.sort_by_key(|p| std::cmp::Reverse(p.at));
-    for p in pins {
+    let ids = crate::queue::distinct(pins.into_iter().flat_map(|p| {
         let group = |list: &[Arc<Group>]| {
             let lower = p.r#ref.to_lowercase();
-            list.iter().find(|g| g.id() == lower).map(|g| g.songs.iter().map(|s| s.id).collect::<Vec<_>>())
+            list.iter().find(|g| g.id() == lower).map_or(vec![], |g| ids_of(&g.songs))
         };
-        let songs: Vec<i64> = match p.kind.as_str() {
+        match p.kind.as_str() {
             SONG => p.r#ref.parse().into_iter().collect(),
-            ALBUM => c.albums_by_id.get(&p.r#ref).map(|a| a.songs.iter().map(|s| s.id).collect()).unwrap_or_default(),
-            FOLDER => c.all_songs(&p.r#ref).iter().map(|s| s.id).collect(),
-            ARTIST => group(&c.artists).unwrap_or_default(),
-            GENRE => group(&c.genres).unwrap_or_default(),
-            PLAYLIST => {
-                playlists.iter().find(|l| l.id.to_string() == p.r#ref).map(|l| l.songs.clone()).unwrap_or_default()
-            }
+            ALBUM => c.albums_by_id.get(&p.r#ref).map_or(vec![], |a| ids_of(&a.songs)),
+            FOLDER => ids_of(&c.all_songs(&p.r#ref)),
+            ARTIST => group(&c.artists),
+            GENRE => group(&c.genres),
+            PLAYLIST => playlists.iter().find(|l| l.id.to_string() == p.r#ref).map_or(vec![], |l| l.songs.clone()),
             LIST => (if p.r#ref == crate::store::FAV { favs } else { later }).iter().map(|m| m.song).collect(),
-            SHELF => c.shelves.get(&p.r#ref).map(|s| s.items.iter().map(|s| s.id).collect()).unwrap_or_default(),
+            SHELF => c.shelves.get(&p.r#ref).map_or(vec![], |s| ids_of(&s.items)),
             _ => vec![],
-        };
-        songs.into_iter().for_each(&mut add);
-    }
+        }
+    }));
     Some(c.songs_of(&ids))
 }
 
@@ -190,7 +180,7 @@ mod tests {
         let favs = [Mark { kind: crate::store::FAV.into(), song: 4, at: 0, deleted: false }];
         let mut ids: Vec<i64> =
             covered(&db.pins().unwrap(), &c, &[], &favs, &[]).unwrap().iter().map(|s| s.id).collect();
-        ids.sort();
+        ids.sort_unstable();
         assert_eq!(ids, [1, 2, 3]);
         assert!(db.pins().unwrap().iter().all(|p| p.kind != LIST && p.kind != PLAYLIST));
     }

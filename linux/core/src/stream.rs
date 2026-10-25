@@ -286,13 +286,10 @@ impl Part {
     /// A song all here takes its own name; the reader keeps its descriptor across the rename.
     fn end(&self, end: End) {
         if end == End::Whole {
-            let mut path = self.path.lock().unwrap();
-            let kept = path.as_ref().and_then(|p| p.to_str()?.strip_suffix(".part").map(PathBuf::from));
-            if let Some(to) = kept {
-                if std::fs::rename(path.as_ref().unwrap(), to).is_ok() {
-                    *path = None;
-                }
-            }
+            let kept = |p: &mut PathBuf| {
+                p.to_str().and_then(|s| s.strip_suffix(".part")).is_some_and(|to| std::fs::rename(&*p, to).is_ok())
+            };
+            self.path.lock().unwrap().take_if(kept);
         }
         self.st.lock().unwrap().ended = Some(end);
         self.cv.notify_all();
@@ -421,7 +418,7 @@ mod tests {
         window.put(0, &[1; 10]).unwrap();
         window.end(End::Whole);
         drop(window);
-        assert!(std::fs::read_dir(&dir).unwrap().count() == 1);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

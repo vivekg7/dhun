@@ -52,6 +52,7 @@ impl Shelf {
     }
 }
 
+#[derive(Default)]
 pub struct Folder {
     pub path: String,
     /// The paths of its subfolders, in folder order.
@@ -123,13 +124,8 @@ impl Catalog {
                 album_of.insert(s.id, a.clone());
             }
         }
-        let artists =
-            group(
-                &songs,
-                |s| {
-                    if s.artists.is_empty() { vec![s.display_artist().to_string()] } else { s.artists.clone() }
-                },
-            );
+        let names = |s: &Song| if s.artists.is_empty() { vec![s.display_artist().into()] } else { s.artists.clone() };
+        let artists = group(&songs, names);
         let genres =
             group(&songs, |s| if s.genres.is_empty() { vec!["Unknown genre".into()] } else { s.genres.clone() });
         let spoken: Vec<SongRef> = all.iter().filter(|s| s.spoken()).cloned().collect();
@@ -280,12 +276,7 @@ pub fn song_index(songs: Vec<SongRef>) -> Index<SongRef> {
         songs,
         vec![
             field("title", Some(0), |s: &SongRef| s.title.clone()),
-            field("artist", Some(1), |s: &SongRef| {
-                let mut a = s.artists.join(" ");
-                a.push(' ');
-                a.push_str(&s.artist);
-                a
-            }),
+            field("artist", Some(1), |s: &SongRef| format!("{} {}", s.artists.join(" "), s.artist)),
             field("album", Some(2), |s: &SongRef| s.album.clone()),
             field("artist", Some(3), |s: &SongRef| s.album_artist.clone()),
             field("composer", Some(3), |s: &SongRef| s.composer.clone()),
@@ -365,29 +356,23 @@ fn albums(songs: &[SongRef]) -> Vec<Arc<Album>> {
 /// share a music folder's name.
 fn folders(songs: &[SongRef], spoken: &[SongRef]) -> HashMap<String, Folder> {
     let mut map: HashMap<String, Folder> = HashMap::new();
-    fn ensure(map: &mut HashMap<String, Folder>, path: &str) {
-        if map.contains_key(path) {
-            return;
+    fn ensure<'a>(map: &'a mut HashMap<String, Folder>, path: &str) -> &'a mut Folder {
+        if !map.contains_key(path) {
+            map.insert(path.into(), Folder { path: path.into(), ..Default::default() });
+            if !path.is_empty() {
+                let parent = path.rfind('/').map_or("", |i| &path[..i]);
+                ensure(map, parent).children.push(path.into());
+            }
         }
-        map.insert(
-            path.into(),
-            Folder { path: path.into(), children: vec![], songs: vec![], song_count: 0, duration_ms: 0 },
-        );
-        if !path.is_empty() {
-            let parent = path.rfind('/').map_or("", |i| &path[..i]);
-            ensure(map, parent);
-            map.get_mut(parent).unwrap().children.push(path.into());
-        }
+        map.get_mut(path).unwrap()
     }
     for s in songs {
-        ensure(&mut map, s.folder());
-        map.get_mut(s.folder()).unwrap().songs.push(s.clone());
+        ensure(&mut map, s.folder()).songs.push(s.clone());
     }
     for s in spoken {
         let root = if s.kind == PODCAST { PODCASTS } else { AUDIOBOOKS };
         let path = if s.folder().is_empty() { root.to_string() } else { format!("{root}/{}", s.folder()) };
-        ensure(&mut map, &path);
-        map.get_mut(&path).unwrap().songs.push(s.clone());
+        ensure(&mut map, &path).songs.push(s.clone());
     }
     for f in map.values_mut() {
         let mut keyed: Vec<(bool, String, String)> = std::mem::take(&mut f.children)
@@ -431,35 +416,33 @@ fn group(songs: &[SongRef], keys: impl Fn(&Song) -> Vec<String>) -> Vec<Arc<Grou
     natural_sorted(map.into_values().map(|(name, songs)| Arc::new(Group { name, songs })).collect(), |g| &g.name)
 }
 
+// The sorts below make each key once per item, not once per comparison: a
+// sort of n items compares about n log n times (plan 036). All are stable.
+
 /// An album's order: disc and track, then the title for untagged files.
-pub fn track_order(songs: Vec<SongRef>) -> Vec<SongRef> {
-    let mut keyed: Vec<_> = songs.into_iter().map(|s| (s.disc, s.track, sort_key(&s.title), s)).collect();
-    keyed.sort_by(|a, b| (a.0, a.1, &a.2).cmp(&(b.0, b.1, &b.2)));
-    keyed.into_iter().map(|k| k.3).collect()
+pub fn track_order(mut songs: Vec<SongRef>) -> Vec<SongRef> {
+    songs.sort_by_cached_key(|s| (s.disc, s.track, sort_key(&s.title)));
+    songs
 }
 
 /// An artist's or genre's songs by album, then disc and track: how they
 /// were released, as on the phone.
 pub fn album_order(songs: &[SongRef]) -> Vec<SongRef> {
-    let mut keyed: Vec<_> = songs.iter().map(|s| (s.album.to_lowercase(), s.disc, s.track, s.clone())).collect();
-    keyed.sort_by(|a, b| (&a.0, a.1, a.2).cmp(&(&b.0, b.1, b.2)));
-    keyed.into_iter().map(|k| k.3).collect()
+    let mut out = songs.to_vec();
+    out.sort_by_cached_key(|s| (s.album.to_lowercase(), s.disc, s.track));
+    out
 }
 
 /// `rank` first, then the path in natural order: a folder's or a shelf's files.
-fn path_order(songs: Vec<SongRef>, rank: impl Fn(&Song) -> (i64, i64)) -> Vec<SongRef> {
-    let mut keyed: Vec<_> = songs.into_iter().map(|s| (rank(&s), sort_key(&s.path), s)).collect();
-    keyed.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
-    keyed.into_iter().map(|k| k.2).collect()
+fn path_order(mut songs: Vec<SongRef>, rank: impl Fn(&Song) -> (i64, i64)) -> Vec<SongRef> {
+    songs.sort_by_cached_key(|s| (rank(s), sort_key(&s.path)));
+    songs
 }
 
 /// `items` in natural, case-blind order of `text`: "Track 2" before "Track 10".
-/// The key is made once per item, not once per comparison: a sort of n
-/// items compares about n log n times (plan 036).
-pub fn natural_sorted<T>(items: Vec<T>, text: impl Fn(&T) -> &str) -> Vec<T> {
-    let mut keyed: Vec<(String, T)> = items.into_iter().map(|x| (sort_key(text(&x)), x)).collect();
-    keyed.sort_by(|a, b| a.0.cmp(&b.0));
-    keyed.into_iter().map(|k| k.1).collect()
+pub fn natural_sorted<T>(mut items: Vec<T>, text: impl Fn(&T) -> &str) -> Vec<T> {
+    items.sort_by_cached_key(|x| sort_key(text(x)));
+    items
 }
 
 /// Longer runs of digits sort by their text, which is wrong past this many; no title has them.
@@ -498,16 +481,13 @@ fn most_common<'a>(names: impl Iterator<Item = &'a str>) -> String {
     let mut counts: Vec<(&str, usize)> = Vec::new();
     let mut index: HashMap<&str, usize> = HashMap::new();
     for n in names {
-        match index.get(n) {
-            Some(&i) => counts[i].1 += 1,
-            None => {
-                index.insert(n, counts.len());
-                counts.push((n, 1));
-            }
-        }
+        let i = *index.entry(n).or_insert_with(|| {
+            counts.push((n, 0));
+            counts.len() - 1
+        });
+        counts[i].1 += 1;
     }
-    let best = counts.iter().map(|c| c.1).max().unwrap_or(0);
-    counts.iter().find(|c| c.1 == best).map_or(String::new(), |c| c.0.to_string())
+    counts.into_iter().reduce(|best, c| if c.1 > best.1 { c } else { best }).map_or(String::new(), |c| c.0.into())
 }
 
 #[cfg(test)]
@@ -539,7 +519,7 @@ mod tests {
             song(3, "A/Greatest Hits/02.mp3", "Three", "Greatest Hits", "Queen", "", 0),
         ]);
         let mut counts: Vec<usize> = c.albums.iter().map(|a| a.songs.len()).collect();
-        counts.sort();
+        counts.sort_unstable();
         assert_eq!(counts, [1, 2]);
     }
 
@@ -566,7 +546,7 @@ mod tests {
             song(2, "Hindi/02.mp3", "", "", "", "", 0),
         ]);
         let mut ids: Vec<i64> = c.all_songs("Hindi").iter().map(|s| s.id).collect();
-        ids.sort();
+        ids.sort_unstable();
         assert_eq!(ids, [1, 2]);
         assert_eq!(c.folders[""].children, ["Hindi"]);
         assert_eq!(c.folders["Hindi"].song_count, 2);

@@ -4,7 +4,7 @@
 //! kept as comma-separated text: they are only ever read and written whole.
 
 use crate::model::{Bookmark, Chapter, Download, Mark, Pin, PlayStat, Playlist, QueueRow, Resume, Song};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Params, Row, params};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -112,51 +112,73 @@ impl Db {
         )
     }
 
+    /// Every row `sql` gives, each read by `row`.
+    fn rows<T, C: FromIterator<T>>(&self, sql: &str, p: impl Params, row: impl FnMut(&Row) -> Result<T>) -> Result<C> {
+        self.sql.prepare(sql)?.query_map(p, row)?.collect()
+    }
+
+    fn exec(&self, sql: &str, p: impl Params) -> Result<()> {
+        self.sql.execute(sql, p).map(drop)
+    }
+
+    /// `first`, then `sql` once with each of `rows`, in one transaction.
+    fn each<P: Params>(&mut self, first: &str, sql: &str, rows: impl IntoIterator<Item = P>) -> Result<()> {
+        let tx = self.sql.transaction()?;
+        tx.execute_batch(first)?;
+        {
+            let mut st = tx.prepare_cached(sql)?;
+            for p in rows {
+                st.execute(p)?;
+            }
+        }
+        tx.commit()
+    }
+
     // Songs.
 
     /// Shared from the start, so the catalogue keeps them as they are read
     /// rather than moving each into an allocation of its own.
     pub fn songs(&self) -> Result<Vec<Arc<Song>>> {
-        let mut st = self.sql.prepare(
+        self.rows(
             "SELECT id, path, title, artist, artists, album, albumArtist, composer, genres, year, track, disc,
             durationMs, format, bitrate, sampleRate, bitDepth, size, hasArt, hasLyrics, addedAt, missing, art,
             kind, date, notes, chapters, groupKey, groupTitle, groupIndex FROM song WHERE missing = 0",
-        )?;
-        let rows = st.query_map([], |r| {
-            Ok(Arc::new(Song {
-                id: r.get(0)?,
-                path: r.get(1)?,
-                title: r.get(2)?,
-                artist: r.get(3)?,
-                artists: split(&r.get::<_, String>(4)?),
-                album: r.get(5)?,
-                album_artist: r.get(6)?,
-                composer: r.get(7)?,
-                genres: split(&r.get::<_, String>(8)?),
-                year: r.get(9)?,
-                track: r.get(10)?,
-                disc: r.get(11)?,
-                duration_ms: r.get(12)?,
-                format: r.get(13)?,
-                bitrate: r.get(14)?,
-                sample_rate: r.get(15)?,
-                bit_depth: r.get(16)?,
-                size: r.get(17)?,
-                has_art: r.get(18)?,
-                has_lyrics: r.get(19)?,
-                added_at: r.get(20)?,
-                missing: r.get(21)?,
-                art: r.get(22)?,
-                kind: r.get(23)?,
-                date: r.get(24)?,
-                notes: r.get(25)?,
-                chapters: chapters(&r.get::<_, String>(26)?),
-                group_key: r.get(27)?,
-                group_title: r.get(28)?,
-                group_index: r.get(29)?,
-            }))
-        })?;
-        rows.collect()
+            [],
+            |r| {
+                Ok(Arc::new(Song {
+                    id: r.get(0)?,
+                    path: r.get(1)?,
+                    title: r.get(2)?,
+                    artist: r.get(3)?,
+                    artists: split(&r.get::<_, String>(4)?),
+                    album: r.get(5)?,
+                    album_artist: r.get(6)?,
+                    composer: r.get(7)?,
+                    genres: split(&r.get::<_, String>(8)?),
+                    year: r.get(9)?,
+                    track: r.get(10)?,
+                    disc: r.get(11)?,
+                    duration_ms: r.get(12)?,
+                    format: r.get(13)?,
+                    bitrate: r.get(14)?,
+                    sample_rate: r.get(15)?,
+                    bit_depth: r.get(16)?,
+                    size: r.get(17)?,
+                    has_art: r.get(18)?,
+                    has_lyrics: r.get(19)?,
+                    added_at: r.get(20)?,
+                    missing: r.get(21)?,
+                    art: r.get(22)?,
+                    kind: r.get(23)?,
+                    date: r.get(24)?,
+                    notes: r.get(25)?,
+                    chapters: chapters(&r.get::<_, String>(26)?),
+                    group_key: r.get(27)?,
+                    group_title: r.get(28)?,
+                    group_index: r.get(29)?,
+                }))
+            },
+        )
     }
 
     /// In transactions of a couple of thousand rows: the first pull is a
@@ -215,86 +237,79 @@ impl Db {
     // Playlists.
 
     pub fn playlists(&self) -> Result<Vec<Playlist>> {
-        let mut st = self
-            .sql
-            .prepare("SELECT id, name, path, shared, songs, ref FROM playlist ORDER BY shared, name COLLATE NOCASE")?;
-        let rows = st.query_map([], |r| {
-            Ok(Playlist {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                path: r.get(2)?,
-                shared: r.get(3)?,
-                songs: ids(&r.get::<_, String>(4)?),
-                r#ref: r.get(5)?,
-            })
-        })?;
-        rows.collect()
+        self.rows(
+            "SELECT id, name, path, shared, songs, ref FROM playlist ORDER BY shared, name COLLATE NOCASE",
+            [],
+            |r| {
+                Ok(Playlist {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    path: r.get(2)?,
+                    shared: r.get(3)?,
+                    songs: ids(&r.get::<_, String>(4)?),
+                    r#ref: r.get(5)?,
+                })
+            },
+        )
     }
 
     pub fn put_playlist(&self, p: &Playlist) -> Result<()> {
-        self.sql.execute(
+        self.exec(
             "INSERT OR REPLACE INTO playlist VALUES (?,?,?,?,?,?)",
             params![p.id, p.name, p.path, p.shared, join(&p.songs), p.r#ref],
-        )?;
-        Ok(())
+        )
     }
 
     pub fn delete_playlist(&self, id: i64) -> Result<()> {
-        self.sql.execute("DELETE FROM playlist WHERE id = ?", [id])?;
-        Ok(())
+        self.exec("DELETE FROM playlist WHERE id = ?", [id])
     }
 
     // Queues.
 
     pub fn queues(&self) -> Result<Vec<QueueRow>> {
-        let mut st = self.sql.prepare(
+        self.rows(
             "SELECT id, name, songs, currentSong, positionMs, shuffle, repeat, usedAt FROM queue ORDER BY usedAt DESC",
-        )?;
-        let rows = st.query_map([], |r| {
-            Ok(QueueRow {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                songs: ids(&r.get::<_, String>(2)?),
-                current_song: r.get(3)?,
-                position_ms: r.get(4)?,
-                shuffle: r.get(5)?,
-                repeat_mode: r.get(6)?,
-                used_at: r.get(7)?,
-            })
-        })?;
-        rows.collect()
+            [],
+            |r| {
+                Ok(QueueRow {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    songs: ids(&r.get::<_, String>(2)?),
+                    current_song: r.get(3)?,
+                    position_ms: r.get(4)?,
+                    shuffle: r.get(5)?,
+                    repeat_mode: r.get(6)?,
+                    used_at: r.get(7)?,
+                })
+            },
+        )
     }
 
     pub fn put_queue(&self, q: &QueueRow) -> Result<()> {
-        self.sql.execute(
+        self.exec(
             "INSERT OR REPLACE INTO queue VALUES (?,?,?,?,?,?,?,?)",
             params![q.id, q.name, join(&q.songs), q.current_song, q.position_ms, q.shuffle, q.repeat_mode, q.used_at],
-        )?;
-        Ok(())
+        )
     }
 
     /// A queue's current song and place, without writing its songs again:
     /// joining and writing 31,000 of them took 3 ms at every song change.
     pub fn set_current(&self, id: &str, song: i64, position_ms: i64) -> Result<()> {
-        self.sql
-            .execute("UPDATE queue SET currentSong = ?, positionMs = ? WHERE id = ?", params![song, position_ms, id])?;
-        Ok(())
+        self.exec("UPDATE queue SET currentSong = ?, positionMs = ? WHERE id = ?", params![song, position_ms, id])
     }
 
     pub fn delete_queue(&self, id: &str) -> Result<()> {
-        self.sql.execute("DELETE FROM queue WHERE id = ?", [id])?;
-        Ok(())
+        self.exec("DELETE FROM queue WHERE id = ?", [id])
     }
 
     // Favorites, Listen Later and the played marks, resume points, bookmarks, settings.
 
     pub fn marks(&self, kind: &str) -> Result<Vec<Mark>> {
-        let mut st = self
-            .sql
-            .prepare("SELECT kind, song, at, deleted FROM mark WHERE kind = ? AND deleted = 0 ORDER BY at DESC")?;
-        let rows =
-            st.query_map([kind], |r| Ok(Mark { kind: r.get(0)?, song: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? }))?;
-        rows.collect()
+        self.rows(
+            "SELECT kind, song, at, deleted FROM mark WHERE kind = ? AND deleted = 0 ORDER BY at DESC",
+            [kind],
+            mark_row,
+        )
     }
 
     pub fn mark(&self, kind: &str, song: i64) -> Result<Option<Mark>> {
@@ -302,99 +317,64 @@ impl Db {
             .query_row(
                 "SELECT kind, song, at, deleted FROM mark WHERE kind = ? AND song = ?",
                 params![kind, song],
-                |r| Ok(Mark { kind: r.get(0)?, song: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? }),
+                mark_row,
             )
             .optional()
     }
 
     pub fn put_mark(&self, m: &Mark) -> Result<()> {
-        self.sql.execute("INSERT OR REPLACE INTO mark VALUES (?,?,?,?)", params![m.kind, m.song, m.at, m.deleted])?;
-        Ok(())
+        self.exec("INSERT OR REPLACE INTO mark VALUES (?,?,?,?)", params![m.kind, m.song, m.at, m.deleted])
     }
 
     pub fn resumes(&self) -> Result<Vec<Resume>> {
-        let mut st =
-            self.sql.prepare("SELECT song, positionMs, at, deleted FROM resume WHERE deleted = 0 ORDER BY at DESC")?;
-        let rows = st.query_map([], |r| {
-            Ok(Resume { song: r.get(0)?, position_ms: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? })
-        })?;
-        rows.collect()
+        self.rows("SELECT song, positionMs, at, deleted FROM resume WHERE deleted = 0 ORDER BY at DESC", [], resume_row)
     }
 
     pub fn resume(&self, song: i64) -> Result<Option<Resume>> {
         self.sql
-            .query_row("SELECT song, positionMs, at, deleted FROM resume WHERE song = ?", [song], |r| {
-                Ok(Resume { song: r.get(0)?, position_ms: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? })
-            })
+            .query_row("SELECT song, positionMs, at, deleted FROM resume WHERE song = ?", [song], resume_row)
             .optional()
     }
 
     pub fn put_resume(&self, r: &Resume) -> Result<()> {
-        self.sql.execute(
-            "INSERT OR REPLACE INTO resume VALUES (?,?,?,?)",
-            params![r.song, r.position_ms, r.at, r.deleted],
-        )?;
-        Ok(())
+        self.exec("INSERT OR REPLACE INTO resume VALUES (?,?,?,?)", params![r.song, r.position_ms, r.at, r.deleted])
     }
 
     /// Every long file's bookmarks, by place (plan 033).
     pub fn bookmarks(&self) -> Result<Vec<Bookmark>> {
-        let mut st = self.sql.prepare(
+        self.rows(
             "SELECT id, song, positionMs, note, at, deleted FROM bookmark WHERE deleted = 0 ORDER BY positionMs",
-        )?;
-        let rows = st.query_map([], |r| {
-            Ok(Bookmark {
-                id: r.get(0)?,
-                song: r.get(1)?,
-                position_ms: r.get(2)?,
-                note: r.get(3)?,
-                at: r.get(4)?,
-                deleted: r.get(5)?,
-            })
-        })?;
-        rows.collect()
+            [],
+            bookmark_row,
+        )
     }
 
     pub fn bookmark(&self, id: &str) -> Result<Option<Bookmark>> {
         self.sql
-            .query_row("SELECT id, song, positionMs, note, at, deleted FROM bookmark WHERE id = ?", [id], |r| {
-                Ok(Bookmark {
-                    id: r.get(0)?,
-                    song: r.get(1)?,
-                    position_ms: r.get(2)?,
-                    note: r.get(3)?,
-                    at: r.get(4)?,
-                    deleted: r.get(5)?,
-                })
-            })
+            .query_row("SELECT id, song, positionMs, note, at, deleted FROM bookmark WHERE id = ?", [id], bookmark_row)
             .optional()
     }
 
     pub fn put_bookmark(&self, b: &Bookmark) -> Result<()> {
-        self.sql.execute(
+        self.exec(
             "INSERT OR REPLACE INTO bookmark VALUES (?,?,?,?,?,?)",
             params![b.id, b.song, b.position_ms, b.note, b.at, b.deleted],
-        )?;
-        Ok(())
+        )
     }
 
     pub fn settings(&self) -> Result<HashMap<String, Value>> {
-        let mut st = self.sql.prepare("SELECT name, value FROM setting")?;
-        let rows = st.query_map([], |r| {
-            let text: String = r.get(1)?;
-            Ok((r.get(0)?, serde_json::from_str(&text).unwrap_or(Value::Null)))
-        })?;
-        rows.collect()
+        self.rows("SELECT name, value FROM setting", [], |r| {
+            Ok((r.get(0)?, serde_json::from_str(&r.get::<_, String>(1)?).unwrap_or(Value::Null)))
+        })
     }
 
     /// Null removes it, so it reads as its default.
     pub fn put_setting(&self, name: &str, value: &Value) -> Result<()> {
         if value.is_null() {
-            self.sql.execute("DELETE FROM setting WHERE name = ?", [name])?;
+            self.exec("DELETE FROM setting WHERE name = ?", [name])
         } else {
-            self.sql.execute("INSERT OR REPLACE INTO setting VALUES (?,?)", params![name, value.to_string()])?;
+            self.exec("INSERT OR REPLACE INTO setting VALUES (?,?)", params![name, value.to_string()])
         }
-        Ok(())
     }
 
     // Outbox.
@@ -413,98 +393,69 @@ impl Db {
 
     /// The oldest `limit` ops as (id, key, json).
     pub fn outbox(&self, limit: i64) -> Result<Vec<(String, String, String)>> {
-        let mut st = self.sql.prepare("SELECT id, key, json FROM outbox ORDER BY seq LIMIT ?")?;
-        let rows = st.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
-        rows.collect()
+        self.rows("SELECT id, key, json FROM outbox ORDER BY seq LIMIT ?", [limit], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
     }
 
     pub fn outbox_size(&self) -> Result<i64> {
         self.sql.query_row("SELECT count(*) FROM outbox", [], |r| r.get(0))
     }
 
+    /// The keys of ops not yet sent, which a pull must not overwrite.
+    pub fn outbox_keys(&self) -> Result<Vec<String>> {
+        self.rows("SELECT key FROM outbox ORDER BY seq", [], |r| r.get(0))
+    }
+
     pub fn ack_ops(&mut self, ids: &[String]) -> Result<()> {
-        let tx = self.sql.transaction()?;
-        {
-            let mut st = tx.prepare_cached("DELETE FROM outbox WHERE id = ?")?;
-            for id in ids {
-                st.execute([id])?;
-            }
-        }
-        tx.commit()
+        self.each("", "DELETE FROM outbox WHERE id = ?", ids.iter().map(|id| [id]))
     }
 
     // Play counts.
 
     pub fn play_stats(&self) -> Result<HashMap<i64, PlayStat>> {
-        let mut st = self.sql.prepare("SELECT song, count, lastPlayedAt FROM play_stat")?;
-        let rows = st.query_map([], |r| {
+        self.rows("SELECT song, count, lastPlayedAt FROM play_stat", [], |r| {
             Ok((r.get(0)?, PlayStat { song: r.get(0)?, count: r.get(1)?, last_played_at: r.get(2)? }))
-        })?;
-        rows.collect()
+        })
     }
 
     pub fn replace_play_stats(&mut self, stats: &[PlayStat]) -> Result<()> {
-        let tx = self.sql.transaction()?;
-        tx.execute("DELETE FROM play_stat", [])?;
-        {
-            let mut st = tx.prepare_cached("INSERT INTO play_stat VALUES (?,?,?)")?;
-            for s in stats {
-                st.execute(params![s.song, s.count, s.last_played_at])?;
-            }
-        }
-        tx.commit()
-    }
-
-    // Outbox: the keys of ops not yet sent, which a pull must not overwrite.
-
-    pub fn outbox_keys(&self) -> Result<Vec<String>> {
-        let mut st = self.sql.prepare("SELECT key FROM outbox ORDER BY seq")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        rows.collect()
+        let rows = stats.iter().map(|s| (s.song, s.count, s.last_played_at));
+        self.each("DELETE FROM play_stat", "INSERT INTO play_stat VALUES (?,?,?)", rows)
     }
 
     // Downloads (plan 012).
 
     pub fn pins(&self) -> Result<Vec<Pin>> {
-        let mut st = self.sql.prepare("SELECT key, kind, ref, name, at FROM pin ORDER BY at DESC")?;
-        let rows = st.query_map([], |r| {
+        self.rows("SELECT key, kind, ref, name, at FROM pin ORDER BY at DESC", [], |r| {
             Ok(Pin { key: r.get(0)?, kind: r.get(1)?, r#ref: r.get(2)?, name: r.get(3)?, at: r.get(4)? })
-        })?;
-        rows.collect()
+        })
     }
 
     pub fn put_pin(&self, p: &Pin) -> Result<()> {
-        self.sql
-            .execute("INSERT OR REPLACE INTO pin VALUES (?,?,?,?,?)", params![p.key, p.kind, p.r#ref, p.name, p.at])?;
-        Ok(())
+        self.exec("INSERT OR REPLACE INTO pin VALUES (?,?,?,?,?)", params![p.key, p.kind, p.r#ref, p.name, p.at])
     }
 
     pub fn delete_pin(&self, key: &str) -> Result<()> {
-        self.sql.execute("DELETE FROM pin WHERE key = ?", [key])?;
-        Ok(())
+        self.exec("DELETE FROM pin WHERE key = ?", [key])
     }
 
     pub fn downloads(&self) -> Result<HashMap<i64, Download>> {
-        let mut st = self.sql.prepare("SELECT song, path, size, at FROM download")?;
-        let rows = st.query_map([], |r| {
+        self.rows("SELECT song, path, size, at FROM download", [], |r| {
             Ok((r.get(0)?, Download { song: r.get(0)?, path: r.get(1)?, size: r.get(2)?, at: r.get(3)? }))
-        })?;
-        rows.collect()
+        })
     }
 
     pub fn put_download(&self, d: &Download) -> Result<()> {
-        self.sql.execute("INSERT OR REPLACE INTO download VALUES (?,?,?,?)", params![d.song, d.path, d.size, d.at])?;
-        Ok(())
+        self.exec("INSERT OR REPLACE INTO download VALUES (?,?,?,?)", params![d.song, d.path, d.size, d.at])
     }
 
     pub fn delete_download(&self, song: i64) -> Result<()> {
-        self.sql.execute("DELETE FROM download WHERE song = ?", [song])?;
-        Ok(())
+        self.exec("DELETE FROM download WHERE song = ?", [song])
     }
 
     pub fn move_pin(&self, old: &str, key: &str, r#ref: &str) -> Result<()> {
-        self.sql.execute("UPDATE pin SET key = ?, ref = ? WHERE key = ?", params![key, r#ref, old])?;
-        Ok(())
+        self.exec("UPDATE pin SET key = ?, ref = ? WHERE key = ?", params![key, r#ref, old])
     }
 
     // Lyrics.
@@ -514,26 +465,20 @@ impl Db {
     }
 
     pub fn lyrics_songs(&self) -> Result<HashSet<i64>> {
-        let mut st = self.sql.prepare("SELECT song FROM lyrics")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        rows.collect()
+        self.rows("SELECT song FROM lyrics", [], |r| r.get(0))
     }
 
     /// Every song's kept lyrics, for searching them offline.
     pub fn all_lyrics(&self) -> Result<Vec<(i64, String)>> {
-        let mut st = self.sql.prepare("SELECT song, text FROM lyrics")?;
-        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        rows.collect()
+        self.rows("SELECT song, text FROM lyrics", [], |r| Ok((r.get(0)?, r.get(1)?)))
     }
 
     pub fn put_lyrics(&self, song: i64, text: &str) -> Result<()> {
-        self.sql.execute("INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", params![song, text, crate::time::now_ms()])?;
-        Ok(())
+        self.exec("INSERT OR REPLACE INTO lyrics VALUES (?,?,?)", params![song, text, crate::time::now_ms()])
     }
 
     pub fn delete_lyrics(&self, song: i64) -> Result<()> {
-        self.sql.execute("DELETE FROM lyrics WHERE song = ?", [song])?;
-        Ok(())
+        self.exec("DELETE FROM lyrics WHERE song = ?", [song])
     }
 
     // Thumbnails.
@@ -543,39 +488,39 @@ impl Db {
     }
 
     pub fn art_keys(&self) -> Result<Vec<String>> {
-        let mut st =
-            self.sql.prepare("SELECT DISTINCT art FROM song WHERE missing = 0 AND hasArt = 1 AND art != ''")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        rows.collect()
+        self.rows("SELECT DISTINCT art FROM song WHERE missing = 0 AND hasArt = 1 AND art != ''", [], |r| r.get(0))
     }
 
     pub fn thumb_keys(&self) -> Result<Vec<String>> {
-        let mut st = self.sql.prepare("SELECT key FROM thumb")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        rows.collect()
+        self.rows("SELECT key FROM thumb", [], |r| r.get(0))
     }
 
     pub fn put_thumbs(&mut self, thumbs: &[(String, Vec<u8>)]) -> Result<()> {
-        let tx = self.sql.transaction()?;
-        {
-            let mut st = tx.prepare_cached("INSERT OR REPLACE INTO thumb VALUES (?,?)")?;
-            for (k, d) in thumbs {
-                st.execute(params![k, d])?;
-            }
-        }
-        tx.commit()
+        self.each("", "INSERT OR REPLACE INTO thumb VALUES (?,?)", thumbs.iter().map(|(k, d)| (k, d)))
     }
 
     pub fn delete_thumbs(&mut self, keys: &[String]) -> Result<()> {
-        let tx = self.sql.transaction()?;
-        {
-            let mut st = tx.prepare_cached("DELETE FROM thumb WHERE key = ?")?;
-            for k in keys {
-                st.execute([k])?;
-            }
-        }
-        tx.commit()
+        self.each("", "DELETE FROM thumb WHERE key = ?", keys.iter().map(|k| [k]))
     }
+}
+
+fn mark_row(r: &Row) -> Result<Mark> {
+    Ok(Mark { kind: r.get(0)?, song: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? })
+}
+
+fn resume_row(r: &Row) -> Result<Resume> {
+    Ok(Resume { song: r.get(0)?, position_ms: r.get(1)?, at: r.get(2)?, deleted: r.get(3)? })
+}
+
+fn bookmark_row(r: &Row) -> Result<Bookmark> {
+    Ok(Bookmark {
+        id: r.get(0)?,
+        song: r.get(1)?,
+        position_ms: r.get(2)?,
+        note: r.get(3)?,
+        at: r.get(4)?,
+        deleted: r.get(5)?,
+    })
 }
 
 fn split(s: &str) -> Vec<String> {
