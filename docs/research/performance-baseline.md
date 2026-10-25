@@ -361,6 +361,14 @@ memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
   and a cell's listener goes when the cell does. Measured on the main
   thread, through a muted Pulse output, the longest pause at a Next went
   from 46–144 ms to 16–30 ms; songs still follow each other gaplessly.
-- Scrolling the artists list raises the GPU's memory to 268 MB.
+- **Scrolling the artists list kept the GPU's memory up, fixed.** The
+  renderer keeps a copy of each texture alive, and frees what goes only
+  as it draws: the 1,000 thumbnails kept in memory, 128 px for a 36 px
+  row, held 140 MB there after a 30 s scroll, from 55 at the start, and
+  up to 214 MB during it. A row 64 device pixels or smaller now gets the
+  thumbnail halved, averaged by our own 20 lines (gdk-pixbuf's scaler
+  goes through glycin's sandbox, 3 ms a thumbnail): 0.5 ms with the
+  decode instead of 0.3, and the GPU stays at 59 MB, memory 216 MB
+  instead of 252.
 - The scroll runs need the display on: with it asleep, the compositor
   draws no frames and the page did not move.

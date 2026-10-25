@@ -121,6 +121,11 @@ const COVER_BYTES: usize = 32 << 20;
 /// them all, 3,500 of them, 220 MB.
 const THUMBS_KEPT: usize = 1000;
 
+/// Rows this many device pixels across or less get the thumbnail shrunk
+/// to this size: a quarter of the memory, and of the GPU's, which keeps a
+/// copy of every texture alive. Scrolling the artists kept 85 MB there.
+const SMALL_THUMB: u32 = 64;
+
 // A blip is over in seconds; the 15 minutes this once grew to on the phone
 // left it offline long after the network was back (plan 019).
 const RETRY_MIN: u64 = 5;
@@ -452,23 +457,27 @@ impl App {
     }
 
     /// A cover's 128 px thumbnail from the database, None until it has been
-    /// fetched. Cheap enough for a list row.
-    pub fn thumbnail(&self, s: &SongRef) -> Option<gdk::Texture> {
+    /// fetched. Cheap enough for a list row. For a cell `px` device pixels
+    /// across, 0 for any size: a small one gets it at `SMALL_THUMB`.
+    pub fn thumbnail(&self, s: &SongRef, px: u32) -> Option<gdk::Texture> {
         let s = self.catalog().art_of(s).clone();
         if !s.has_art || s.art.is_empty() {
             return None;
         }
-        if let Some(t) = self.thumbs.borrow().get(&s.art) {
+        let small = px > 0 && px <= SMALL_THUMB;
+        let key = if small { format!("{}@{SMALL_THUMB}", s.art) } else { s.art.clone() };
+        if let Some(t) = self.thumbs.borrow().get(&key) {
             return t.clone();
         }
-        let data = self.db.lock().unwrap().thumb(&s.art).ok().flatten();
-        let t = data.filter(|d| !d.is_empty()).and_then(|d| gdk::Texture::from_bytes(&glib::Bytes::from_owned(d)).ok());
+        let data = self.db.lock().unwrap().thumb(&s.art).ok().flatten().filter(|d| !d.is_empty());
+        let t = data.and_then(|d| gdk::Texture::from_bytes(&glib::Bytes::from_owned(d)).ok());
+        let t = t.map(|t| if small { shrunk(&t, SMALL_THUMB as i32) } else { t });
         let mut thumbs = self.thumbs.borrow_mut();
         // Decoded, 64 KB each: past the limit they are read again as shown.
         if thumbs.len() >= THUMBS_KEPT {
             thumbs.clear();
         }
-        thumbs.insert(s.art.clone(), t.clone());
+        thumbs.insert(key, t.clone());
         t
     }
 
@@ -647,4 +656,41 @@ impl App {
 
 fn pixels(t: &gdk::Texture) -> usize {
     (t.width() * t.height() * 4) as usize
+}
+
+/// `t` made smaller, to no less than `px` across, by averaging blocks of
+/// pixels. GTK has no scaler, and gdk-pixbuf's goes through glycin's
+/// sandbox: 3 ms a thumbnail, where this and the decode take 0.5.
+fn shrunk(t: &gdk::Texture, px: i32) -> gdk::Texture {
+    let f = (t.width().max(t.height()) / px) as usize;
+    if f < 2 {
+        return t.clone();
+    }
+    // A JPEG's own format, so the download copies rather than converts.
+    let (format, n) = match t.format() {
+        gdk::MemoryFormat::R8g8b8 => (gdk::MemoryFormat::R8g8b8, 3),
+        _ => (gdk::MemoryFormat::R8g8b8a8Premultiplied, 4),
+    };
+    let mut down = gdk::TextureDownloader::new(t);
+    down.set_format(format);
+    let (bytes, stride) = down.download_bytes();
+    let (w, h) = (t.width() as usize / f, t.height() as usize / f);
+    let mut out = vec![0u8; w * h * n];
+    let mut sum = vec![0u32; w * n];
+    for y in 0..h {
+        sum.fill(0);
+        for row in bytes[y * f * stride..].chunks(stride).take(f) {
+            for (s, px) in sum.chunks_mut(n).zip(row.chunks(f * n)) {
+                for p in px.chunks(n) {
+                    for (s, &b) in s.iter_mut().zip(p) {
+                        *s += b as u32;
+                    }
+                }
+            }
+        }
+        for (o, s) in out[y * w * n..(y + 1) * w * n].iter_mut().zip(&sum) {
+            *o = (s / (f * f) as u32) as u8;
+        }
+    }
+    gdk::MemoryTexture::new(w as i32, h as i32, format, &glib::Bytes::from_owned(out), w * n).upcast()
 }

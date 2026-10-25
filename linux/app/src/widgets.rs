@@ -40,7 +40,8 @@ pub fn set_cover(
         placeholder(&target);
         return;
     };
-    match app.thumbnail(song) {
+    let px = (size * target.scale_factor().max(1)) as u32;
+    match app.thumbnail(song, px) {
         Some(t) => put(&target, &t),
         None => {
             placeholder(&target);
@@ -52,14 +53,13 @@ pub fn set_cover(
                 if c != Change::Thumbs {
                     return true;
                 }
-                if let Some(t) = a.thumbnail(&s) {
+                if let Some(t) = a.thumbnail(&s, px) {
                     put(&w, &t);
                 }
                 false
             });
         }
     }
-    let px = (size * target.scale_factor().max(1)) as u32;
     if px <= dhun_core::covers::THUMB || !song.has_art {
         return;
     }
