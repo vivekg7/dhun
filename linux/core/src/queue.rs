@@ -8,6 +8,9 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 pub const MAX_QUEUES: usize = 20;
+/// The most songs a queue holds (plan 040), trimmed as the server trims them,
+/// so for this app the server's trim does nothing.
+pub const MAX_QUEUE_SONGS: usize = 1000;
 /// A hand-off never starts closer than this to the song's end, nor is a resume point kept there.
 pub const END_MARGIN_MS: i64 = 5000;
 /// Previous restarts a song played past this many seconds, as Media3's default.
@@ -31,6 +34,54 @@ pub fn order_of(queues: &[QueueRow], order: Option<&Value>) -> Vec<QueueRow> {
 pub fn distinct(ids: impl IntoIterator<Item = i64>) -> Vec<i64> {
     let mut seen = HashSet::new();
     ids.into_iter().filter(|i| seen.insert(*i)).collect()
+}
+
+/// `ids` cut to `MAX_QUEUE_SONGS`: `current` and the songs after it,
+/// wrapping round to the start, so the queue still starts at the song
+/// chosen. As the server's capQueue.
+pub fn cap(ids: Vec<i64>, current: i64) -> Vec<i64> {
+    if ids.len() <= MAX_QUEUE_SONGS {
+        return ids;
+    }
+    let i = ids.iter().position(|&s| s == current).unwrap_or(0);
+    ids[i..].iter().chain(&ids[..i]).take(MAX_QUEUE_SONGS).copied().collect()
+}
+
+/// The songs of `adding` that go into a queue of `queued`: one already in
+/// it moves, which never grows it; a new one only while there is room, in
+/// the order given. As the server's insertAfter.
+pub fn fitting(queued: &[i64], adding: Vec<i64>) -> Vec<i64> {
+    let inside: HashSet<i64> = queued.iter().copied().collect();
+    let mut room = MAX_QUEUE_SONGS.saturating_sub(queued.len());
+    adding
+        .into_iter()
+        .filter(|s| {
+            inside.contains(s)
+                || (room > 0 && {
+                    room -= 1;
+                    true
+                })
+        })
+        .collect()
+}
+
+/// Says that `n` songs did not fit, in the same words on every platform.
+pub fn cap_note(n: usize, what: &str) -> Option<String> {
+    let verb = if n == 1 { "was" } else { "were" };
+    (n > 0).then(|| format!("A queue holds at most {} songs: {} {verb} {what}", grouped(MAX_QUEUE_SONGS), grouped(n)))
+}
+
+/// 30204 as "30,204".
+fn grouped(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// The play order as the engine reads it, to pick the song after the one
@@ -155,6 +206,22 @@ mod tests {
         assert_eq!(ids(serde_json::from_str(r#"["c", "gone", "a", "c", 7]"#).ok()), ["c", "a", "d", "b"]);
         assert_eq!(ids(None), ["d", "b", "c", "a"]);
         assert_eq!(ids(Some(Value::from("a"))), ["d", "b", "c", "a"]);
+    }
+
+    // The server trims by the same rule (plan 040); trimming differently here
+    // would have it trim again, and the two copies of the queue differ.
+    #[test]
+    fn a_long_list_wraps_round_from_the_song_played_and_a_full_queue_only_moves() {
+        let list: Vec<i64> = (1..=1500).collect();
+        assert_eq!(cap(list.clone(), 1201), (1201..=1500).chain(1..=700).collect::<Vec<_>>());
+        assert_eq!(cap(list[..10].to_vec(), 5), &list[..10]);
+
+        let full: Vec<i64> = (1..=999).collect();
+        // One new song fits; then only songs already queued, which move.
+        assert_eq!(fitting(&full, vec![5000, 5001, 3]), [5000, 3]);
+        assert_eq!(cap_note(30_204, "left out").unwrap(), "A queue holds at most 1,000 songs: 30,204 were left out");
+        assert_eq!(cap_note(1, "not added").unwrap(), "A queue holds at most 1,000 songs: 1 was not added");
+        assert_eq!(cap_note(0, "not added"), None);
     }
 
     #[test]

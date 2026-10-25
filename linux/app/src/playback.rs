@@ -13,7 +13,7 @@ use crate::app::{App, Change};
 use crate::engine::{Engine, Event, Source};
 use dhun_core::catalog::SongRef;
 use dhun_core::model::{NowPlaying, QueueRow};
-use dhun_core::queue::{self, END_MARGIN_MS, MAX_QUEUES, RESTART_WINDOW, Upcoming, distinct, random};
+use dhun_core::queue::{self, END_MARGIN_MS, MAX_QUEUE_SONGS, MAX_QUEUES, RESTART_WINDOW, Upcoming, distinct, random};
 use dhun_core::store::{self, Listen};
 use dhun_core::synced;
 use dhun_core::tempo::{self, Tempo};
@@ -396,13 +396,17 @@ impl Playback {
     /// playing from a list never overwrites the current queue). A queue
     /// already called `name` is reused and refilled rather than duplicated,
     /// so playing songs in one album does not leave "Album (2)", "Album (3)".
+    /// A list longer than `MAX_QUEUE_SONGS` is trimmed as `queue::cap` says.
     pub fn play_list(self: &Rc<Self>, name: &str, source: &str, songs: &[SongRef], start: usize) {
         if songs.is_empty() {
             return;
         }
         self.save_active();
         let first = songs[start.min(songs.len() - 1)].id;
-        let ids = distinct(songs.iter().map(|s| s.id));
+        let all = distinct(songs.iter().map(|s| s.id));
+        let n = all.len();
+        let ids = queue::cap(all, first);
+        let note = queue::cap_note(n - ids.len(), "left out");
         let now = now_ms();
         let same = self.app.queues.borrow().iter().find(|q| q.name.to_lowercase() == name.to_lowercase()).cloned();
         let q = match same {
@@ -425,6 +429,13 @@ impl Playback {
         });
         self.app.reload_queues();
         self.load(q, true, None);
+        self.say(note);
+    }
+
+    fn say(&self, note: Option<String>) {
+        if let Some(text) = note {
+            self.notice(&text);
+        }
     }
 
     /// A new queue, last in the order. At most `MAX_QUEUES`: as in Musicolet,
@@ -472,10 +483,13 @@ impl Playback {
             unique = format!("{name} ({n})");
             n += 1;
         }
-        let adding = self.known(songs);
+        let mut adding = self.known(songs);
+        let note = queue::cap_note(adding.len().saturating_sub(MAX_QUEUE_SONGS), "left out");
+        adding.truncate(MAX_QUEUE_SONGS);
         let first = adding.first().copied().unwrap_or(0);
         self.create(&unique, adding, first, now_ms());
         self.app.reload_queues();
+        self.say(note);
     }
 
     /// The ids of `songs` the library has, each once.
@@ -511,7 +525,10 @@ impl Playback {
             return self.add_to_queue(songs);
         }
         let Some(mut q) = self.queue(id) else { return };
-        let adding = self.known(songs);
+        let wanted = self.known(songs);
+        let n = wanted.len();
+        let adding = queue::fitting(&q.songs, wanted);
+        self.say(queue::cap_note(n - adding.len(), "not added"));
         if adding.is_empty() {
             return;
         }
@@ -589,8 +606,12 @@ impl Playback {
     fn insert(self: &Rc<Self>, songs: &[SongRef], next: bool) {
         let Some(mut q) = self.active() else { return self.play_list("Queue", "", songs, 0) };
         let playing = self.current().map(|s| s.id);
-        let mut adding = self.known(songs);
-        adding.retain(|&i| Some(i) != playing);
+        let mut wanted = self.known(songs);
+        wanted.retain(|&i| Some(i) != playing);
+        let n = wanted.len();
+        // Counted on the queue as stored, which is what the server counts.
+        let adding = queue::fitting(&q.songs, wanted);
+        self.say(queue::cap_note(n - adding.len(), "not added"));
         if adding.is_empty() {
             return;
         }
