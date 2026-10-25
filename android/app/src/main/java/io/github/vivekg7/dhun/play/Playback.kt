@@ -327,6 +327,7 @@ class Playback(
      * playing from a list never overwrites the current queue). A queue
      * already called [name] is reused and refilled rather than duplicated,
      * so tapping songs in one album does not leave "Album (2)", "Album (3)".
+     * A list longer than [MAX_QUEUE_SONGS] is trimmed as [capQueue] says.
      */
     fun play(
         name: String,
@@ -337,7 +338,8 @@ class Playback(
         if (songs.isEmpty()) return@launch
         saveActive()
         val first = songs[start.coerceIn(songs.indices)]
-        val ids = songs.map { it.id }.distinct().joinIds()
+        val all = songs.map { it.id }.distinct()
+        val ids = capQueue(all, first.id).also { noteCap(all.size - it.size, "left out") }.joinIds()
         val now = System.currentTimeMillis()
         val same = queues.value.firstOrNull { it.name.equals(name, ignoreCase = true) }
         val q =
@@ -386,8 +388,23 @@ class Playback(
         var unique = name
         var n = 2
         while (unique.lowercase() in taken) unique = "$name (${n++})"
-        val adding = known(songs)
-        create(unique, adding.map { it.id }.joinIds(), adding.firstOrNull()?.id ?: 0, System.currentTimeMillis())
+        val adding = known(songs).map { it.id }
+        val ids = adding.take(MAX_QUEUE_SONGS).also { noteCap(adding.size - it.size, "left out") }
+        create(unique, ids.joinIds(), ids.firstOrNull() ?: 0, System.currentTimeMillis())
+    }
+
+    /**
+     * Says that [n] songs did not fit in a queue ([MAX_QUEUE_SONGS]), as
+     * silence would look like a bug; or, when all did, [otherwise]. Never
+     * both: "Added 30,000 songs" would be untrue.
+     */
+    private fun noteCap(
+        n: Int,
+        what: String,
+        otherwise: String? = null,
+    ) {
+        val text = if (n > 0) "A queue holds at most %,d songs: %,d %s $what".format(MAX_QUEUE_SONGS, n, if (n == 1) "was" else "were") else otherwise ?: return
+        Toast.makeText(app, text, Toast.LENGTH_SHORT).show()
     }
 
     private fun queue(id: String) = queues.value.firstOrNull { it.id == id }
@@ -546,9 +563,11 @@ class Playback(
      */
     private fun playerIds() = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId.toLong() }
 
+    /** [added] is the note for when every song fitted ([noteCap]). */
     private fun insert(
         songs: List<Song>,
         next: Boolean,
+        added: String? = null,
     ) = scope.launch {
         val q = active.value
         if (q == null) {
@@ -556,7 +575,10 @@ class Playback(
             return@launch
         }
         val playing = current.value?.id
-        val adding = known(songs).filter { it.id != playing }
+        val asked = known(songs).filter { it.id != playing }
+        val fit = fitting(playerIds(), asked.map { it.id }).toSet()
+        noteCap(asked.size - fit.size, "not added", added)
+        val adding = asked.filter { it.id in fit }
         if (adding.isEmpty()) return@launch
         for (s in adding) {
             val i = playerIds().indexOf(s.id)
@@ -574,20 +596,24 @@ class Playback(
      * current song kept where it was or on the song after it.
      */
 
-    /** Adds [songs] to the end of queue [id]; songs already in it move there. */
+    /** Adds [songs] to the end of queue [id]; songs already in it move there. A note says how it went. */
     fun addTo(
         id: String,
         songs: List<Song>,
     ) {
+        val q = queue(id) ?: return
+        val added = if (songs.size == 1) "Added to “${q.name}”" else "Added ${songs.size} songs to “${q.name}”"
         if (id == activeId.value) {
-            addToQueue(songs)
+            insert(songs, next = false, added)
             return
         }
         scope.launch {
-            val q = queue(id) ?: return@launch
-            val adding = known(songs).map { it.id }
+            val old = songIds(q.songs)
+            val asked = known(songs).map { it.id }
+            val adding = fitting(old, asked)
+            noteCap(asked.size - adding.size, "not added", added)
             if (adding.isEmpty()) return@launch
-            val ids = songIds(q.songs).filter { it !in adding } + adding
+            val ids = old.filter { it !in adding } + adding
             store.insertIntoQueue(q.copy(songs = ids.joinIds(), currentSong = q.currentSong.takeIf { it != 0L } ?: ids[0]), adding, null)
         }
     }
@@ -1142,6 +1168,41 @@ class Playback(
 
     companion object {
         const val MAX_QUEUES = 20
+
+        /**
+         * The most songs a queue holds, phone songs included
+         * (docs/plans/040_queue_size_cap.md). The server trims to the same
+         * rule, so what this app sends it is never trimmed again.
+         */
+        const val MAX_QUEUE_SONGS = 1000
+
+        /**
+         * [ids] trimmed to [MAX_QUEUE_SONGS]: [current] and the songs after
+         * it, wrapping round to the start, so the queue still starts at the
+         * song chosen. As the server's capQueue.
+         */
+        fun capQueue(
+            ids: List<Long>,
+            current: Long,
+        ): List<Long> {
+            if (ids.size <= MAX_QUEUE_SONGS) return ids
+            val i = ids.indexOf(current).coerceAtLeast(0)
+            return List(MAX_QUEUE_SONGS) { ids[(i + it) % ids.size] }
+        }
+
+        /**
+         * The songs of [adding] that fit in a queue of [queued]: one already
+         * in it moves, so never grows it; a new one goes in only while there
+         * is room, in the order given. As the server's insertAfter.
+         */
+        fun fitting(
+            queued: List<Long>,
+            adding: List<Long>,
+        ): List<Long> {
+            val inQueue = queued.toHashSet()
+            var room = MAX_QUEUE_SONGS - queued.size
+            return adding.filter { it in inQueue || room-- > 0 }
+        }
 
         /** The synced setting with the queues' order: their ids, as a JSON array. */
         const val ORDER = "queues.order"

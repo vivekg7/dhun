@@ -503,7 +503,6 @@ fun AddToQueueDialog(
                 itemsIndexed(queues, key = { _, q -> q.id }) { i, q ->
                     DialogRow("${i + 1}. ${q.name}", icon = if (q.id == activeId) Icons.Play else Icons.Queues, detail = "${songIds(q.songs).size}") {
                         app.playback.addTo(q.id, songs)
-                        note(if (songs.size == 1) "Added to “${q.name}”" else "Added ${songs.size} songs to “${q.name}”")
                         onDismiss()
                     }
                 }
