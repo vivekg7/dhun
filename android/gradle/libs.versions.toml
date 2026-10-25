@@ -1,9 +1,9 @@
-# Latest stable of each, checked 2026-10-07 (docs/plans/011_android_app.md).
+# Latest stable of each, checked 2026-10-25 (docs/plans/011_android_app.md).
 # AGP 9 compiles Kotlin itself; the Kotlin plugins below only add the Compose
 # and serialization compiler plugins, and pin the Kotlin version.
 [versions]
 agp = "9.4.1"
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 ksp = "2.3.12"
 composeBom = "2026.09.00"
 activity = "1.13.0"
@@ -11,8 +11,8 @@ lifecycle = "2.11.0"
 media3 = "1.11.1"
 room = "3.0.3"
 sqlite = "2.7.1"
-okhttp = "5.5.0"
-serialization = "1.11.0"
+okhttp = "5.5.1"
+serialization = "1.12.0"
 coroutines = "1.11.0"
 junit = "4.13.2"
 ktlint = "1.8.0"

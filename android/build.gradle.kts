@@ -8,7 +8,7 @@ plugins {
 
 // ktlint runs from its own jar, as its docs describe, rather than through a
 // third-party Gradle plugin: `make fmt` and `make lint` call these.
-val ktlint: Configuration by configurations.creating
+val ktlint = configurations.create("ktlint")
 
 dependencies {
     ktlint(libs.ktlint) {
