@@ -208,22 +208,21 @@ Linux app logs `catalogue:` and `search indexes:` under the GLib log domain
 The catalogue build is five times faster than the Mac's for the same
 songs, which supports profiling the Mac's `sortKey` and groupings, as the
 section above suggests. Memory is the number to watch: GTK's GPU renderer
-alone is 126 MB, and decoded covers add up to 32 MB. Not yet measured: the
-same at 100,000 songs, and the native build.
+alone is 126 MB, and decoded covers add up to 32 MB. 100,000 songs are
+measured below; the native build is not.
 
 ## 2026-10-24, the Linux app with every feature (plan 039, step 6)
 
-The same desktop and test account, now 31,239 songs, with steps 2 to 5 in:
-the queue panel, playback, the cache, the tray. The release binary ran
-inside the installed Flatpak's own sandbox, on a data folder of its own
-(`DHUN_DATA`), three launches each. For 100,000 songs the test account's
-songs were copied with new ids, and " (2)", " (3)" added to the titles
-and albums, so the albums grow too, then opened offline. Times are from
-the launch; "drawn" is when the main thread is next free after the
-catalogue, measured by a 20 ms GLib timer that logs any longer gap. Run
-in the bare GNOME SDK instead, GTK's GPU renderer held the first frame
-for about a second that the installed app does not spend, so measure
-through the installed app.
+The same desktop and test account, now 31,239 songs, with steps 2 to 5 in
+(the queue panel, playback, the cache, the tray). The release binary ran in
+the installed Flatpak's sandbox on a data folder of its own (`DHUN_DATA`),
+three launches each. For 100,000 songs the test account's songs were copied
+with new ids and " (2)", " (3)" added to titles and albums, so the albums
+grow too, then opened offline. Times are from the launch; "drawn" is when
+the main thread is next free after the catalogue, found by a 20 ms GLib
+timer that logs any longer gap. Measure through the installed app: in the
+bare GNOME SDK, GTK's GPU renderer held the first frame for about a second
+more.
 
 | What                                            | 31,239 songs         | 100,000 songs        |
 | ----------------------------------------------- | -------------------- | -------------------- |
@@ -263,9 +262,8 @@ both grow with the library, the views do not.
 
 **Not fixed, for the next change:**
 
-- Next and Previous hold the main thread for 80–185 ms. Blamed here on
-  playbin3 going to READY, which takes 2–8 ms; the rest was our own,
-  fixed on 2026-10-25 (below).
+- Next and Previous held the main thread for 80–185 ms; fixed in 0.17.1
+  (below).
 - About 1.4 s after launch, online, the main thread stops for 210–290 ms
   while the first sync runs; not yet traced.
 - Memory rose by 70 MB since step 1, most of it decoded 128 px
@@ -305,79 +303,78 @@ run in the app's own sandbox; idle there matched the installed app.
 | Two album or artist pages a second, 90 s          | 53 % / 102 %     | 302→460 MB   |                               |
 | Four a second, 240 pages, then 90 s idle          | 42 % / 105 %     | 305→1,228 MB | not given back                |
 
-**Idle and playback are good:** nothing runs while idle, in the window
-or the tray, and playing costs about 5 % of one core. The rest of the
-memory is GTK's renderer (92 MB signed out) and the library (about 72 MB).
+**Idle and playback are good:** nothing runs while idle, in the window or
+the tray, and playing costs about 5 % of one core. The rest of the memory
+is GTK's renderer (92 MB signed out) and the library (about 72 MB).
 
-**Found, for the next change:**
+**Found and fixed, in 0.17.1:**
 
-- **A leak on navigation, fixed.** A page pushed on the stack and then
-  dropped by `NavigationView::replace` was never freed; popped, it is.
-  Every "Go to Album" or "Go to Artist", and every sidebar section
-  opened from an album or artist page, kept 2–5 MB until the app quit.
-  `Nav` now pops the pushed pages, without animation, before it
-  replaces the stack. Opening the grid and pushing an album for a minute
-  went from 305→430 MB to 303→316 MB, and the 240 pages from 1,228 MB
-  to 511 MB; what is left is the 128 px thumbnails, 64 KB each decoded
-  and then kept without a limit, now to 1,000, and the 32 MB of covers.
+- **A leak on navigation.** A page pushed on the stack and then dropped by
+  `NavigationView::replace` was never freed (popped, it is), so every "Go
+  to Album" or "Go to Artist", and every sidebar section opened from an
+  album or artist page, kept 2–5 MB until the app quit. `Nav` now pops the
+  pushed pages, without animation, before it replaces the stack. A minute
+  of opening the grid and pushing an album went from 305→430 MB to
+  303→316 MB, and the 240 pages from 1,228 MB to 511 MB. What is left is
+  the 128 px thumbnails, 64 KB each decoded, kept without a limit and now
+  to 1,000, and the 32 MB of covers.
 - **"Go to Album" and "Go to Artist" took 370–430 ms of the main
-  thread, fixed.** Most of it went on the albums or artists page built
-  again under the pushed one: 20–40 ms to build, 60–80 ms to put in the
-  stack, and the rest to lay out a grid nobody saw. `Nav::open_at` now
-  keeps the section already at the bottom of the stack, and otherwise
-  builds it only when Back shows it. From Albums an album opens in
-  25–40 ms, from another section in 70–150 ms. 240 pages at four a
-  second now take a third of the CPU and end at 459 MB. An artist with
-  many albums took up to 900 ms more, for the strip of them over the
-  songs, all built at once: Alka Yagnik's 1,179 albums, 280 ms before
-  any layout. It is built as it scrolls now, 30 at a time, in 5 ms.
-- **The albums grid, slow to scroll and to open, fixed.** GTK keeps
-  32 rows of cells at the grid's most columns, 385 at 12 for the 12 on
-  screen, and while scrolling gives each cell another album at every
-  frame, some 1,200 binds a second. Each bind asked for its album's
-  256 px cover; with 128 kept in memory, nearly every one was read from
-  disk and decoded again: 22 MB/s and a whole core. A cell now shows the
-  cover only from memory, else the thumbnail, and the cells on screen
-  ask for theirs 150 ms after the grid stops; the most columns is what
-  fits, and one. A scroll at 1,000 px/s went from 110 % of a core to
-  42 % on average, with almost nothing read. A fast one went from 100 %
-  to 55 %, and its memory from 524 to 259 MB. Opening the grid makes
-  161 cells, not 385, and asks for 12 covers, not 384: 200 visits took
-  40 % of a core, not 80 %, reading 2 MB/s, not 16.5. Showing the grid
-  takes 238 MB, not 306.
-- **Next and Previous held the window 50–145 ms, fixed.** Not playbin3:
-  going to READY takes 2–8 ms. The rest was ours, with the 31,000 songs
-  of "All songs" as the queue. Each song change handed the player every
-  song in the queue with its speed, twice, 15–20 ms each; wrote the whole
-  queue, its ids joined, to change its current song, then read every
-  queue back, 6–8 ms; copied the queue to read whether it shuffles; and
-  made the bar's cover again three times. The hidden queue panel
-  replaced two rows, which GTK styles even when hidden; the media
-  controls' cover, arriving, told every view the song had changed; and
-  each list cell's listener upgraded two weak references at every
-  change, four a second while playing. Now the player gets the playing
-  song and the three after it, which is all it reaches before the next
-  change, only the place is written, the panel catches up when shown,
-  and a cell's listener goes when the cell does. Measured on the main
-  thread, through a muted Pulse output, the longest pause at a Next went
-  from 46–144 ms to 16–30 ms; songs still follow each other gaplessly.
-- **Scrolling the artists list kept the GPU's memory up, fixed.** The
-  renderer keeps a copy of each texture alive, and frees what goes only
-  as it draws: the 1,000 thumbnails kept in memory, 128 px for a 36 px
-  row, held 140 MB there after a 30 s scroll, from 55 at the start, and
-  up to 214 MB during it. A row 64 device pixels or smaller now gets the
-  thumbnail halved, averaged by our own 20 lines (gdk-pixbuf's scaler
-  goes through glycin's sandbox, 3 ms a thumbnail): 0.5 ms with the
-  decode instead of 0.3, and the GPU stays at 59 MB, memory 216 MB
-  instead of 252.
-- **Left: the albums grid still takes 42–55 % of a core to scroll**, and
-  it is GTK's. It gives cells other albums at every frame, about 20 a
-  frame, where a new row comes in every 15 frames
-  ([GTK #4633][gtk-4633]). Our bind is 7 % of the main thread; laying
-  out, shaping the labels' new text (Pango and HarfBuzz, 27 %), styling
-  and drawing are the rest. Nothing here would bring it down short of a
-  list of our own.
+  thread.** Most went on the albums or artists page built again under the
+  pushed one: 20–40 ms to build, 60–80 ms to put in the stack, the rest to
+  lay out a grid nobody saw. `Nav::open_at` now keeps the section already
+  at the bottom of the stack, and otherwise builds it only when Back shows
+  it. From Albums an album opens in 25–40 ms, from another section in
+  70–150 ms; 240 pages at four a second take a third of the CPU and end at
+  459 MB. An artist with many albums took up to 900 ms more, for the strip
+  of them over the songs, built at once (Alka Yagnik's 1,179 albums,
+  280 ms before any layout); it is built as it scrolls now, 30 at a time,
+  in 5 ms.
+- **The albums grid was slow to scroll and to open.** GTK keeps 32 rows of
+  cells at the grid's most columns (385 at 12 for the 12 on screen), and
+  while scrolling gives each cell another album at every frame, some 1,200
+  binds a second. Each bind asked for its 256 px cover; with 128 kept in
+  memory, nearly every one was read from disk and decoded again: 22 MB/s
+  and a whole core. A cell now shows the cover only from memory, else the
+  thumbnail, and the cells on screen ask for theirs 150 ms after the grid
+  stops; the most columns is what fits, plus one. A scroll at 1,000 px/s
+  went from 110 % of a core to 42 % on average, with almost nothing read;
+  a fast one from 100 % to 55 %, and its memory from 524 to 259 MB.
+  Opening the grid makes 161 cells, not 385, and asks for 12 covers, not
+  384: 200 visits took 40 % of a core, not 80 %, reading 2 MB/s, not 16.5.
+  Showing the grid takes 238 MB, not 306.
+- **Next and Previous held the window 50–145 ms.** Not playbin3: going to
+  READY takes 2–8 ms. The rest was ours, with the 31,000 songs of "All
+  songs" as the queue. Each song change handed the player every song in
+  the queue with its speed, twice, 15–20 ms each; wrote the whole queue,
+  its ids joined, to change its current song, then read every queue back,
+  6–8 ms; copied the queue to read whether it shuffles; and made the bar's
+  cover again three times. The hidden queue panel replaced two rows, which
+  GTK styles even when hidden; the media controls' cover, arriving, told
+  every view the song had changed; and each list cell's listener upgraded
+  two weak references at every change, four a second while playing. Now
+  the player gets the playing song and the three after it, all it reaches
+  before the next change; only the place is written; the panel catches up
+  when shown; and a cell's listener goes with the cell. On the main thread,
+  through a muted Pulse output, the longest pause at a Next went from
+  46–144 ms to 16–30 ms, and songs still follow each other gaplessly.
+- **Scrolling the artists list kept the GPU's memory up.** The renderer
+  keeps a copy of each texture and frees what goes only as it draws: the
+  1,000 thumbnails in memory, 128 px for a 36 px row, held 140 MB there
+  after a 30 s scroll (55 at the start, up to 214 during it). A row of 64
+  device pixels or fewer now gets the thumbnail halved, averaged by 20
+  lines of our own (gdk-pixbuf's scaler goes through glycin's sandbox, 3 ms
+  a thumbnail): 0.5 ms with the decode instead of 0.3, and the GPU stays
+  at 59 MB, memory 216 MB instead of 252.
+
+**Left:**
+
+- **The albums grid still takes 42–55 % of a core to scroll**, and it is
+  GTK's. It gives cells other albums at every frame, about 20 a frame,
+  where a new row comes in every 15 frames ([GTK #4633][gtk-4633]). Our
+  bind is 7 % of the main thread; layout, shaping the labels' new text
+  (Pango and HarfBuzz, 27 %), styling and drawing are the rest. Nothing
+  short of a list of our own would bring it down.
 - The scroll runs need the display on: with it asleep, the compositor
-  draws no frames and the page did not move.
+  draws no frames and the page does not move.
 
 [gtk-4633]: https://gitlab.gnome.org/GNOME/gtk/-/issues/4633
