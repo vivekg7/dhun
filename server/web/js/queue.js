@@ -5,6 +5,8 @@ import { shuffled } from "./util.js";
 
 /** At most this many queues, Musicolet's limit (plan 020). */
 export const maxQueues = 20;
+/** At most this many songs in a queue (plan 040). */
+export const maxQueueSongs = 1000;
 /** The synced setting with the queues' order: their ids, as a JSON array. */
 export const orderSetting = "queues.order";
 
@@ -28,6 +30,28 @@ export function orderOf(queues, order) {
     .filter((q) => !seen.has(q.id))
     .sort((a, b) => a.usedAt - b.usedAt);
   return [...named, ...rest];
+}
+
+/**
+ * The queue made by playing the distinct `ids` from index `start`: the song
+ * played and the ones after it, wrapping round to the list's start, exactly
+ * as the server trims (capQueue in sync.go), so the server keeps what we send.
+ * A list that fits is left as it is.
+ */
+export function capQueue(ids, start) {
+  if (ids.length <= maxQueueSongs) return ids;
+  return [...ids.slice(start), ...ids.slice(0, start)].slice(0, maxQueueSongs);
+}
+
+/**
+ * The distinct `adding` that go into a queue of `queued`, in order: songs
+ * already in it, which only move, and new ones while there is room, as the
+ * server's insertAfter takes them.
+ */
+export function fitting(queued, adding) {
+  const have = new Set(queued);
+  let room = maxQueueSongs - queued.length;
+  return adding.filter((id) => have.has(id) || room-- > 0);
 }
 
 /**

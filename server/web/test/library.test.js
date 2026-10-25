@@ -5,7 +5,16 @@ import assert from "node:assert/strict";
 import { Catalog, song, allSongs, listSongs, listCount } from "../js/catalog.js";
 import { naturalKey, sortBy, uuid } from "../js/util.js";
 import { parseLyrics, lineAt } from "../js/lyrics.js";
-import { orderOf, playOrder, nextIn, tempoOf, formatSpeed } from "../js/queue.js";
+import {
+  orderOf,
+  playOrder,
+  nextIn,
+  tempoOf,
+  formatSpeed,
+  maxQueueSongs,
+  capQueue,
+  fitting,
+} from "../js/queue.js";
 
 const s = (
   id,
@@ -187,6 +196,21 @@ test("repeat decides what follows the last song", () => {
   assert.equal(nextIn([1, 2, 3], 3, "queue"), 1);
   assert.equal(nextIn([1, 2, 3], 2, "song"), 2);
   assert.equal(nextIn([1, 2, 3], 9, "off"), null);
+});
+
+// The server trims a queue the same way (sync.go): the app must send what it
+// keeps, or a long queue reads differently on another device. The song played
+// stays in the queue, at its start, wherever it is in the list.
+test("a queue holds the song played and the 999 after it, wrapping round", () => {
+  const list = Array.from({ length: 1500 }, (_, i) => i + 1);
+  const q = capQueue(list, 1200);
+  assert.equal(q.length, maxQueueSongs);
+  assert.deepEqual([q[0], q[299], q[300], q[999]], [1201, 1500, 1, 700]);
+  assert.deepEqual(capQueue(list.slice(0, 1000), 500), list.slice(0, 1000));
+  // Adding: songs already queued move, new ones go in only while there is room.
+  const full = list.slice(0, 999);
+  assert.deepEqual(fitting(full, [5, 2000, 2001, 7]), [5, 2000, 7]);
+  assert.deepEqual(fitting(list.slice(0, 1000), [2000, 3]), [3]);
 });
 
 test("ids are made without crypto.randomUUID, which a plain-http page lacks", (t) => {

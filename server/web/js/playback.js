@@ -10,6 +10,9 @@
 
 import {
   maxQueues,
+  maxQueueSongs,
+  capQueue,
+  fitting,
   orderSetting,
   orderOf,
   playOrder,
@@ -27,6 +30,9 @@ import { synced } from "./synced.js";
 const endMarginMs = 5000;
 /** How long the volume takes to fall to nothing before a sleep timer by the clock pauses. */
 const fadeMs = 10_000;
+/** The note when songs did not fit in a queue (plan 040), grouped as "30,204" whatever the locale. */
+const capNote = (n, what) =>
+  `A queue holds at most ${maxQueueSongs.toLocaleString("en-US")} songs: ${n.toLocaleString("en-US")} ${n === 1 ? "was" : "were"} ${what}`;
 /** The next song is opened this far from the current one's end. */
 const preloadSeconds = 30;
 
@@ -68,8 +74,11 @@ export class Playback extends EventTarget {
     this.ticks = 0;
     /** A long file with a resume point, waiting for the user's answer ("ask", plan 009). */
     this.offerResume = null;
-    /** A note for the user (a queue removed to make room), shown until dismissed. */
-    this.notice = null;
+    /**
+     * Notes for the user (a queue removed to make room, songs left out), each
+     * shown once; a list, as one tap can earn two.
+     */
+    this.notices = [];
     this.sleep = { mode: null };
     this.pauseAfter = null;
     /**
@@ -318,13 +327,15 @@ export class Playback extends EventTarget {
    * Plays `songs` from `start` in a new queue named `name` (AGENTS.md:
    * playing from a list never overwrites the current queue). A queue already
    * called `name` is reused and refilled rather than duplicated, so playing
-   * songs in one album does not leave "Album (2)", "Album (3)".
+   * songs in one album does not leave "Album (2)", "Album (3)". A list
+   * longer than a queue holds is cut to the song played and those after it.
    */
   playList(name, source, songs, start = 0) {
     if (!songs.length) return;
     this.saveActive();
     const first = songs[Math.min(Math.max(start, 0), songs.length - 1)];
-    const ids = distinct(songs.map((s) => s.id));
+    const all = distinct(songs.map((s) => s.id));
+    const ids = capQueue(all, all.indexOf(first.id));
     const now = nowMs();
     let q = this.app.queues.find((x) => x.name.toLowerCase() === name.toLowerCase());
     if (q) {
@@ -336,6 +347,7 @@ export class Playback extends EventTarget {
     }
     this.app.setPref(`source.${q.id}`, source);
     this.load(q, true);
+    if (ids.length < all.length) this.say(capNote(all.length - ids.length, "left out"));
   }
 
   /** A new queue, last in the order. At most 20: as in Musicolet, the first goes to make room, and a note says so. */
@@ -368,10 +380,12 @@ export class Playback extends EventTarget {
     const taken = new Set(this.app.queues.map((q) => q.name.toLowerCase()));
     let unique = name;
     for (let n = 2; taken.has(unique.toLowerCase()); n++) unique = `${name} (${n})`;
-    const adding = distinct(
+    const all = distinct(
       songs.filter((s) => this.app.catalog.byId.has(s.id)).map((s) => s.id),
     );
-    this.create(unique, adding, adding[0] ?? 0, nowMs());
+    const ids = capQueue(all, 0);
+    this.create(unique, ids, ids[0] ?? 0, nowMs());
+    if (ids.length < all.length) this.say(capNote(all.length - ids.length, "left out"));
   }
 
   setOrder(ids) {
@@ -415,11 +429,15 @@ export class Playback extends EventTarget {
     const q = this.active;
     if (!q) return this.playList("Queue", "", songs, 0);
     const playing = this.current?.id;
-    const adding = distinct(
+    const wanted = distinct(
       songs
         .map((s) => s.id)
         .filter((id) => id !== playing && this.app.catalog.byId.has(id)),
     );
+    // Room is counted on the queue as the server has it, songs gone from the library included.
+    const adding = fitting(q.songs, wanted);
+    if (adding.length < wanted.length)
+      this.say(capNote(wanted.length - adding.length, "not added"));
     if (!adding.length) return;
     const set = new Set(adding);
     this.items = this.items.filter((id) => !set.has(id));
@@ -431,11 +449,12 @@ export class Playback extends EventTarget {
       adding,
       at === 0 ? 0 : this.items[at - 1],
     );
-    this.say(
-      next
-        ? `${count(adding.length)} to play next`
-        : `${count(adding.length)} added to the queue`,
-    );
+    if (adding.length === wanted.length)
+      this.say(
+        next
+          ? `${count(adding.length)} to play next`
+          : `${count(adding.length)} added to the queue`,
+      );
     this.updateSleep();
   }
 
@@ -444,15 +463,19 @@ export class Playback extends EventTarget {
     if (id === this.activeId) return this.addToQueue(songs);
     const q = this.app.queue(id);
     if (!q) return;
-    const adding = distinct(
+    const wanted = distinct(
       songs.map((s) => s.id).filter((s) => this.app.catalog.byId.has(s)),
     );
+    const adding = fitting(q.songs, wanted);
+    if (adding.length < wanted.length)
+      this.say(capNote(wanted.length - adding.length, "not added"));
     if (!adding.length) return;
     const set = new Set(adding);
     const row = { ...q, songs: [...q.songs.filter((s) => !set.has(s)), ...adding] };
     if (!row.currentSong) row.currentSong = row.songs[0];
     this.app.insertIntoQueue(row, adding, null);
-    this.say(`${count(adding.length)} added to “${q.name}”`);
+    if (adding.length === wanted.length)
+      this.say(`${count(adding.length)} added to “${q.name}”`);
   }
 
   removeFrom(id, songs) {
@@ -582,7 +605,7 @@ export class Playback extends EventTarget {
   }
 
   say(text) {
-    this.notice = text;
+    this.notices.push(text);
     this.emit();
   }
 

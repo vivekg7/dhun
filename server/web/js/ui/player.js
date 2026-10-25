@@ -799,11 +799,8 @@ export function banners() {
     el,
     update() {
       const p = ctx.playback;
-      // A note from the player (a queue removed to make room, the server gone) shows once, as a toast.
-      if (p.notice) {
-        toast(p.notice);
-        p.notice = null;
-      }
+      // Notes from the player (a queue removed to make room, the server gone) show once, as toasts.
+      for (const text of p.notices.splice(0)) toast(text);
       const np = p.handoff;
       const s = np && ctx.app.catalog.byId.get(np.song);
       const o = p.offerResume;
