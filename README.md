@@ -7,7 +7,7 @@ downloads and synced lyrics. Inspired by Musicolet, the offline Android
 player, rebuilt for a music collection that lives on a NAS.
 
 **Status:** every platform is in the
-[0.17.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.17.0): the
+[0.18.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.18.0): the
 APK, the Mac app, the Linux Flatpak and the server image.
 
 - **Server** (`server/`), on the owner's NAS as `server-v0.16.0`: the library

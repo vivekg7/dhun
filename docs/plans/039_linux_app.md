@@ -1,6 +1,6 @@
 # 039 — The Linux app, at the Android app's level
 
-**Status:** `RELEASED` — 0.17.0, the first Linux release, in the GitHub release with every platform (2026-10-24); 0.17.1, a Linux-only patch (2026-10-25); 0.18.0 built and handed to the Mac for the release with every platform (2026-10-25)
+**Status:** `RELEASED` — 0.17.0, the first Linux release, in the GitHub release with every platform (2026-10-24); 0.17.1, a Linux-only patch (2026-10-25); 0.18.0 in the GitHub release with every platform (2026-10-25)
 **Started:** 2026-10-23
 
 ## Problem

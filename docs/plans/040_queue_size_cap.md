@@ -1,6 +1,6 @@
 # 040 — At most 1,000 songs in a queue
 
-**Status:** `MERGED` — server, Android, Mac, web and Linux
+**Status:** `RELEASED` — in the 0.18.0 GitHub release (2026-10-25), on every platform; not yet installed or deployed
 **Started:** 2026-10-25
 
 ## Problem
