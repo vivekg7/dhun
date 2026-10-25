@@ -63,44 +63,42 @@ struct SignInView: View {
 /// at the right place (plan 034).
 struct SettingsView: View {
     enum Tab: Hashable { case appearance, playback, downloads, account, guide }
-    @State private var tab = Tab.appearance
-    @State private var guideAt: String?
+    @State private var nav = SettingsNav()
 
     var body: some View {
-        TabView(selection: $tab) {
+        @Bindable var nav = nav
+        TabView(selection: $nav.tab) {
             AppearanceSettings().tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(
                 Tab.appearance)
             PlaybackSettings().tabItem { Label("Playback", systemImage: "play.circle") }.tag(Tab.playback)
             StorageSettings().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }.tag(
                 Tab.downloads)
             AccountSettings().tabItem { Label("Account", systemImage: "person.crop.circle") }.tag(Tab.account)
-            GuideView(at: $guideAt).tabItem { Label("How it works", systemImage: "questionmark.circle") }
+            GuideView(at: $nav.guideAt).tabItem { Label("How it works", systemImage: "questionmark.circle") }
                 .tag(Tab.guide)
         }
-        .environment(
-            \.openGuide,
-            { section in
-                guideAt = section
-                tab = .guide
-            }
-        )
+        .environment(nav)
         .frame(width: 520, height: 440)
     }
 }
 
-extension EnvironmentValues {
-    /// Opens How it works at the `###` heading of that name.
-    @Entry var openGuide: (String) -> Void = { _ in }
+/// The open tab, and the `###` heading How it works shows. An object, not a
+/// closure, in the environment: a closure is new on every redraw, and would
+/// redraw every ⓘ with it.
+@MainActor @Observable final class SettingsNav {
+    var tab = SettingsView.Tab.appearance
+    var guideAt: String?
 }
 
 /// The ⓘ beside a setting whose guide section says more than its title.
 struct InfoButton: View {
     let section: String
-    @Environment(\.openGuide) private var openGuide
+    @Environment(SettingsNav.self) private var nav
 
     var body: some View {
         Button {
-            openGuide(section)
+            nav.guideAt = section
+            nav.tab = .guide
         } label: {
             Image(systemName: "info.circle")
         }
