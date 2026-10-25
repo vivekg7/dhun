@@ -13,6 +13,8 @@ import Observation
 @MainActor @Observable
 public final class Playback {
     public static let maxQueues = 20
+    /// The most songs a queue holds (plan 040), trimmed as the server trims them.
+    nonisolated public static let maxQueueSongs = 1000
     /// The synced setting with the queues' order: their ids, as a JSON array.
     public static let orderSetting = "queues.order"
     /// A hand-off never starts closer than this to the song's end, nor is a resume point kept there.
@@ -37,7 +39,8 @@ public final class Playback {
     public var sleep: SleepTimer { _sleep }
     /// Speed and pitch (plan 016): this Mac's everyday one.
     public private(set) var everyday: Tempo
-    /// A note for the user (a queue removed to make room), shown briefly.
+    /// A note for the user (a queue removed to make room, songs left out of
+    /// a full one), shown briefly.
     public var notice: String?
 
     /// The active queue's songs as loaded, in queue order; `order` is the
@@ -277,7 +280,9 @@ public final class Playback {
         guard !songs.isEmpty else { return }
         saveActive()
         let first = songs[min(max(start, 0), songs.count - 1)]
-        let ids = distinct(songs.map(\.id))
+        let all = distinct(songs.map(\.id))
+        let ids = Playback.capped(all, from: first.id)
+        let note = capNote(all.count - ids.count, "left out")
         let now = nowMs()
         let q: QueueRow
         if var same = app.queues.first(where: { $0.name.lowercased() == name.lowercased() }) {
@@ -287,22 +292,24 @@ public final class Playback {
             same.usedAt = now
             app.store.replaceQueue(same)
             app.store.setCurrent(same)
+            say(note)
             q = same
         } else {
-            q = create(name, ids, first.id, now)
+            q = create(name, ids, first.id, now, note: note)
         }
         app.prefs.setQueueSource(q.id, source)
         load(q, play: true)
     }
 
     /// A new queue, last in the order. At most `maxQueues`: as in Musicolet,
-    /// the first queue goes to make room, and a note says so.
+    /// the first queue goes to make room, and a note says so, next to the
+    /// caller's `note` rather than over it.
     @discardableResult
-    private func create(_ name: String, _ ids: [Int], _ current: Int, _ now: Int) -> QueueRow {
+    private func create(_ name: String, _ ids: [Int], _ current: Int, _ now: Int, note: String?) -> QueueRow {
         let order = ordered
         let over = max(0, order.count - (Playback.maxQueues - 1))
         for q in order.prefix(over) { app.store.deleteQueue(q.id) }
-        if over > 0 { notice = "At most \(Playback.maxQueues) queues: “\(order[0].name)” was removed" }
+        say(over > 0 ? "At most \(Playback.maxQueues) queues: “\(order[0].name)” was removed" : nil, note)
         let q = QueueRow(
             id: UUID().uuidString.lowercased(), name: name, songs: ids, currentSong: current, positionMs: 0,
             shuffle: false, repeatMode: "off", usedAt: now)
@@ -321,8 +328,46 @@ public final class Playback {
             unique = "\(name) (\(n))"
             n += 1
         }
-        let adding = distinct(songs.filter { app.catalog.byId[$0.id] != nil }.map(\.id))
-        create(unique, adding, adding.first ?? 0, nowMs())
+        let all = distinct(songs.filter { app.catalog.byId[$0.id] != nil }.map(\.id))
+        let adding = Playback.capped(all, from: all.first ?? 0)
+        create(
+            unique, adding, adding.first ?? 0, nowMs(), note: capNote(all.count - adding.count, "left out"))
+    }
+
+    /// `ids` cut to `maxQueueSongs` (plan 040): the song played and those
+    /// after it, wrapping round to the start, so the queue still starts at
+    /// the song chosen. The server trims the same way, so for this app its
+    /// trim does nothing.
+    nonisolated static func capped(_ ids: [Int], from current: Int) -> [Int] {
+        guard ids.count > maxQueueSongs else { return ids }
+        let i = ids.firstIndex(of: current) ?? 0
+        return Array((ids[i...] + ids[..<i]).prefix(maxQueueSongs))
+    }
+
+    /// The songs of `adding` that go into `queue`: those already in it move,
+    /// which never grows it; new ones only while there is room, in order.
+    nonisolated static func fitting(_ adding: [Int], into queue: [Int]) -> [Int] {
+        let queued = Set(queue)
+        var room = maxQueueSongs - queue.count
+        return adding.filter { id in
+            if queued.contains(id) { return true }
+            room -= 1
+            return room >= 0
+        }
+    }
+
+    /// The same words on every platform (plan 040).
+    private func capNote(_ dropped: Int, _ what: String) -> String? {
+        guard dropped > 0 else { return nil }
+        let max = Playback.maxQueueSongs.formatted()
+        return
+            "A queue holds at most \(max) songs: \(dropped.formatted()) \(dropped == 1 ? "was" : "were") \(what)"
+    }
+
+    /// Shows this action's notes together, so one never hides another.
+    private func say(_ notes: String?...) {
+        let shown = notes.compactMap { $0 }
+        if !shown.isEmpty { notice = shown.joined(separator: " · ") }
     }
 
     private func setOrder(_ ids: [String]) {
@@ -357,7 +402,10 @@ public final class Playback {
     private func insert(_ songs: [Song], next: Bool) {
         guard let q = active else { return play(name: "Queue", source: "", songs: songs, start: 0) }
         let playing = current?.id
-        let adding = distinct(songs.map(\.id).filter { $0 != playing && app.catalog.byId[$0] != nil })
+        let wanted = distinct(songs.map(\.id).filter { $0 != playing && app.catalog.byId[$0] != nil })
+        // Counted on the queue as stored, which is what the server counts.
+        let adding = Playback.fitting(wanted, into: q.songs)
+        say(capNote(wanted.count - adding.count, "not added"))
         guard !adding.isEmpty else { return }
         items.removeAll { adding.contains($0) }
         let at = next ? (currentIndex.map { $0 + 1 } ?? 0) : items.count
@@ -374,7 +422,9 @@ public final class Playback {
     public func addTo(_ id: String, _ songs: [Song]) {
         if id == activeId { return addToQueue(songs) }
         guard var q = app.queues.first(where: { $0.id == id }) else { return }
-        let adding = distinct(songs.map(\.id).filter { app.catalog.byId[$0] != nil })
+        let wanted = distinct(songs.map(\.id).filter { app.catalog.byId[$0] != nil })
+        let adding = Playback.fitting(wanted, into: q.songs)
+        say(capNote(wanted.count - adding.count, "not added"))
         guard !adding.isEmpty else { return }
         q.songs = q.songs.filter { !adding.contains($0) } + adding
         if q.currentSong == 0 { q.currentSong = q.songs[0] }

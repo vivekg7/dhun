@@ -126,6 +126,20 @@ private func song(
     #expect(Playback.orderOf(queues, .string("a")).map(\.id) == ["d", "b", "c", "a"])
 }
 
+// Trimmed as the server trims (plan 040), or every queue played from a long
+// list would come back from the server different from what this Mac sent.
+@Test func aQueueHoldsAThousandSongsFromTheOnePlayed() {
+    let library = Array(1...1500)
+    let q = Playback.capped(library, from: 1201)
+    #expect(q.count == 1000 && q.first == 1201, "the song played comes first")
+    #expect(q[299] == 1500 && q[300] == 1 && q.last == 700, "then wraps round to the start")
+    #expect(Playback.capped([3, 1, 2], from: 2) == [3, 1, 2], "a short list is left as it is")
+
+    let full = Array(1...998)
+    // Songs already queued move without taking room; new ones fill what is left.
+    #expect(Playback.fitting([5, 2000, 6, 2001, 2002], into: full) == [5, 2000, 6, 2001])
+}
+
 /// Before the catalogue loads, nothing is covered: an empty answer would delete every file.
 @Test func anEmptyCatalogueCoversNothingRatherThanNoSongs() {
     let pin = Pin(key: "song:1", kind: Downloads.song, ref: "1", name: "", at: 0)
