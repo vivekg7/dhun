@@ -33,11 +33,8 @@ import kotlinx.serialization.json.Json
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
     autoMigrations = [
-        AutoMigration(
-            from = 1,
-            to = 2,
-        ), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6),
-        AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8),
+        AutoMigration(1, 2), AutoMigration(2, 3), AutoMigration(3, 4), AutoMigration(4, 5), AutoMigration(5, 6), AutoMigration(6, 7),
+        AutoMigration(7, 8),
     ],
 )
 abstract class Db : RoomDatabase() {
@@ -101,6 +98,9 @@ data class Song(
     val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)
     val folder get() = path.substringBeforeLast('/', "")
     val displayArtist get() = artist.ifEmpty { albumArtist }.ifEmpty { "Unknown artist" }
+
+    /** `<id>.<ext>`: a download's file, and a cached song's, so the cache can hand one over by a rename. */
+    val fileName get() = "$id.${path.substringAfterLast('.', "").lowercase().ifEmpty { format }}"
 
     /** A song already on the phone, never sent to the server ([LocalSongs]). */
     val onPhone get() = id < 0

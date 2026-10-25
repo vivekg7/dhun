@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun.data
 
+import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -14,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonNull
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 /**
  * Keeps the working copy and the server in step (docs/plans/006_api_and_sync.md):
@@ -54,7 +57,7 @@ class Sync(
                 override fun onLost(network: Network) {
                     app.scope.launch {
                         delay(3_000)
-                        if (!hasNetwork()) app.api.reachable.value = false
+                        if (!app.hasNetwork()) app.api.reachable.value = false
                     }
                 }
             },
@@ -122,9 +125,6 @@ class Sync(
                 e.code !in 500..599
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: java.io.IOException) {
-                _error.value = e.message ?: e.toString()
-                false
             } catch (e: Exception) {
                 _error.value = e.message ?: e.toString()
                 false
@@ -210,7 +210,7 @@ class Sync(
     }
 
     /** A playlist made on this phone and the server id it became, for a page still showing the old one. */
-    val replaced = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+    val replaced = ConcurrentHashMap<Long, Long>()
 
     /** One round trip; returns how many ops the server answered. */
     private suspend fun pushAndPull(): Int {
@@ -332,11 +332,6 @@ class Sync(
         }
     }
 
-    private fun hasNetwork(): Boolean {
-        val cm = app.getSystemService(ConnectivityManager::class.java)
-        return cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-    }
-
     private suspend fun pullPlays() {
         val plays = app.api.plays().plays
         dao.replacePlayStats(plays.map { PlayStat(it.song, it.count, parseTime(it.lastPlayedAt)) })
@@ -367,9 +362,6 @@ fun mergePhoneSongs(
     return after[0].orEmpty() + server.flatMap { listOf(it) + after[it].orEmpty() }
 }
 
-// A blip is over in seconds; the 15 minutes this once grew to left the app
-// offline long after the network was back (docs/plans/019_networking_and_caching.md).
-
 /**
  * Raised when songs gain a field: 1 is the art key (docs/plans/019_networking_and_caching.md),
  * 2 podcasts and audiobooks, which the server sends only to a client that
@@ -377,8 +369,15 @@ fun mergePhoneSongs(
  */
 const val LIBRARY_FORMAT = 2L
 
+// A blip is over in seconds; the 15 minutes this once grew to left the app
+// offline long after the network was back (docs/plans/019_networking_and_caching.md).
 private const val RETRY_MIN = 5_000L
 private const val RETRY_MAX = 2 * 60_000L
+
+/** The active network's capabilities; null with none. */
+fun Context.network(): NetworkCapabilities? = getSystemService(ConnectivityManager::class.java).let { it.getNetworkCapabilities(it.activeNetwork) }
+
+fun Context.hasNetwork() = network()?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
 /**
  * Whether [new], from the server signed in to, is the song [kept] was: the
@@ -388,4 +387,4 @@ private const val RETRY_MAX = 2 * 60_000L
 fun sameSong(
     kept: Song,
     new: Song,
-) = kept.path == new.path || kotlin.math.abs(kept.durationMs - new.durationMs) <= 2_000
+) = kept.path == new.path || abs(kept.durationMs - new.durationMs) <= 2_000

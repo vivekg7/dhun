@@ -179,16 +179,11 @@ fun NowPlayingScreen(nav: Nav) {
             }
             AnimatedContent(s, contentAlignment = Alignment.Center, contentKey = { it.id }, transitionSpec = cards, label = "cover") { song ->
                 Crossfade(lyrics, animationSpec = tween(Motion.MEDIUM), label = "lyrics") { showLyrics ->
-                    if (showLyrics) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LyricsView(song) { lyrics = false } }
-                    } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Art(
-                                song,
-                                side,
-                                RoundedCornerShape(16.dp),
-                                Modifier.clickable(interactionSource = null, indication = null) { lyrics = true },
-                            )
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (showLyrics) {
+                            LyricsView(song) { lyrics = false }
+                        } else {
+                            Art(song, side, RoundedCornerShape(16.dp), Modifier.clickable(interactionSource = null, indication = null) { lyrics = true })
                         }
                     }
                 }
@@ -217,10 +212,8 @@ fun NowPlayingScreen(nav: Nav) {
             lastOffer?.let { (_, pos) ->
                 Row(
                     Modifier
-                        .padding(
-                            horizontal = 16.dp,
-                            vertical = 8.dp,
-                        ).fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth()
                         .background(c.primaryContainer, RoundedCornerShape(12.dp))
                         .padding(start = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -494,7 +487,7 @@ private fun facts(
     val catalog by App.app.catalog.collectAsState()
     val link = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.onSurface))
     val shelf = remember(song.id, catalog) { catalog.shelfOf(song) }
-    val album = remember(song.id, catalog) { if (song.spoken) null else catalog.albums.firstOrNull { a -> a.songs.any { it.id == song.id } } }
+    val album = remember(song.id, catalog) { if (song.spoken) null else catalog.albumOf(song) }
     return buildAnnotatedString {
         fun part(
             text: String,
@@ -530,12 +523,7 @@ private fun facts(
                     }
                 }
                 part(song.album, album?.let { { nav.open(Tab.Albums, Page.AlbumPage(it.key)) } })
-                part(
-                    song.year
-                        .takeIf { it > 0 }
-                        ?.toString()
-                        .orEmpty(),
-                )
+                part(if (song.year > 0) song.year.toString() else "")
             }
         }
     }

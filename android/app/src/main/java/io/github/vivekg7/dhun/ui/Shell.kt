@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -344,9 +345,8 @@ fun Shell() {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        MaterialTheme.colorScheme.background,
-                    ).windowInsetsPadding(WindowInsets.statusBars)
+                    .background(MaterialTheme.colorScheme.background)
+                    .windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
                 SettingsScreen(settings, { nav.settings = it }, nav::settingsBack, nav::openGuide, nav.guideAt)
@@ -449,10 +449,7 @@ private fun PageContent(
     page: Page,
     nav: Nav,
 ) {
-    val back = {
-        nav.pop(tab)
-        Unit
-    }
+    val back = { nav.pop(tab) }
     when (page) {
         is Page.AlbumPage -> AlbumScreen(page.key, nav, back)
         is Page.ArtistPage -> GroupScreen(page.name, artists = true, nav, back)
@@ -533,25 +530,9 @@ private fun MiniPlayer(onOpen: () -> Unit) {
     val song by app.playback.current.collectAsState()
     val playing by app.playback.playing.collectAsState()
     val waiting by app.playback.waiting.collectAsState()
-    // Waiting counts as playing: the button pauses, rather than offering a play that is already wanted.
-    val going = playing || waiting
     val s = song ?: return
     val c = MaterialTheme.colorScheme
-    var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(s.id, playing) {
-        while (true) {
-            val d = app.playback.player.duration
-            progress =
-                if (d > 0) {
-                    app.playback.player.currentPosition
-                        .toFloat() / d
-                } else {
-                    0f
-                }
-            if (!playing) break
-            delay(500)
-        }
-    }
+    val progress by rememberProgress(s.id, playing)
     Column(Modifier.background(c.surfaceContainerHigh).clickable(onClick = onOpen)) {
         Box(Modifier.fillMaxWidth().height(2.dp).background(c.outline)) {
             Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(2.dp).background(c.primary))
@@ -568,11 +549,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Tip(if (going) "Pause" else "Play") {
-                IconButton({ if (going) app.playback.player.pause() else app.playback.play() }) {
-                    Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play", Modifier.size(28.dp))
-                }
-            }
+            PlayButton(iconSize = 28.dp)
             SkipButton(next = true, s, iconSize = 26.dp)
         }
     }
@@ -615,15 +592,7 @@ private fun FloatingPill(onOpen: () -> Unit) {
     val going = playing || waiting
     val player = app.playback.player
     val c = MaterialTheme.colorScheme
-    var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(s.id, playing) {
-        while (true) {
-            val d = player.duration
-            progress = if (d > 0) player.currentPosition.toFloat() / d else 0f
-            if (!playing) break
-            delay(500)
-        }
-    }
+    val progress by rememberProgress(s.id, playing)
     var at by remember { mutableStateOf(app.prefs.floatingAt) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
@@ -684,6 +653,25 @@ private fun FloatingPill(onOpen: () -> Unit) {
             SkipButton(next = true, s)
         }
     }
+}
+
+/** How far into the song the player is, from 0 to 1: read twice a second while it plays, once when it stops. */
+@Composable
+private fun rememberProgress(
+    song: Long,
+    playing: Boolean,
+): State<Float> {
+    val player = App.app.playback.player
+    val progress = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(song, playing) {
+        while (true) {
+            val d = player.duration
+            progress.floatValue = if (d > 0) player.currentPosition.toFloat() / d else 0f
+            if (!playing) break
+            delay(500)
+        }
+    }
+    return progress
 }
 
 /**

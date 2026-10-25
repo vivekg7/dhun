@@ -1,7 +1,5 @@
 package io.github.vivekg7.dhun.data
 
-import android.util.Log
-import io.github.vivekg7.dhun.App
 import java.text.Normalizer
 import kotlin.math.min
 
@@ -118,54 +116,15 @@ object Fold {
     }
 
     // Devanagari, U+0915 to U+0939.
-    private val CONSONANTS =
-        listOf(
-            "k",
-            "kh",
-            "g",
-            "gh",
-            "n",
-            "ch",
-            "chh",
-            "j",
-            "jh",
-            "n",
-            "t",
-            "th",
-            "d",
-            "dh",
-            "n",
-            "t",
-            "th",
-            "d",
-            "dh",
-            "n",
-            "n",
-            "p",
-            "ph",
-            "b",
-            "bh",
-            "m",
-            "y",
-            "r",
-            "r",
-            "l",
-            "l",
-            "l",
-            "v",
-            "sh",
-            "sh",
-            "s",
-            "h",
-        )
+    private val CONSONANTS = "k kh g gh n ch chh j jh n t th d dh n t th d dh n n p ph b bh m y r r l l l v sh sh s h".split(' ')
 
     // The consonants with a nukta, U+0958 to U+095F, and what a separate nukta does to a consonant.
-    private val NUKTA_FORMS = listOf("q", "kh", "g", "z", "d", "dh", "f", "y")
+    private val NUKTA_FORMS = "q kh g z d dh f y".split(' ')
     private val NUKTA = mapOf("k" to "q", "j" to "z", "ph" to "f")
 
     // Vowel signs, U+093E to U+094C, and vowels, U+0904 to U+0914.
-    private val SIGNS = listOf("aa", "i", "ii", "u", "uu", "ri", "ri", "e", "e", "e", "ai", "o", "o", "o", "au")
-    private val VOWELS = listOf("a", "a", "aa", "i", "ii", "u", "uu", "ri", "l", "e", "e", "e", "ai", "o", "o", "o", "au")
+    private val SIGNS = "aa i ii u uu ri ri e e e ai o o o au".split(' ')
+    private val VOWELS = "a a aa i ii u uu ri l e e e ai o o o au".split(' ')
 
     /** A consonant and its vowel: "a" until a sign, a virama ("") or the dropping of a final a says otherwise. */
     private class Letter(

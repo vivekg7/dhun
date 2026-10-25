@@ -77,20 +77,21 @@ fun duration(ms: Long): String {
 fun summary(songs: List<Song>): String = summary(songs.size, songs.sumOf { it.durationMs })
 
 fun summary(
-    count: Int,
+    songs: Int,
     ms: Long,
-): String = "$count ${if (count == 1) "song" else "songs"} · ${length(ms)}"
+): String = "${count(songs, "song")} · ${length(ms)}"
 
 /** "3 folders · 120 songs · 7 h 45 min": what a folder holds, its subfolders' songs too. */
-fun summary(f: Folder): String {
-    val folders =
-        when (val n = f.children.size) {
-            0 -> ""
-            1 -> "1 folder · "
-            else -> "$n folders · "
-        }
-    return folders + summary(f.songCount, f.durationMs)
-}
+fun summary(f: Folder): String = dotted(if (f.children.isEmpty()) "" else count(f.children.size, "folder"), summary(f.songCount, f.durationMs))
+
+/** "29 books", "1 show" */
+fun count(
+    n: Int,
+    what: String,
+) = "$n $what" + if (n == 1) "" else "s"
+
+/** "Arijit Singh · 2013": the parts there are, between dots. */
+fun dotted(vararg parts: String?) = parts.filterNot { it.isNullOrEmpty() }.joinToString(" · ")
 
 /** "48 min", "12 h 5 min" */
 fun length(ms: Long): String {
@@ -177,6 +178,17 @@ fun Tip(
     rememberTooltipState(),
     content = content,
 )
+
+/** Play or Pause; waiting for the network counts as playing, so it pauses rather than offering a play already wanted. */
+@Composable
+fun PlayButton(iconSize: Dp = 24.dp) {
+    val pb = App.app.playback
+    val playing by pb.playing.collectAsState()
+    val waiting by pb.waiting.collectAsState()
+    val going = playing || waiting
+    val label = if (going) "Pause" else "Play"
+    Tip(label) { IconButton({ if (going) pb.player.pause() else pb.play() }) { Icon(if (going) Icons.Pause else Icons.Play, label, Modifier.size(iconSize)) } }
+}
 
 /**
  * Previous or Next on the screen. A tap goes by file; in a file with
@@ -305,6 +317,34 @@ fun NameRow(
         }
         if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(end = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** A row with [leading] art, a title and a line under it: an album, a folder or a shelf found, a book or a show. */
+@Composable
+fun TwoLines(
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+    height: Dp = 64.dp,
+    trailing: @Composable () -> Unit = {},
+    leading: @Composable () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .height(height)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading()
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        trailing()
     }
 }
 
@@ -471,9 +511,7 @@ fun SongMenuButton(
                 if (shelf != null) {
                     MenuItem(if (shelf.isBook) "Go to book" else "Go to show", close) { nav.open(Tab.Playlists, Page.ShelfPage(shelf.key)) }
                 } else if (!song.spoken) {
-                    val album =
-                        catalog.albums
-                            .firstOrNull { a -> a.songs.any { it.id == song.id } }
+                    val album = catalog.albumOf(song)
                     if (album != null) MenuItem("Go to album", close) { nav.open(Tab.Albums, Page.AlbumPage(album.key)) }
                     MenuItem("Go to artist", close) { nav.open(Tab.Artists, Page.ArtistPage(song.artistList.firstOrNull() ?: song.displayArtist)) }
                 }

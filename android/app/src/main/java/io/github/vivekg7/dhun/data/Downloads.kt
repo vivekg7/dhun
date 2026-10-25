@@ -2,7 +2,6 @@ package io.github.vivekg7.dhun.data
 
 import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Intent
-import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Environment
 import android.os.storage.StorageManager
@@ -162,7 +161,7 @@ class Downloads(
             // edited playlist): start over, so the newest pin goes first.
             if (i > 0 && wake.tryReceive().isSuccess) return poke()
             when {
-                !hasNetwork() -> return update(State.NoNetwork, songs.size, used, have)
+                !app.hasNetwork() -> return update(State.NoNetwork, songs.size, used, have)
                 app.prefs.wifiOnly && onMobileData() -> return update(State.WaitingForWifi, songs.size, used, have)
             }
             val limit = app.prefs.downloadLimitGb * GB
@@ -193,7 +192,7 @@ class Downloads(
 
     /** A downloaded song's lyrics are kept with it (docs/plans/015_lyrics.md); a failure here never stops the files. */
     private suspend fun keepLyrics(songs: List<Song>) {
-        if (!hasNetwork()) return
+        if (!app.hasNetwork()) return
         try {
             app.lyrics.keep(songs)
         } catch (e: CancellationException) {
@@ -216,13 +215,8 @@ class Downloads(
         dir: File,
     ): File? =
         withContext(Dispatchers.IO) {
-            val ext =
-                s.path
-                    .substringAfterLast('.', "")
-                    .lowercase()
-                    .ifEmpty { s.format }
-            val file = File(dir, "${s.id}.$ext")
-            val part = File(dir, "${s.id}.$ext.part")
+            val file = File(dir, s.fileName)
+            val part = File(dir, s.fileName + ".part")
             var got = part.length()
             val req =
                 Request
@@ -341,15 +335,8 @@ class Downloads(
 
     private fun mounted(f: File) = runCatching { Environment.getExternalStorageState(f) == Environment.MEDIA_MOUNTED }.getOrDefault(false)
 
-    private fun caps(): NetworkCapabilities? {
-        val cm = app.getSystemService(ConnectivityManager::class.java)
-        return cm.getNetworkCapabilities(cm.activeNetwork)
-    }
-
-    private fun hasNetwork() = caps()?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-
     /** Through a VPN (Tailscale), Android reports the transport of the network underneath. */
-    fun onMobileData() = caps()?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+    fun onMobileData() = app.network()?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
 
     /**
      * The foreground service keeps the process alive and shows progress.

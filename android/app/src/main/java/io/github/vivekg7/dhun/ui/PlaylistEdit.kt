@@ -29,12 +29,16 @@ import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Editing playlists (docs/plans/013_playlist_editing.md). Only the user's
  * own: shared playlists stay read-only in the app, by the owner's choice.
  */
 fun Playlist.editable() = !shared
+
+/** A dialog adding [songs] to a list: "Add “Tum Hi Ho” to", "Add 12 songs to". */
+fun addTitle(songs: List<Song>) = if (songs.size == 1) "Add “${songs[0].title}” to" else "Add ${songs.size} songs to"
 
 /** The server keeps these names for its own lists. */
 private val RESERVED = setOf("favorites", "listen later")
@@ -113,7 +117,7 @@ private fun leftOut(songs: List<Song>): String {
 private suspend fun note(
     context: Context,
     text: String,
-) = kotlinx.coroutines.withContext(Dispatchers.Main) { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
+) = withContext(Dispatchers.Main) { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
 
 /**
  * Add [songs] to one of your playlists, or to a new one ([newName] is
@@ -157,7 +161,7 @@ fun AddToPlaylistDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (songs.size == 1) "Add “${songs[0].title}” to" else "Add ${songs.size} songs to") },
+        title = { Text(addTitle(songs)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 item { DialogRow("New playlist", icon = Icons.Add) { naming = true } }

@@ -2,9 +2,9 @@ package io.github.vivekg7.dhun
 
 import android.app.Application
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /** Every long-lived object, built once (docs/plans/007_client_architecture.md: no DI framework). */
 class App : Application() {
@@ -81,7 +83,7 @@ class App : Application() {
         super.onCreate()
         app = this
         // Until 0.4.0, covers were kept in an HTTP cache; they are files now (Covers).
-        scope.launch(Dispatchers.IO) { java.io.File(cacheDir, "http").deleteRecursively() }
+        scope.launch(Dispatchers.IO) { File(cacheDir, "http").deleteRecursively() }
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
@@ -109,7 +111,7 @@ class App : Application() {
      * the downloads with their songs, which stay playable without a server.
      */
     suspend fun forget(keepDownloads: Boolean) =
-        kotlinx.coroutines.withContext(Dispatchers.Main) {
+        withContext(Dispatchers.Main) {
             playback.reset()
             val who = prefs.userName
             prefs.signOut()
@@ -146,13 +148,7 @@ class Prefs(
     var userName by stored("user", "")
 
     /** Chosen on the sign-in screen: the app opens with no account (docs/plans/026_without_an_account.md). */
-    var withoutAccount: Boolean
-        get() = withoutAccountState
-        set(v) {
-            withoutAccountState = v
-            sp.edit { putBoolean("withoutAccount", v) }
-        }
-    private var withoutAccountState by mutableStateOf(sp.getBoolean("withoutAccount", false))
+    var withoutAccount by stored("withoutAccount", false)
 
     /**
      * The account whose sign-out left this phone's downloads and queues,
@@ -163,13 +159,7 @@ class Prefs(
     var keptFrom by stored("keptFrom", "")
 
     /** Whether the user is the admin, who manages family members (docs/plans/023_users_on_android.md). */
-    var admin: Boolean
-        get() = adminState
-        set(v) {
-            adminState = v
-            sp.edit { putBoolean("admin", v) }
-        }
-    private var adminState by mutableStateOf(sp.getBoolean("admin", false))
+    var admin by stored("admin", false)
 
     /** False on a phone signed in before the flag was kept, until the server is asked. */
     val adminKnown get() = sp.contains("admin")
@@ -191,10 +181,8 @@ class Prefs(
     /** The `at` of the hand-off last dismissed, so ✕ is not undone by the next sync. */
     var handoffDismissed by stored("handoffDismissed", "")
     var activeQueue by stored("activeQueue", "")
-    var themeMode by mutableStateOf(enumOr(sp.getString("theme", null), THEME))
-        private set
-    var palette by mutableStateOf(enumOr(sp.getString("palette", null), PALETTE))
-        private set
+    var themeMode by stored("theme", THEME)
+    var palette by stored("palette", PALETTE)
 
     /**
      * The Search tab's last searches, newest first (docs/plans/029_search.md).
@@ -218,13 +206,7 @@ class Prefs(
     }
 
     /** Which mini player shows over the tabs (docs/plans/022_mini_player_styles.md). */
-    var miniPlayer by mutableStateOf(enumOr(sp.getString("miniPlayer", null), MINI_PLAYER))
-        private set
-
-    fun chooseMiniPlayer(m: MiniPlayerStyle) {
-        miniPlayer = m
-        sp.edit { putString("miniPlayer", m.name) }
-    }
+    var miniPlayer by stored("miniPlayer", MINI_PLAYER)
 
     /**
      * Where the floating mini player was left, as fractions of the room it
@@ -236,29 +218,11 @@ class Prefs(
         set(o) = sp.edit { putFloat("floatingX", o.x).putFloat("floatingY", o.y) }
 
     /** Downloads (docs/plans/012_downloads.md): this phone's storage and network, so not synced. 0 is no limit. */
-    var downloadLimitGb by mutableIntStateOf(sp.getInt("downloadLimitGb", DOWNLOAD_LIMIT_GB))
-        private set
-    var wifiOnly by mutableStateOf(sp.getBoolean("wifiOnly", WIFI_ONLY))
-        private set
+    var downloadLimitGb by stored("downloadLimitGb", DOWNLOAD_LIMIT_GB)
+    var wifiOnly by stored("wifiOnly", WIFI_ONLY)
 
     /** The song cache's limit (docs/plans/019_networking_and_caching.md); 0 turns it off. */
-    var cacheLimitGb by mutableIntStateOf(sp.getInt("cacheLimitGb", CACHE_LIMIT_GB))
-        private set
-
-    fun chooseCacheLimit(gb: Int) {
-        cacheLimitGb = gb
-        sp.edit { putInt("cacheLimitGb", gb) }
-    }
-
-    fun chooseDownloadLimit(gb: Int) {
-        downloadLimitGb = gb
-        sp.edit { putInt("downloadLimitGb", gb) }
-    }
-
-    fun chooseWifiOnly(on: Boolean) {
-        wifiOnly = on
-        sp.edit { putBoolean("wifiOnly", on) }
-    }
+    var cacheLimitGb by stored("cacheLimitGb", CACHE_LIMIT_GB)
 
     /**
      * Play speed and pitch for every song without its own
@@ -274,27 +238,9 @@ class Prefs(
      * until turned on, which asks for the permission. Files shorter than
      * [phoneMinSeconds], and those under an excluded folder, are left out.
      */
-    var phoneSongs by mutableStateOf(sp.getBoolean("phoneSongs", PHONE_SONGS))
-        private set
-    var phoneMinSeconds by mutableIntStateOf(sp.getInt("phoneMinSeconds", PHONE_MIN_SECONDS))
-        private set
-    var phoneExcluded by mutableStateOf(sp.getStringSet("phoneExcluded", null)?.toSet() ?: emptySet())
-        private set
-
-    fun choosePhoneSongs(on: Boolean) {
-        phoneSongs = on
-        sp.edit { putBoolean("phoneSongs", on) }
-    }
-
-    fun choosePhoneMinSeconds(s: Int) {
-        phoneMinSeconds = s
-        sp.edit { putInt("phoneMinSeconds", s) }
-    }
-
-    fun choosePhoneExcluded(folders: Set<String>) {
-        phoneExcluded = folders
-        sp.edit { putStringSet("phoneExcluded", folders) }
-    }
+    var phoneSongs by stored("phoneSongs", PHONE_SONGS)
+    var phoneMinSeconds by stored("phoneMinSeconds", PHONE_MIN_SECONDS)
+    var phoneExcluded by stored("phoneExcluded", emptySet<String>())
 
     /** The sleep timer by the clock lets the song finish rather than fade out on time; this phone's, off at first. */
     var sleepFinishSong: Boolean
@@ -305,16 +251,6 @@ class Prefs(
     var askedNotifications: Boolean
         get() = sp.getBoolean("askedNotifications", false)
         set(v) = sp.edit { putBoolean("askedNotifications", v) }
-
-    fun chooseTheme(mode: ThemeMode) {
-        themeMode = mode
-        sp.edit { putString("theme", mode.name) }
-    }
-
-    fun choosePalette(p: Palette) {
-        palette = p
-        sp.edit { putString("palette", p.name) }
-    }
 
     /**
      * What each queue was started from ("album:…", "search"), for the listen
@@ -334,8 +270,8 @@ class Prefs(
 
     /**
      * Reset to defaults, one settings page at a time
-     * (docs/plans/034_settings_text_defaults_reset.md). The keys are removed
-     * rather than set, as a synced setting is unset.
+     * (docs/plans/034_settings_text_defaults_reset.md). The keys are then
+     * removed rather than left set, as a synced setting is unset.
      */
     fun resetAppearance() {
         themeMode = THEME
@@ -361,7 +297,7 @@ class Prefs(
     fun signOut() {
         token = ""
         userName = ""
-        adminState = false
+        admin = false
         sp.edit { remove("admin") }
         serverVersion = ""
         activeQueue = ""
@@ -374,16 +310,13 @@ class Prefs(
         handoffDismissed = ""
     }
 
-    private fun stored(
-        key: String,
-        def: String,
-    ) = StoredString(key, def)
-
-    private inner class StoredString(
-        val key: String,
-        def: String,
+    /** A value kept under [key], held as Compose state too. */
+    private inner class Stored<T>(
+        private val key: String,
+        read: SharedPreferences.(String) -> T,
+        private val write: SharedPreferences.Editor.(String, T) -> Unit,
     ) {
-        private var state by mutableStateOf(sp.getString(key, def) ?: def)
+        private var state by mutableStateOf(sp.read(key))
 
         operator fun getValue(
             thisRef: Any?,
@@ -393,12 +326,38 @@ class Prefs(
         operator fun setValue(
             thisRef: Any?,
             p: Any?,
-            v: String,
+            v: T,
         ) {
             state = v
-            sp.edit { putString(key, v) }
+            sp.edit { write(key, v) }
         }
     }
+
+    private fun stored(
+        key: String,
+        def: String,
+    ) = Stored(key, { getString(it, def) ?: def }) { k, v -> putString(k, v) }
+
+    private fun stored(
+        key: String,
+        def: Boolean,
+    ) = Stored(key, { getBoolean(it, def) }) { k, v -> putBoolean(k, v) }
+
+    private fun stored(
+        key: String,
+        def: Int,
+    ) = Stored(key, { getInt(it, def) }) { k, v -> putInt(k, v) }
+
+    private fun stored(
+        key: String,
+        def: Set<String>,
+    ) = Stored(key, { getStringSet(it, null)?.toSet() ?: def }) { k, v -> putStringSet(k, v) }
+
+    /** By name: one no longer in the enum reads as [def]. */
+    private inline fun <reified E : Enum<E>> stored(
+        key: String,
+        def: E,
+    ) = Stored(key, { k -> enumValues<E>().firstOrNull { it.name == getString(k, null) } ?: def }) { k, v -> putString(k, v.name) }
 
     private fun storedLong(key: String) =
         object {
@@ -413,11 +372,6 @@ class Prefs(
                 v: Long,
             ) = sp.edit { putLong(key, v) }
         }
-
-    private inline fun <reified E : Enum<E>> enumOr(
-        name: String?,
-        def: E,
-    ) = enumValues<E>().firstOrNull { it.name == name } ?: def
 
     /** This device's defaults, which Settings marks and Reset to defaults goes back to. */
     companion object {

@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.unit.IntOffset
 
 /**
  * The app's few motions, so every screen moves alike: a page opened
@@ -25,7 +26,7 @@ object Motion {
     /** Opening a page ([forward]), or going back from one. */
     fun <S> AnimatedContentTransitionScope<S>.page(forward: Boolean): ContentTransform {
         val sign = if (forward) 1 else -1
-        val spec = tween<androidx.compose.ui.unit.IntOffset>(MEDIUM, easing = FastOutSlowInEasing)
+        val spec = tween<IntOffset>(MEDIUM, easing = FastOutSlowInEasing)
         return (slideInHorizontally(spec) { sign * it / 5 } + fadeIn(tween(MEDIUM))) togetherWith
             (slideOutHorizontally(spec) { -sign * it / 5 } + fadeOut(tween(SHORT)))
     }

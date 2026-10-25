@@ -3,6 +3,7 @@ package io.github.vivekg7.dhun.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -244,8 +245,9 @@ fun AlbumsScreen(nav: Nav) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 items(albums, key = { it.key }) { a ->
+                    val c = MaterialTheme.colorScheme
                     Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable { nav.open(Tab.Albums, Page.AlbumPage(a.key)) }) {
-                        androidx.compose.foundation.layout.BoxWithConstraints {
+                        BoxWithConstraints {
                             Art(a.songs.first(), maxWidth, RoundedCornerShape(10.dp))
                         }
                         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -256,30 +258,11 @@ fun AlbumsScreen(nav: Nav) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            if (pinned(Downloads.ALBUM, a.key)) {
-                                Icon(
-                                    Icons.Downloaded,
-                                    "Downloaded",
-                                    Modifier.padding(start = 4.dp).size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (a.songs.first().onPhone) {
-                                Icon(
-                                    Icons.Phone,
-                                    "On this phone",
-                                    Modifier.padding(start = 4.dp).size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            val mark = Modifier.padding(start = 4.dp).size(14.dp)
+                            if (pinned(Downloads.ALBUM, a.key)) Icon(Icons.Downloaded, "Downloaded", mark, tint = c.onSurfaceVariant)
+                            if (a.songs.first().onPhone) Icon(Icons.Phone, "On this phone", mark, tint = c.onSurfaceVariant)
                         }
-                        Text(
-                            a.artist,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Text(a.artist, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -295,7 +278,7 @@ fun AlbumScreen(
 ) {
     val catalog by App.app.catalog.collectAsState()
     val album = catalog.albums.firstOrNull { it.key == key } ?: return Empty("This album is gone", page = true)
-    val facts = listOfNotNull(album.artist, album.year.takeIf { it > 0 }?.toString(), summary(album.songs)).joinToString(" · ")
+    val facts = dotted(album.artist, album.year.takeIf { it > 0 }?.toString(), summary(album.songs))
     SongList(album.name, "album:${album.name}", album.songs, nav, facts, onBack, DownloadTarget(Downloads.ALBUM, album.key, album.name, album.songs))
 }
 

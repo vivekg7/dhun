@@ -3,14 +3,13 @@ package io.github.vivekg7.dhun.play
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import io.github.vivekg7.dhun.App
-import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.Downloads
+import io.github.vivekg7.dhun.openApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -71,20 +70,17 @@ class DownloadService : Service() {
 
     override fun onBind(intent: Intent?) = null
 
-    private fun notification(s: Downloads.Status): Notification {
-        val open =
-            PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return Notification
+    private fun notification(s: Downloads.Status): Notification =
+        Notification
             .Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("Downloading ${(s.done + 1).coerceAtMost(s.wanted)} of ${s.wanted}")
             .setContentText(s.current?.title ?: "")
             .setProgress(100, (s.progress * 100).toInt(), s.current == null)
-            .setContentIntent(open)
+            .setContentIntent(openApp())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
-    }
 
     companion object {
         private const val CHANNEL = "downloads"

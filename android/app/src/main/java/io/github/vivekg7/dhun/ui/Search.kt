@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -61,7 +62,6 @@ import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.SearchQuery
 import io.github.vivekg7.dhun.data.Shelf
 import io.github.vivekg7.dhun.data.Song
-import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -322,7 +322,7 @@ private fun keyOf(h: Any): Any =
     }
 
 /** The last searches, each a tap away; or, with none yet, what the box searches. */
-private fun androidx.compose.foundation.lazy.LazyListScope.recent(
+private fun LazyListScope.recent(
     searches: List<String>,
     onPick: (String) -> Unit,
     songs: Int,
@@ -385,7 +385,7 @@ private fun FoundRow(
         }
 
         is Album -> {
-            TwoLines(h.name, listOfNotNull(h.artist, h.year.takeIf { it > 0 }?.toString()).joinToString(" · "), { open(Page.AlbumPage(h.key)) }) {
+            TwoLines(h.name, dotted(h.artist, h.year.takeIf { it > 0 }?.toString()), { open(Page.AlbumPage(h.key)) }) {
                 Art(h.songs.first(), SmallArt, RoundedCornerShape(6.dp))
             }
         }
@@ -400,12 +400,11 @@ private fun FoundRow(
         }
 
         is Playlist -> {
-            val count = songIds(h.songs).count { it != 0L && catalog.byId.containsKey(it) }
-            NameRow(Icons.Playlist, h.name, "$count", pinned(Downloads.PLAYLIST, h.id.toString())) { open(Page.PlaylistPage(h.id)) }
+            NameRow(Icons.Playlist, h.name, "${catalog.shownCount(h)}", pinned(Downloads.PLAYLIST, h.id.toString())) { open(Page.PlaylistPage(h.id)) }
         }
 
         is Shelf -> {
-            ShelfRow(h, if (h.isBook) listOf(h.author, heard.progress(h)).filter { it.isNotEmpty() }.joinToString(" · ") else "Podcast") {
+            ShelfRow(h, if (h.isBook) dotted(h.author, heard.progress(h)) else "Podcast") {
                 open(Page.ShelfPage(h.key))
             }
         }
@@ -416,36 +415,7 @@ private fun FoundRow(
             SongRow(h, onClick = {
                 keep()
                 if (shelf != null) playShelf(nav, shelf, heard, h)
-            }, menu = SongMenu(nav = nav), detail = listOf(h.groupTitle, h.day).filter { it.isNotEmpty() }.joinToString(" · "))
-        }
-    }
-}
-
-@Composable
-private fun TwoLines(
-    title: String,
-    detail: String,
-    onClick: () -> Unit,
-    leading: @Composable () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .height(64.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        leading()
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            }, menu = SongMenu(nav = nav), detail = dotted(h.groupTitle, h.day))
         }
     }
 }

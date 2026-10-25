@@ -14,11 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,14 +24,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Downloads
 import io.github.vivekg7.dhun.data.PlayStat
+import io.github.vivekg7.dhun.data.Playlist
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.Song
 import io.github.vivekg7.dhun.data.Store
@@ -98,25 +100,17 @@ private fun fromStats(
     kind: ListKind,
     c: Catalog,
     stats: List<PlayStat>,
-): List<Song> =
-    when (kind) {
-        ListKind.RecentlyPlayed -> {
-            c.songsOf(stats.filter { it.lastPlayedAt > 0 }.sortedByDescending { it.lastPlayedAt }.map { it.song }).take(VIEW_SIZE)
+): List<Song> {
+    val cutoff = System.currentTimeMillis() - LATELY_DAYS * DAY
+    val picked =
+        when (kind) {
+            ListKind.RecentlyPlayed -> stats.filter { it.lastPlayedAt > 0 }.sortedByDescending { it.lastPlayedAt }
+            ListKind.MostPlayed -> stats.filter { it.count > 0 }.sortedByDescending { it.count }
+            ListKind.NotLately -> stats.filter { it.count >= LATELY_MIN_PLAYS && it.lastPlayedAt < cutoff }.sortedByDescending { it.count }
+            else -> error("$kind is not a played list")
         }
-
-        ListKind.MostPlayed -> {
-            c.songsOf(stats.filter { it.count > 0 }.sortedByDescending { it.count }.map { it.song }).take(VIEW_SIZE)
-        }
-
-        ListKind.NotLately -> {
-            val cutoff = System.currentTimeMillis() - LATELY_DAYS * DAY
-            c.songsOf(stats.filter { it.count >= LATELY_MIN_PLAYS && it.lastPlayedAt < cutoff }.sortedByDescending { it.count }.map { it.song }).take(VIEW_SIZE)
-        }
-
-        else -> {
-            error("$kind is not a played list")
-        }
-    }
+    return c.songsOf(picked.map { it.song }).take(VIEW_SIZE)
+}
 
 @Composable
 fun PlaylistsScreen(nav: Nav) {
@@ -126,7 +120,7 @@ fun PlaylistsScreen(nav: Nav) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim()
     val lists = rememberLists()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var naming by remember { mutableStateOf(false) }
     if (naming) {
         NameDialog("New playlist", "", "Create") { name ->
@@ -157,7 +151,7 @@ fun PlaylistsScreen(nav: Nav) {
                                 PinnedCard(
                                     Icons.Book,
                                     "Audiobooks",
-                                    "${catalog.books.size} ${if (catalog.books.size == 1) "book" else "books"}",
+                                    count(catalog.books.size, "book"),
                                     Modifier.weight(1f),
                                 ) {
                                     nav.open(Tab.Playlists, Page.ShelvesPage(books = true))
@@ -167,7 +161,7 @@ fun PlaylistsScreen(nav: Nav) {
                                 PinnedCard(
                                     Icons.Podcast,
                                     "Podcasts",
-                                    "${catalog.shows.size} ${if (catalog.shows.size == 1) "show" else "shows"}",
+                                    count(catalog.shows.size, "show"),
                                     Modifier.weight(1f),
                                 ) {
                                     nav.open(Tab.Playlists, Page.ShelvesPage(books = false))
@@ -185,7 +179,7 @@ fun PlaylistsScreen(nav: Nav) {
                 item { NameRow(Icons.Add, "New playlist", "") { naming = true } }
             }
             items(shown, key = { it.id }) { p ->
-                val count = songIds(p.songs).count { it != 0L && catalog.byId.containsKey(it) }
+                val count = catalog.shownCount(p)
                 NameRow(Icons.Playlist, p.name, if (p.shared) "$count · shared" else "$count", pinned(Downloads.PLAYLIST, p.id.toString())) {
                     nav.open(Tab.Playlists, Page.PlaylistPage(p.id))
                 }
@@ -214,7 +208,7 @@ private fun PinnedCard(
     ) {
         Icon(icon, null, Modifier.size(26.dp), tint = c.secondary)
         Column {
-            Text(label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+            Text(label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             Text(detail, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
@@ -234,11 +228,11 @@ private fun DownloadsCard(onClick: () -> Unit) {
             .background(c.surfaceContainer)
             .clickable(onClick = onClick)
             .padding(16.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Download, null, Modifier.size(26.dp), tint = c.secondary)
         Column(Modifier.padding(start = 16.dp)) {
-            Text("Downloads", style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+            Text("Downloads", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             Text(describe(status), style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
         }
     }
@@ -260,6 +254,9 @@ fun ListScreen(
         }
     SongList(kind.label, kind.source, songs, nav, summary(songs), onBack, markKind?.let { DownloadTarget(Downloads.LIST, it, kind.label, songs) })
 }
+
+/** How many of [p]'s songs a playlist page shows: those the catalogue has. */
+fun Catalog.shownCount(p: Playlist) = songIds(p.songs).count { it != 0L && it in byId }
 
 /**
  * A playlist. Your own can be edited here: drag to reorder, remove a song,
@@ -338,18 +335,15 @@ fun PlaylistScreen(
         }
     }
     if (deleting) {
-        AlertDialog(
+        ConfirmDialog(
+            "Delete “${p.name}”?",
+            "The songs stay in the library. The server keeps a copy of the playlist file in its data folder.",
+            "Delete",
+            "Keep",
             { deleting = false },
-            confirmButton = {
-                TextButton({
-                    deleting = false
-                    app.scope.launch { app.store.deletePlaylist(p) }
-                    onBack()
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton({ deleting = false }) { Text("Keep") } },
-            title = { Text("Delete “${p.name}”?") },
-            text = { Text("The songs stay in the library. The server keeps a copy of the playlist file in its data folder.") },
-        )
+        ) {
+            app.scope.launch { app.store.deletePlaylist(p) }
+            onBack()
+        }
     }
 }

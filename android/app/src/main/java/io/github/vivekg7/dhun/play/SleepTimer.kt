@@ -16,9 +16,11 @@ import kotlinx.coroutines.launch
 /**
  * Stops playback later (docs/plans/014_sleep_timer.md): after some minutes,
  * at the end of this song, after a number of songs, at the end of the
- * queue, or after a song picked in the queue (docs/plans/020_queue_screen.md). A timer by the clock fades out over its last seconds and pauses on
- * time, or, letting the song finish, turns into "after this song" when the time is up
- * (docs/plans/034_settings_text_defaults_reset.md); the others pause where a song ends, which needs no fade.
+ * queue, or after a song picked in the queue (docs/plans/020_queue_screen.md).
+ * A timer by the clock fades out over its last seconds and pauses on time,
+ * or, letting the song finish, turns into "after this song" when the time is
+ * up (docs/plans/034_settings_text_defaults_reset.md); the others pause where
+ * a song ends, which needs no fade.
  */
 @OptIn(UnstableApi::class)
 class SleepTimer(
@@ -77,8 +79,6 @@ class SleepTimer(
                 cancel()
             }
     }
-
-    fun endOfSong() = set(Mode.EndOfSong)
 
     fun songs(n: Int) = set(if (n <= 1) Mode.EndOfSong else Mode.Songs(n))
 

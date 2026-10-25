@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +69,7 @@ private fun Plain(
     modifier: Modifier,
 ) {
     LazyColumn(modifier, contentPadding = PaddingValues(vertical = 16.dp)) {
-        itemsIndexed(lyrics.lines) { _, l ->
+        items(lyrics.lines) { l ->
             Text(
                 l.text,
                 Modifier.fillMaxWidth().padding(vertical = 3.dp),

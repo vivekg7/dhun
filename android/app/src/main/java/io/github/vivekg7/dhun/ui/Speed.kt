@@ -134,7 +134,7 @@ private fun SpeedDialog(onDismiss: () -> Unit) {
                     }
                 }
                 val st = semitones.roundToInt()
-                ValueLabel("Pitch", if (st == 0) "Normal" else "${if (st > 0) "+" else "−"}${abs(st)} semitone${if (abs(st) == 1) "" else "s"}")
+                ValueLabel("Pitch", if (st == 0) "Normal" else (if (st > 0) "+" else "−") + count(abs(st), "semitone"))
                 Slider(
                     semitones,
                     { semitones = it.roundToInt().toFloat() },

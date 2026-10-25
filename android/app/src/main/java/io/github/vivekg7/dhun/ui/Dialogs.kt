@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +28,28 @@ import androidx.compose.ui.unit.dp
  * buttons below. The dialog gives the margin, so nothing in it adds its own
  * inset: rows sit flush with the title.
  */
+
+/** A question with one action: [confirm] does it, [dismiss] or a tap outside does not, and either closes it. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    text: String,
+    confirm: String,
+    dismiss: String = "Cancel",
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) = AlertDialog(
+    onDismiss,
+    confirmButton = {
+        TextButton({
+            onDismiss()
+            onConfirm()
+        }) { Text(confirm) }
+    },
+    dismissButton = { TextButton(onDismiss) { Text(dismiss) } },
+    title = { Text(title) },
+    text = { Text(text) },
+)
 
 /** A line under the title: what the dialog does, or what is set now. */
 @Composable

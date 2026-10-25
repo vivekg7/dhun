@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -136,10 +135,10 @@ fun ShelvesScreen(
             items(shelves, key = { it.key }) { s ->
                 val detail =
                     if (books) {
-                        listOf(s.author, heard.progress(s)).filter { it.isNotEmpty() }.joinToString(" · ")
+                        dotted(s.author, heard.progress(s))
                     } else {
                         val new = s.items.count { it.id !in heard.played }
-                        count(s.items.size, "episode") + if (new > 0) " · $new not played" else ""
+                        dotted(count(s.items.size, "episode"), if (new > 0) "$new not played" else null)
                     }
                 ShelfRow(s, detail, pinned(Downloads.SHELF, s.key)) { nav.open(nav.tab, Page.ShelfPage(s.key)) }
             }
@@ -155,24 +154,13 @@ fun ShelfRow(
     detail: String,
     downloaded: Boolean = false,
     onClick: () -> Unit,
-) {
-    val c = MaterialTheme.colorScheme
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .height(72.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Art(s.cover ?: s.items.first(), 52.dp, RoundedCornerShape(6.dp))
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(s.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 8.dp).size(16.dp), tint = c.onSurfaceVariant)
-    }
-}
+) = TwoLines(
+    s.title,
+    detail,
+    onClick,
+    72.dp,
+    { if (downloaded) Icon(Icons.Downloaded, "Downloaded", Modifier.padding(start = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+) { Art(s.cover ?: s.items.first(), 52.dp, RoundedCornerShape(6.dp)) }
 
 /**
  * A book, its files in reading order; or a show, its episodes newest
@@ -200,13 +188,13 @@ fun ShelfScreen(
             item {
                 val facts =
                     if (shelf.isBook) {
-                        listOf(shelf.author, heard.progress(shelf))
+                        dotted(shelf.author, heard.progress(shelf))
                     } else {
-                        listOf(count(shelf.items.size, "episode"), "${shelf.items.count { it.id !in heard.played }} not played")
+                        dotted(count(shelf.items.size, "episode"), "${shelf.items.count { it.id !in heard.played }} not played")
                     }
                 PageHeader(
                     shelf.title,
-                    facts.filter { it.isNotEmpty() }.joinToString(" · "),
+                    facts,
                     onBack,
                     { playShelf(nav, shelf, heard) },
                     if (shelf.isBook) DownloadTarget(Downloads.SHELF, shelf.key, shelf.title, shelf.items) else null,
@@ -235,7 +223,7 @@ fun ShelfScreen(
                     } else {
                         ""
                     }
-                val detail = listOf(where, heard.state(s) ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
+                val detail = dotted(where, heard.state(s))
                 SongRow(s, onClick = { playShelf(nav, shelf, heard, s) }, menu = SongMenu(nav = nav), detail = detail.ifEmpty { s.displayArtist })
             }
             if (rows.isEmpty()) item { Empty("Every episode is played") }
@@ -271,7 +259,7 @@ fun ChapterLine(
         }
     }
     val i = chapters.indexOfLast { it.startMs <= pos }.coerceAtLeast(0)
-    Line("Chapter ${i + 1} of ${chapters.size}" + chapters[i].name.let { if (it.isEmpty()) "" else " · $it" }, onClick)
+    Line(dotted("Chapter ${i + 1} of ${chapters.size}", chapters[i].name), onClick)
 }
 
 @Composable
@@ -302,16 +290,15 @@ fun DetailsDialog(
     var editing by remember { mutableStateOf<Bookmark?>(null) }
     editing?.let { b -> NoteDialog(b) { editing = null } }
     val c = MaterialTheme.colorScheme
+
+    @Composable
+    fun Heading(text: String) = Text(text, Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(s.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                if (marks.isNotEmpty()) {
-                    item {
-                        Text("BOOKMARKS", Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary)
-                    }
-                }
+                if (marks.isNotEmpty()) item { Heading("BOOKMARKS") }
                 items(marks, key = { it.id }) { b ->
                     // Named as the list below names it, so an untitled one is "Chapter 3" in both.
                     val i = chapters.indexOfLast { it.startMs <= b.positionMs }
@@ -321,11 +308,7 @@ fun DetailsDialog(
                         onDismiss()
                     }
                 }
-                if (chapters.isNotEmpty()) {
-                    item {
-                        Text("CHAPTERS", Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary)
-                    }
-                }
+                if (chapters.isNotEmpty()) item { Heading("CHAPTERS") }
                 itemsIndexed(chapters) { i, ch ->
                     Row(
                         Modifier
@@ -345,7 +328,7 @@ fun DetailsDialog(
                     }
                 }
                 if (s.notes.isNotEmpty()) {
-                    item { Text("NOTES", Modifier.padding(top = 8.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = c.secondary) }
+                    item { Heading("NOTES") }
                     item { Text(s.notes, style = MaterialTheme.typography.bodyMedium) }
                 }
             }
@@ -382,14 +365,9 @@ private fun BookmarkRow(
         Box {
             IconButton({ menu = true }) { Icon(Icons.More, "Bookmark options", tint = c.onSurfaceVariant) }
             DropdownMenu(menu, { menu = false }) {
-                DropdownMenuItem({ Text(if (b.note.isEmpty()) "Add a note" else "Edit the note") }, {
-                    menu = false
-                    onEdit()
-                })
-                DropdownMenuItem({ Text("Delete") }, {
-                    menu = false
-                    scope.launch { App.app.store.bookmark(b.copy(deleted = true, note = "")) }
-                })
+                val close = { menu = false }
+                MenuItem(if (b.note.isEmpty()) "Add a note" else "Edit the note", close, onEdit)
+                MenuItem("Delete", close) { scope.launch { App.app.store.bookmark(b.copy(deleted = true, note = "")) } }
             }
         }
     }
@@ -418,9 +396,3 @@ private fun NoteDialog(
 
 /** The server's limit on a bookmark's note. */
 private const val MAX_NOTE = 1_000
-
-/** "29 books", "1 show" */
-private fun count(
-    n: Int,
-    what: String,
-) = "$n $what" + if (n == 1) "" else "s"

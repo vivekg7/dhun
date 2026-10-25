@@ -11,6 +11,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
@@ -277,7 +278,7 @@ class Playback(
     /** Takes over from another device: its queue (queues are synced), its song, and its place. */
     fun continueFrom(np: NowPlaying) =
         scope.launch {
-            val q = queues.value.firstOrNull { it.id == np.queue } ?: return@launch
+            val q = queue(np.queue) ?: return@launch
             val song = app.catalog.value.byId[np.song] ?: return@launch
             val pos = placeOf(np)
             if (q.id != activeId.value) saveActive()
@@ -385,13 +386,16 @@ class Playback(
         var unique = name
         var n = 2
         while (unique.lowercase() in taken) unique = "$name (${n++})"
-        val adding =
-            songs
-                .filter {
-                    app.catalog.value.byId
-                        .containsKey(it.id)
-                }.distinctBy { it.id }
+        val adding = known(songs)
         create(unique, adding.map { it.id }.joinIds(), adding.firstOrNull()?.id ?: 0, System.currentTimeMillis())
+    }
+
+    private fun queue(id: String) = queues.value.firstOrNull { it.id == id }
+
+    /** [songs] in the catalogue, each once: a song missing from it could not be loaded. */
+    private fun known(songs: List<Song>): List<Song> {
+        val byId = app.catalog.value.byId
+        return songs.filter { it.id in byId }.distinctBy { it.id }
     }
 
     private suspend fun setOrder(ids: List<String>) = store.setting(ORDER, JsonArray(ids.map(::JsonPrimitive)))
@@ -440,7 +444,7 @@ class Playback(
     fun switchTo(id: String) =
         scope.launch {
             if (id == activeId.value) return@launch
-            val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+            val q = queue(id) ?: return@launch
             saveActive()
             load(q.copy(usedAt = System.currentTimeMillis()), play = true)
         }
@@ -552,13 +556,7 @@ class Playback(
             return@launch
         }
         val playing = current.value?.id
-        val adding =
-            songs
-                .filter {
-                    it.id != playing &&
-                        app.catalog.value.byId
-                            .containsKey(it.id)
-                }.distinctBy { it.id }
+        val adding = known(songs).filter { it.id != playing }
         if (adding.isEmpty()) return@launch
         for (s in adding) {
             val i = playerIds().indexOf(s.id)
@@ -586,14 +584,8 @@ class Playback(
             return
         }
         scope.launch {
-            val q = queues.value.firstOrNull { it.id == id } ?: return@launch
-            val adding =
-                songs
-                    .filter {
-                        app.catalog.value.byId
-                            .containsKey(it.id)
-                    }.map { it.id }
-                    .distinct()
+            val q = queue(id) ?: return@launch
+            val adding = known(songs).map { it.id }
             if (adding.isEmpty()) return@launch
             val ids = songIds(q.songs).filter { it !in adding } + adding
             store.insertIntoQueue(q.copy(songs = ids.joinIds(), currentSong = q.currentSong.takeIf { it != 0L } ?: ids[0]), adding, null)
@@ -611,7 +603,7 @@ class Playback(
             store.removeFromQueue(q.copy(songs = playerIds().joinIds()), songs.toList())
             return@launch
         }
-        val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+        val q = queue(id) ?: return@launch
         val old = songIds(q.songs)
         val ids = old.filter { it !in songs }
         val removed = q.copy(songs = ids.joinIds())
@@ -639,7 +631,7 @@ class Playback(
             store.moveInQueue(q.copy(songs = ids.joinIds()), song, if (to == 0) 0 else ids[to - 1])
             return@launch
         }
-        val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+        val q = queue(id) ?: return@launch
         val ids = songIds(q.songs).toMutableList()
         if (from !in ids.indices || to !in ids.indices) return@launch
         val song = ids.removeAt(from)
@@ -657,7 +649,7 @@ class Playback(
         order: List<Long>,
     ) = scope.launch {
         if (id != activeId.value) {
-            val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+            val q = queue(id) ?: return@launch
             store.replaceQueue(q.copy(songs = order.joinIds()))
             return@launch
         }
@@ -681,7 +673,7 @@ class Playback(
         id: String,
         name: String,
     ) = scope.launch {
-        val q = queues.value.firstOrNull { it.id == id } ?: return@launch
+        val q = queue(id) ?: return@launch
         store.renameQueue(q.copy(name = name))
     }
 
@@ -1107,7 +1099,7 @@ class Playback(
 
         // The queue changed, or its order: is the playing song still the last one?
         override fun onTimelineChanged(
-            timeline: androidx.media3.common.Timeline,
+            timeline: Timeline,
             reason: Int,
         ) = sleep.update()
 

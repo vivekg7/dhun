@@ -303,7 +303,7 @@ class SongCache(
     fun complete(song: Long): File? {
         val s = app.catalog.value.byId[song] ?: return null
         val dir = dir() ?: return null
-        return File(dir, name(s)).takeIf { it.exists() }?.also { it.setLastModified(System.currentTimeMillis()) }
+        return File(dir, s.fileName).takeIf { it.exists() }?.also { it.setLastModified(System.currentTimeMillis()) }
     }
 
     /**
@@ -330,7 +330,7 @@ class SongCache(
             if (e.done || e.gone) return null
             if (e.ahead == 0L && pos > e.arrived(0) + SEEK_AHEAD) return null
             // Finished just now, between the player's look for a whole file and this.
-            if (File(dir, name(s)).exists()) return null.also { entries.remove(song, e) }
+            if (File(dir, s.fileName).exists()) return null.also { entries.remove(song, e) }
             e.file.createNewFile()
             // Opened under the lock that renames it: the descriptor stays good
             // after the rename. The generation is read before the file is
@@ -386,7 +386,7 @@ class SongCache(
         trim(dir, limit, plan)
         for (s in plan) {
             if (replan) return
-            if (File(dir, name(s)).exists()) continue
+            if (File(dir, s.fileName).exists()) continue
             if (!fetch(s, dir, current = s.id == plan.first().id)) return
             trim(dir, limit, plan)
         }
@@ -430,7 +430,7 @@ class SongCache(
         dir: File,
     ): Entry {
         val ahead = aheadBytes(s)
-        val file = File(dir, name(s) + if (ahead > 0) WINDOW else PART)
+        val file = File(dir, s.fileName + if (ahead > 0) WINDOW else PART)
         return Entry(s.id, file, ahead, if (ahead > 0) BEHIND_MINUTES * perMinute(s) else 0).also {
             if (ahead == 0L) it.add(0, file.length())
             // The song list's size until the server says: opened without
@@ -481,15 +481,13 @@ class SongCache(
                             return true
                         }
 
+                        // Nothing to fetch; the player moves on.
                         Outcome.GONE -> {
                             return true
                         }
 
-                        // nothing to fetch; the player moves on
-                        Outcome.MORE -> {}
-
-                        // next() says where
-                        Outcome.REPLAN -> {} // carry on if this song still comes first
+                        // next() says where, and a changed plan whether this song still comes first.
+                        Outcome.MORE, Outcome.REPLAN -> {}
                     }
                 } catch (ex: CancellationException) {
                     throw ex
@@ -511,7 +509,7 @@ class SongCache(
         e: Entry,
         dir: File,
     ) {
-        val file = File(dir, name(s))
+        val file = File(dir, s.fileName)
         synchronized(e) {
             if (!e.file.renameTo(file)) throw IOException("Could not save ${file.name}")
             e.file = file
@@ -626,7 +624,7 @@ class SongCache(
         dir: File,
     ): Boolean {
         replan = false
-        val first = plan().firstOrNull { !File(dir, name(it)).exists() }
+        val first = plan().firstOrNull { !File(dir, it.fileName).exists() }
         if (first?.id == s.id) return true
         replan = true
         return false
@@ -645,7 +643,7 @@ class SongCache(
         limit: Long,
         plan: List<Song>,
     ) {
-        val keep = plan.map { name(it) }.toSet()
+        val keep = plan.map { it.fileName }.toSet()
         val files = dir.listFiles()?.toMutableList() ?: return
         files.removeAll { f ->
             val id = f.name.substringBefore('.').toLongOrNull()
@@ -686,15 +684,6 @@ class SongCache(
 
     /** On the same storage as Downloads, so a promotion is a rename. */
     private fun dir(): File? = app.downloads.dir(DIR)
-
-    private fun name(s: Song): String {
-        val ext =
-            s.path
-                .substringAfterLast('.', "")
-                .lowercase()
-                .ifEmpty { s.format }
-        return "${s.id}.$ext"
-    }
 
     /** A cached file's name without a `.part` or `.window`. */
     private fun base(name: String) = name.removeSuffix(PART).removeSuffix(WINDOW)

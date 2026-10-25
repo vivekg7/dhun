@@ -95,8 +95,6 @@ fun QueuesScreen(nav: Nav) {
     val queues by app.playback.ordered.collectAsState()
     val activeId by app.playback.activeId.collectAsState()
     val current by app.playback.current.collectAsState()
-    val playing by app.playback.playing.collectAsState()
-    val waiting by app.playback.waiting.collectAsState()
     val sleep by app.playback.sleep.mode
         .collectAsState()
     val catalog by app.catalog.collectAsState()
@@ -192,12 +190,7 @@ fun QueuesScreen(nav: Nav) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (sel == null) {
                 if (isActive) {
-                    val going = playing || waiting
-                    Tip(if (going) "Pause" else "Play") {
-                        IconButton({ if (going) app.playback.player.pause() else app.playback.play() }) {
-                            Icon(if (going) Icons.Pause else Icons.Play, if (going) "Pause" else "Play")
-                        }
-                    }
+                    PlayButton()
                 } else {
                     Tip("Resume this queue") { IconButton({ app.playback.switchTo(shown.id) }) { Icon(Icons.Play, "Resume this queue") } }
                 }
@@ -277,10 +270,10 @@ fun QueuesScreen(nav: Nav) {
                 LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 72.dp)) {
                     items(reorder.shown, key = { it.value.id }) { (i, s) ->
                         val toggle = { selected = sel?.let { if (s.id in it) it - s.id else it + s.id } }
-                        val stopping = sleep is SleepTimer.Mode.AfterSong && (sleep as SleepTimer.Mode.AfterSong).song == s.id
+                        val stopping = (sleep as? SleepTimer.Mode.AfterSong)?.song == s.id
                         val extra =
                             buildList<Pair<String, () -> Unit>> {
-                                add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)).let { } })
+                                add("Remove from queue" to { app.playback.removeFrom(shown.id, setOf(s.id)) })
                                 if (isActive) {
                                     if (stopping) {
                                         add("Don't stop after this song" to { app.playback.sleep.cancel() })
@@ -365,19 +358,10 @@ fun QueuesScreen(nav: Nav) {
         )
     }
     removing?.let { q ->
-        AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text("Remove “${q.name}”?") },
-            text = { Text("The queue goes; its songs stay in your library.") },
-            confirmButton = {
-                TextButton({
-                    app.playback.delete(q.id)
-                    if (q.id == shown.id) pick(null)
-                    removing = null
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton({ removing = null }) { Text("Cancel") } },
-        )
+        ConfirmDialog("Remove “${q.name}”?", "The queue goes; its songs stay in your library.", "Remove", onDismiss = { removing = null }) {
+            app.playback.delete(q.id)
+            if (q.id == shown.id) pick(null)
+        }
     }
     renaming?.let { q ->
         NameDialog("Rename queue", q.name, "Rename") { name ->
@@ -474,19 +458,15 @@ private fun QueuePicker(
     )
     if (clearing) {
         val name = queues.firstOrNull { it.id == keep }?.name ?: ""
-        AlertDialog(
-            onDismissRequest = { clearing = false },
-            title = { Text("Remove the other ${queues.size - 1} queues?") },
-            text = { Text(if (keep == activeId) "Only “$name”, the queue playing, stays." else "Only “$name” stays.") },
-            confirmButton = {
-                TextButton({
-                    app.playback.deleteOthers(keep)
-                    clearing = false
-                    onDismiss()
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton({ clearing = false }) { Text("Cancel") } },
-        )
+        ConfirmDialog(
+            "Remove the other ${queues.size - 1} queues?",
+            if (keep == activeId) "Only “$name”, the queue playing, stays." else "Only “$name” stays.",
+            "Remove",
+            onDismiss = { clearing = false },
+        ) {
+            app.playback.deleteOthers(keep)
+            onDismiss()
+        }
     }
 }
 
@@ -516,7 +496,7 @@ fun AddToQueueDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (songs.size == 1) "Add “${songs[0].title}” to" else "Add ${songs.size} songs to") },
+        title = { Text(addTitle(songs)) },
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 item { DialogRow("New queue", icon = Icons.Add) { naming = true } }

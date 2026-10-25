@@ -48,7 +48,7 @@ class LocalSongs(
 
     init {
         app.contentResolver.registerContentObserver(
-            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL),
+            M.getContentUri(MediaStore.VOLUME_EXTERNAL),
             true,
             object : ContentObserver(Handler(Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean) = refresh(delayMs = 2_000)
@@ -93,7 +93,7 @@ class LocalSongs(
         val out = ArrayList<Song>()
         val counts = HashMap<String, Int>()
         val found = HashMap<Long, Uri>()
-        val base = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val base = M.getContentUri(MediaStore.VOLUME_EXTERNAL)
         // Ringtones, alarms and recordings are audio but not music, whatever their length.
         val selection = "${M.IS_RINGTONE} = 0 AND ${M.IS_NOTIFICATION} = 0 AND ${M.IS_ALARM} = 0 AND ${M.IS_RECORDING} = 0"
         app.contentResolver.query(base, COLUMNS, selection, null, null)?.use { c ->

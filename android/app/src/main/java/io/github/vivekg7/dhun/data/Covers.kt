@@ -69,6 +69,9 @@ object Covers {
     /** A list row's cover: the thumbnails every cover has ([fetchThumbs]). */
     const val THUMB = 128
 
+    /** The server's size for [px]: the smallest at least that large, else its largest. The smallest is [THUMB]. */
+    private fun sizeFor(px: Int) = SIZES.firstOrNull { it >= px } ?: SIZES.last()
+
     /** A server without art keys (before 0.1.4): one cover per song. */
     private fun key(song: Song) = song.art.ifEmpty { "s${song.id}" }
 
@@ -80,7 +83,7 @@ object Covers {
         if (!song.hasArt) return null
         if (song.onPhone) return phone(song, px)
         if (px <= THUMB) thumb(song)?.let { return it }
-        val size = SIZES.firstOrNull { it >= px } ?: SIZES.last()
+        val size = sizeFor(px)
         val key = key(song)
         val mem = "$key/$size"
         memory.get(mem)?.let { return it }
@@ -103,7 +106,7 @@ object Covers {
         if (!song.hasArt) return null
         val thumb = if (song.onPhone) "p${song.id}/$THUMB" else "${song.art}/t"
         if (px <= THUMB) return memory.get(thumb)
-        val size = SIZES.firstOrNull { it >= px } ?: SIZES.last()
+        val size = sizeFor(px)
         return memory.get(if (song.onPhone) "p${song.id}/$size" else "${key(song)}/$size") ?: memory.get(thumb)
     }
 
@@ -131,7 +134,7 @@ object Covers {
         song: Song,
         px: Int,
     ): Bitmap? {
-        val size = if (px <= THUMB) THUMB else SIZES.firstOrNull { it >= px } ?: SIZES.last()
+        val size = sizeFor(px)
         val mem = "p${song.id}/$size"
         memory.get(mem)?.let { return it }
         return app.local.cover(song.id, size)?.also { memory.put(mem, it) }

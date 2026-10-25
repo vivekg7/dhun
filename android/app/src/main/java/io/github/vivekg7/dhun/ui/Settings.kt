@@ -3,6 +3,8 @@ package io.github.vivekg7.dhun.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.format.DateUtils
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ScrollState
@@ -54,11 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import io.github.vivekg7.dhun.App
 import io.github.vivekg7.dhun.BuildConfig
 import io.github.vivekg7.dhun.Prefs
+import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.ApiException
 import io.github.vivekg7.dhun.data.LocalSongs
 import io.github.vivekg7.dhun.data.Member
@@ -79,8 +84,10 @@ import io.github.vivekg7.dhun.data.parseTime
 import io.github.vivekg7.dhun.ui.theme.Palette
 import io.github.vivekg7.dhun.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.IOException
 
 /**
  * Musicolet's shape (docs/plans/018_settings_layout.md): a short list of
@@ -183,20 +190,7 @@ private fun ResetMenu(
         Tip("More options") { IconButton({ menu = true }) { Icon(Icons.More, "More options") } }
         DropdownMenu(menu, { menu = false }) { MenuItem("Reset to defaults", { menu = false }) { confirm = true } }
     }
-    if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("Reset $title?") },
-            text = { Text(note) },
-            confirmButton = {
-                TextButton({
-                    confirm = false
-                    reset()
-                }) { Text("Reset") }
-            },
-            dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
-        )
-    }
+    if (confirm) ConfirmDialog("Reset $title?", note, "Reset", onDismiss = { confirm = false }, onConfirm = reset)
 }
 
 @Composable
@@ -220,7 +214,7 @@ private fun MainSettings(
 @Composable
 private fun AppearanceSettings(openGuide: (String?) -> Unit) {
     val prefs = App.app.prefs
-    ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }, default = Prefs.THEME) { prefs.chooseTheme(it) }
+    ChoiceRow("Theme", ThemeMode.entries, prefs.themeMode, { it.label }, default = Prefs.THEME) { prefs.themeMode = it }
     ChoiceRow(
         "Mini player",
         MiniPlayerStyle.entries,
@@ -228,7 +222,7 @@ private fun AppearanceSettings(openGuide: (String?) -> Unit) {
         { it.label },
         default = Prefs.MINI_PLAYER,
         guide = { openGuide("Mini player") },
-    ) { prefs.chooseMiniPlayer(it) }
+    ) { prefs.miniPlayer = it }
     var palette by remember { mutableStateOf(false) }
     SettingRow("Accent colour", prefs.palette.label) { palette = true }
     if (palette) {
@@ -239,7 +233,7 @@ private fun AppearanceSettings(openGuide: (String?) -> Unit) {
                 FlowRow(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     for (p in Palette.entries) {
                         PaletteSwatch(p, p == prefs.palette, p == Prefs.PALETTE) {
-                            prefs.choosePalette(p)
+                            prefs.palette = p
                             palette = false
                         }
                     }
@@ -331,12 +325,10 @@ private fun LibrarySettings() {
     val ask =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                prefs.choosePhoneSongs(true)
+                prefs.phoneSongs = true
                 app.local.refresh()
             } else {
-                android.widget.Toast
-                    .makeText(context, "Without access to music, Dhun cannot show the phone's songs", android.widget.Toast.LENGTH_LONG)
-                    .show()
+                Toast.makeText(context, "Without access to music, Dhun cannot show the phone's songs", Toast.LENGTH_LONG).show()
             }
         }
     val allowed = app.local.allowed()
@@ -350,7 +342,7 @@ private fun LibrarySettings() {
         if (on && !allowed) {
             ask.launch(LocalSongs.PERMISSION)
         } else {
-            prefs.choosePhoneSongs(on)
+            prefs.phoneSongs = on
             app.local.refresh()
         }
     }
@@ -362,7 +354,7 @@ private fun LibrarySettings() {
         default = Prefs.PHONE_MIN_SECONDS,
         enabled = prefs.phoneSongs,
     ) {
-        prefs.choosePhoneMinSeconds(it)
+        prefs.phoneMinSeconds = it
         app.local.refresh()
     }
     var excluding by remember { mutableStateOf(false) }
@@ -406,7 +398,7 @@ private fun ExcludedFoldersDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton({
-                app.prefs.choosePhoneExcluded(chosen)
+                app.prefs.phoneExcluded = chosen
                 app.local.refresh()
                 onDismiss()
             }) { Text("Done") }
@@ -430,11 +422,11 @@ private fun DownloadSettings(openGuide: (String?) -> Unit) {
         note = "At the limit, downloads stop. Nothing is deleted.",
         default = Prefs.DOWNLOAD_LIMIT_GB,
     ) {
-        prefs.chooseDownloadLimit(it)
+        prefs.downloadLimitGb = it
         app.downloads.poke()
     }
     SwitchRow("Wi-Fi only", null, prefs.wifiOnly) {
-        prefs.chooseWifiOnly(it)
+        prefs.wifiOnly = it
         app.downloads.poke()
     }
     val cached by app.cache.used.collectAsState()
@@ -447,7 +439,7 @@ private fun DownloadSettings(openGuide: (String?) -> Unit) {
         guide = { openGuide("Song cache") },
         summary = if (prefs.cacheLimitGb == 0) "Off" else "${prefs.cacheLimitGb} GB · ${bytes(cached)} used",
     ) {
-        prefs.chooseCacheLimit(it)
+        prefs.cacheLimitGb = it
         app.cache.poke()
     }
 }
@@ -519,9 +511,9 @@ private fun FamilySettings() {
                 members = app.api.members()
             } catch (e: ApiException) {
                 error = e.message
-            } catch (e: java.io.IOException) {
+            } catch (e: IOException) {
                 error = "This needs the server, which cannot be reached now."
-            } catch (e: kotlinx.serialization.SerializationException) {
+            } catch (e: SerializationException) {
                 error = "The server's answer could not be read."
             }
         }
@@ -563,26 +555,14 @@ private fun FamilySettings() {
 
 private fun memberSummary(m: Member): String {
     val seen = parseTime(m.lastSeenAt)
-    return when {
-        m.devices == 0 -> {
-            "Not signed in on any device"
+    val ago =
+        when {
+            seen == 0L -> null
+            System.currentTimeMillis() - seen < 60_000 -> "seen just now"
+            else -> "seen ${DateUtils.getRelativeTimeSpanString(seen)}"
         }
-
-        seen == 0L -> {
-            "Signed in on ${m.devices} device${if (m.devices == 1) "" else "s"}"
-        }
-
-        else -> {
-            val ago =
-                if (System.currentTimeMillis() - seen < 60_000) {
-                    "just now"
-                } else {
-                    android.text.format.DateUtils
-                        .getRelativeTimeSpanString(seen)
-                }
-            "Signed in on ${m.devices} device${if (m.devices == 1) "" else "s"} · seen $ago"
-        }
-    }.let { "$it · tap to reset the password" }
+    val signedIn = if (m.devices == 0) "Not signed in on any device" else dotted("Signed in on ${count(m.devices, "device")}", ago)
+    return "$signedIn · tap to reset the password"
 }
 
 /**
@@ -632,9 +612,9 @@ private fun MemberDialog(
                         submit(name.trim(), password)
                     } catch (e: ApiException) {
                         error = e.message
-                    } catch (e: java.io.IOException) {
+                    } catch (e: IOException) {
                         error = "Could not reach the server."
-                    } catch (e: kotlinx.serialization.SerializationException) {
+                    } catch (e: SerializationException) {
                         error = "The server's answer could not be read."
                     } finally {
                         busy = false
@@ -849,7 +829,7 @@ private fun PaletteSwatch(
             contentAlignment = Alignment.Center,
         ) {
             Box(Modifier.size(48.dp).background(accent, CircleShape), contentAlignment = Alignment.Center) {
-                if (selected) Icon(Icons.Check, null, Modifier.size(22.dp), tint = androidx.compose.ui.graphics.Color.White)
+                if (selected) Icon(Icons.Check, null, Modifier.size(22.dp), tint = Color.White)
             }
         }
         Text(p.label, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = if (selected) c.onSurface else c.onSurfaceVariant)
@@ -897,7 +877,7 @@ fun SignInScreen() {
                 app.scope.launch { app.sync.now() }
             } catch (e: ApiException) {
                 error = if (e.code == 401) "Wrong name or password" else e.message
-            } catch (e: java.io.IOException) {
+            } catch (e: IOException) {
                 error = "Could not reach $url (${e.message})"
             } catch (e: Exception) {
                 error = e.message ?: e.toString()
@@ -922,7 +902,7 @@ fun SignInScreen() {
     // Without an account the app is the phone's songs: asked for here, and opened either way.
     val askMusic =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) app.prefs.choosePhoneSongs(true)
+            if (granted) app.prefs.phoneSongs = true
             app.local.refresh()
             app.prefs.withoutAccount = true
         }
@@ -943,15 +923,9 @@ fun SignInScreen() {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
-            Icon(
-                androidx.compose.ui.res
-                    .painterResource(io.github.vivekg7.dhun.R.drawable.ic_stat),
-                null,
-                Modifier.size(36.dp),
-                tint = MaterialTheme.colorScheme.onPrimary,
-            )
+            Icon(painterResource(R.drawable.ic_stat), null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
-        Text("Dhun", style = MaterialTheme.typography.displaySmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+        Text("Dhun", style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold))
         Text(
             if (revoked) {
                 "Your password was changed or this phone was signed out. Sign in again; nothing on this phone is lost."
@@ -970,9 +944,14 @@ fun SignInScreen() {
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
         )
-        OutlinedTextField(user, {
-            user = it
-        }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next))
+        OutlinedTextField(
+            user,
+            { user = it },
+            Modifier.fillMaxWidth(),
+            label = { Text("Name") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        )
         OutlinedTextField(
             password,
             { password = it },

@@ -1,6 +1,5 @@
 package io.github.vivekg7.dhun.play
 
-import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -28,10 +27,10 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import io.github.vivekg7.dhun.App
-import io.github.vivekg7.dhun.MainActivity
 import io.github.vivekg7.dhun.R
 import io.github.vivekg7.dhun.data.Covers
 import io.github.vivekg7.dhun.data.Synced
+import io.github.vivekg7.dhun.openApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,17 +58,10 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val app = application as App
-        val open =
-            PendingIntent.getActivity(
-                this,
-                0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
         session =
             MediaSession
                 .Builder(this, SleepAware(app.playback.player, app.playback.sleep))
-                .setSessionActivity(open)
+                .setSessionActivity(openApp())
                 .setCallback(SessionCallback())
                 .setBitmapLoader(CoverLoader(DataSourceBitmapLoader.Builder(this).setDataSourceFactory(OkHttpDataSource.Factory(app.api.http)).build()))
                 .build()

@@ -1,5 +1,7 @@
 package io.github.vivekg7.dhun.data
 
+import java.util.PriorityQueue
+
 /**
  * The library as the tabs show it, derived from the song list in memory:
  * simpler and faster than keeping albums, artists and folders as tables.
@@ -69,7 +71,7 @@ class Catalog(
 
     /** The newest [VIEW_SIZE] songs: a selection, never a sort of the whole library. */
     val recentlyAdded: List<Song> by lazy {
-        val heap = java.util.PriorityQueue<Song>(VIEW_SIZE + 1, compareBy { it.addedAt })
+        val heap = PriorityQueue<Song>(VIEW_SIZE + 1, compareBy { it.addedAt })
         for (s in songs) {
             heap += s
             if (heap.size > VIEW_SIZE) heap.poll()
@@ -86,6 +88,9 @@ class Catalog(
     val books: List<Shelf> by lazy { shelves(all, Song.AUDIOBOOK) }
     val shows: List<Shelf> by lazy { shelves(all, Song.PODCAST) }
     val shelves: Map<String, Shelf> by lazy { (books + shows).associateBy { it.key } }
+
+    /** The album [s] is on, or null. */
+    fun albumOf(s: Song) = albums.firstOrNull { a -> a.songs.any { it.id == s.id } }
 
     /** The shelf [s] is on, or null for music. */
     fun shelfOf(s: Song) = if (s.spoken) shelves[shelfKey(s)] else null

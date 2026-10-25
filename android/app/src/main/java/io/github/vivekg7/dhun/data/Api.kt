@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -19,6 +20,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
 
@@ -77,68 +80,48 @@ class Api(
      */
     val reachable = MutableStateFlow(true)
 
-    fun streamUrl(song: Long) = "${prefs.server}/api/v1/stream/$song"
+    fun streamUrl(song: Long) = url("stream/$song")
 
     fun artUrl(
         song: Long,
         size: Int,
-    ) = "${prefs.server}/api/v1/art/$song?size=$size"
+    ) = url("art/$song?size=$size")
 
     suspend fun login(
         server: String,
         user: String,
         password: String,
         device: String,
-    ): Login {
-        val body =
+    ): Login =
+        send(
+            "$server/api/v1/login",
             buildJsonObject {
                 put("username", user)
                 put("password", password)
                 put("device", device)
-            }
-        return call(
-            Request
-                .Builder()
-                .url("$server/api/v1/login")
-                .post(body.toString().toRequestBody(JSON))
-                .build(),
+            },
         )
-    }
 
     /** Podcasts and audiobooks too (`kinds=all`): without it the server sends music only, for apps that predate them. */
-    suspend fun library(since: Long): Library = call(Request.Builder().url("${prefs.server}/api/v1/library?since=$since&kinds=all").build())
+    suspend fun library(since: Long): Library = get("library?since=$since&kinds=all")
 
     suspend fun sync(
         since: Long,
         ops: List<JsonElement>,
-    ): SyncState {
-        val body =
+    ): SyncState =
+        send(
+            url("sync"),
             buildJsonObject {
                 put("since", since)
-                put("ops", kotlinx.serialization.json.JsonArray(ops))
-            }
-        return call(
-            Request
-                .Builder()
-                .url("${prefs.server}/api/v1/sync")
-                .post(body.toString().toRequestBody(JSON))
-                .build(),
+                put("ops", JsonArray(ops))
+            },
         )
-    }
 
     /** Thumbnails by art key, base64; "" for a key with nothing to show. At most [MAX_THUMBS] keys. */
-    suspend fun thumbs(keys: List<String>): Map<String, String> {
-        val body = buildJsonObject { put("keys", kotlinx.serialization.json.JsonArray(keys.map(::JsonPrimitive))) }
-        return call<ThumbsDto>(
-            Request
-                .Builder()
-                .url("${prefs.server}/api/v1/thumbs")
-                .post(body.toString().toRequestBody(JSON))
-                .build(),
-        ).thumbs
-    }
+    suspend fun thumbs(keys: List<String>): Map<String, String> =
+        send<ThumbsDto>(url("thumbs"), buildJsonObject { put("keys", JsonArray(keys.map(::JsonPrimitive))) }).thumbs
 
-    suspend fun lyrics(song: Long): LyricsDto = call(Request.Builder().url("${prefs.server}/api/v1/lyrics/$song").build())
+    suspend fun lyrics(song: Long): LyricsDto = get("lyrics/$song")
 
     /** Songs whose lyrics hold every word of [q], each with the line that does (docs/plans/029_search.md). */
     suspend fun searchLyrics(q: String): List<LyricsHit> =
@@ -146,7 +129,7 @@ class Api(
             Request
                 .Builder()
                 .url(
-                    "${prefs.server}/api/v1/search/lyrics"
+                    url("search/lyrics")
                         .toHttpUrl()
                         .newBuilder()
                         .addQueryParameter("q", q)
@@ -154,47 +137,50 @@ class Api(
                 ).build(),
         ).hits
 
-    suspend fun me(): Me = call(Request.Builder().url("${prefs.server}/api/v1/me").build())
+    suspend fun me(): Me = get("me")
 
-    suspend fun nowPlaying(): NowPlaying? = call<NowPlayingResponse>(Request.Builder().url("${prefs.server}/api/v1/now-playing").build()).nowPlaying
+    suspend fun nowPlaying(): NowPlaying? = get<NowPlayingResponse>("now-playing").nowPlaying
 
-    suspend fun plays(): Plays = call(Request.Builder().url("${prefs.server}/api/v1/plays").build())
+    suspend fun plays(): Plays = get("plays")
 
     // Family members, for the admin (docs/plans/023_users_on_android.md).
 
-    suspend fun members(): List<Member> = call<Members>(Request.Builder().url("${prefs.server}/api/v1/admin/users").build()).users
+    suspend fun members(): List<Member> = get<Members>("admin/users").users
 
     suspend fun addMember(
         name: String,
         password: String,
     ) {
-        val body =
+        send<JsonObject>(
+            url("admin/users"),
             buildJsonObject {
                 put("name", name)
                 put("password", password)
-            }
-        call<JsonObject>(
-            Request
-                .Builder()
-                .url("${prefs.server}/api/v1/admin/users")
-                .post(body.toString().toRequestBody(JSON))
-                .build(),
+            },
         )
     }
 
     suspend fun resetPassword(
         user: Long,
         password: String,
-    ) {
-        val body = buildJsonObject { put("password", password) }
-        call<Unit>(
+    ) = send<Unit>(url("admin/users/$user/password"), buildJsonObject { put("password", password) }, "PUT")
+
+    private fun url(path: String) = "${prefs.server}/api/v1/$path"
+
+    private suspend inline fun <reified T> get(path: String): T = call(Request.Builder().url(url(path)).build())
+
+    private suspend inline fun <reified T> send(
+        url: String,
+        body: JsonObject,
+        method: String = "POST",
+    ): T =
+        call(
             Request
                 .Builder()
-                .url("${prefs.server}/api/v1/admin/users/$user/password")
-                .put(body.toString().toRequestBody(JSON))
+                .url(url)
+                .method(method, body.toString().toRequestBody(JSON))
                 .build(),
         )
-    }
 
     /**
      * Decoded from the stream: the first library sync is tens of megabytes
@@ -274,19 +260,11 @@ private fun utcTime(s: String): Long? {
         }
     }
     // A day the month does not have (30 February) is no time at all.
-    val days =
-        runCatching {
-            java.time.LocalDate
-                .of(year, month, day)
-                .toEpochDay()
-        }.getOrNull() ?: return 0
+    val days = runCatching { LocalDate.of(year, month, day).toEpochDay() }.getOrNull() ?: return 0
     return ((days * 86_400 + hour * 3_600 + minute * 60 + second) * 1_000) + millis
 }
 
-fun formatTime(ms: Long): String =
-    java.time.Instant
-        .ofEpochMilli(ms)
-        .toString()
+fun formatTime(ms: Long): String = Instant.ofEpochMilli(ms).toString()
 
 @Serializable data class ApiError(
     val code: String = "",

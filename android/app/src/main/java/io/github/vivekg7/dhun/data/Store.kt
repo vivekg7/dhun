@@ -17,6 +17,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.util.UUID
+import kotlin.random.Random
 
 /**
  * Every change to the user's synced data goes through here: it is applied
@@ -85,13 +86,9 @@ class Store(
         positionMs: Long?,
     ) {
         dao.putResume(Resume(song, positionMs ?: 0, System.currentTimeMillis(), deleted = positionMs == null))
-        if (positionMs == null) {
-            record("resume.unset", key = "resume:$song") { put("song", song) }
-        } else {
-            record("resume.set", key = "resume:$song") {
-                put("song", song)
-                put("positionMs", positionMs)
-            }
+        record(if (positionMs == null) "resume.unset" else "resume.set", key = "resume:$song") {
+            put("song", song)
+            if (positionMs != null) put("positionMs", positionMs)
         }
     }
 
@@ -99,11 +96,9 @@ class Store(
     suspend fun bookmark(b: Bookmark) {
         val now = b.copy(at = System.currentTimeMillis())
         dao.putBookmark(now)
-        if (now.deleted) {
-            record("bookmark.unset", key = "bookmark:${b.id}") { put("bookmark", b.id) }
-        } else {
-            record("bookmark.set", key = "bookmark:${b.id}") {
-                put("bookmark", b.id)
+        record(if (b.deleted) "bookmark.unset" else "bookmark.set", key = "bookmark:${b.id}") {
+            put("bookmark", b.id)
+            if (!b.deleted) {
                 put("song", b.song)
                 put("positionMs", b.positionMs)
                 put("note", b.note)
@@ -170,7 +165,7 @@ class Store(
         dao.putQueue(q)
         record("queue.insert", queue = q.id, order = songIds(q.songs)) {
             put("queue", q.id)
-            put("songs", JsonArray(songs.map(::JsonPrimitive)))
+            put("songs", ids(songs))
             if (after != null) put("after", after)
         }
     }
@@ -182,7 +177,7 @@ class Store(
         dao.putQueue(q)
         record("queue.remove", queue = q.id) {
             put("queue", q.id)
-            put("songs", JsonArray(songs.map(::JsonPrimitive)))
+            put("songs", ids(songs))
         }
     }
 
@@ -206,7 +201,7 @@ class Store(
         name: String,
         songs: List<Long>,
     ): Playlist {
-        val p = Playlist(-(1L + kotlin.random.Random.nextLong(Long.MAX_VALUE - 1)), name, "", false, songs.distinct().joinIds(), UUID.randomUUID().toString())
+        val p = Playlist(-(1L + Random.nextLong(Long.MAX_VALUE - 1)), name, "", false, songs.distinct().joinIds(), UUID.randomUUID().toString())
         dao.putPlaylist(p)
         record("playlist.create", playlist = p.id) {
             put("ref", p.ref)
@@ -227,7 +222,7 @@ class Store(
             dao.putPlaylist(p.copy(songs = (songIds(p.songs) + adding).joinIds()))
             record("playlist.insert", playlist = p.id) {
                 put("playlist", p.target)
-                put("songs", JsonArray(adding.map(::JsonPrimitive)))
+                put("songs", ids(adding))
             }
         }
         return songs.distinct().size - adding.size
@@ -268,7 +263,7 @@ class Store(
             // An unmatched entry cannot be named as "after" (0 means the start): send the order.
             record("playlist.replace", playlist = p.id) {
                 put("playlist", p.target)
-                put("songs", JsonArray(list.map(::JsonPrimitive)))
+                put("songs", ids(list))
             }
             return
         }
@@ -365,6 +360,10 @@ class Store(
         dao.putMark(Mark(PLAYED, l.song, l.endedAt, deleted = false))
     }
 
+    private fun ids(list: List<Long>) = JsonArray(list.map(::JsonPrimitive))
+
+    private fun ids(text: String) = ids(songIds(text))
+
     /**
      * [key] replaces earlier ops with the same key. [queue] and [playlist]
      * mark an op as touching that queue or playlist, so [Sync] does not
@@ -408,8 +407,6 @@ class Store(
         /** An episode or a book's file heard (docs/plans/031_podcasts_and_audiobooks.md). */
         const val PLAYED = "played"
         const val PLAYED_PERCENT = 90
-
-        fun ids(text: String) = JsonArray(songIds(text).map(::JsonPrimitive))
 
         /** Ends the outbox key of an op on that playlist. */
         fun playlistTag(id: Long) = "pl$id"

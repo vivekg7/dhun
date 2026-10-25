@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,17 +110,13 @@ private fun RemoveDialog(
     name: String,
     onDismiss: () -> Unit,
     onRemove: () -> Unit,
-) = AlertDialog(
+) = ConfirmDialog(
+    "Remove download?",
+    "“$name” stays in the library. Its songs are deleted from this phone, unless something else you downloaded has them too.",
+    "Remove",
+    "Keep",
     onDismiss,
-    confirmButton = {
-        TextButton({
-            onDismiss()
-            onRemove()
-        }) { Text("Remove") }
-    },
-    dismissButton = { TextButton(onDismiss) { Text("Keep") } },
-    title = { Text("Remove download?") },
-    text = { Text("“$name” stays in the library. Its songs are deleted from this phone, unless something else you downloaded has them too.") },
+    onRemove,
 )
 
 /** One line on what the downloads are doing, for the Playlists card and the Downloads page. */

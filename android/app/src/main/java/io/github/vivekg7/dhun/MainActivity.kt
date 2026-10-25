@@ -1,6 +1,8 @@
 package io.github.vivekg7.dhun
 
+import android.app.PendingIntent
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,6 +17,10 @@ import io.github.vivekg7.dhun.play.PlaybackService
 import io.github.vivekg7.dhun.ui.Shell
 import io.github.vivekg7.dhun.ui.SignInScreen
 import io.github.vivekg7.dhun.ui.theme.DhunTheme
+
+/** Opens the app, from a notification. */
+fun Context.openApp(): PendingIntent =
+    PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
 class MainActivity : ComponentActivity() {
     private var controller: ListenableFuture<MediaController>? = null
