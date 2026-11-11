@@ -649,13 +649,19 @@ class SongCache(
             val windowed = f.name.endsWith(WINDOW) || id?.let { app.catalog.value.byId[it] }?.let { aheadBytes(it) > 0 } == true
             (downloaded || (windowed && base(f.name) !in keep)) && drop(f, id)
         }
-        var total = files.filter { !it.name.endsWith(WINDOW) }.sumOf { it.length() }
-        for (f in files.sortedBy { it.lastModified() }) {
+        var total = files.filter { !it.name.endsWith(WINDOW) }.sumOf(::size)
+        if (total <= limit) return measure(files)
+        // A stat each, slow through the SD card's FUSE layer: once per file,
+        // not once per comparison as sortedBy's selector would be (about 3 s
+        // for 300 files on the owner's phone, before every fetch).
+        val played = files.associateWith { it.lastModified() }
+        for (f in files.sortedBy { played[it] }) {
             if (total <= limit) break
             if (f.name.endsWith(WINDOW) || base(f.name) in keep) continue
-            total -= f.length()
+            total -= size(f)
             drop(f, f.name.substringBefore('.').toLongOrNull())
         }
+        // Listed again: the loop dropped some of [files].
         measure()
     }
 
@@ -669,15 +675,34 @@ class SongCache(
         return true
     }
 
-    private fun measure() {
-        val files = files()
+    private fun measure(files: List<File> = files()) {
         // Blocks, not length: a window is a sparse file as long as the whole book.
-        _used.value = files.sumOf { f -> runCatching { Os.stat(f.path).st_blocks * 512L }.getOrDefault(f.length()) }
+        _used.value =
+            files.sumOf { f ->
+                if (PARTIAL.none { f.name.endsWith(it) }) size(f) else runCatching { Os.stat(f.path).st_blocks * 512L }.getOrDefault(f.length())
+            }
         _songs.value =
             files
                 .filter { f -> PARTIAL.none { f.name.endsWith(it) } }
                 .mapNotNull { it.name.substringBefore('.').toLongOrNull() }
                 .toSet()
+    }
+
+    /**
+     * A whole file's size from the song list, which the fetcher checked it
+     * against; a part's or a window's from the disk. A stat through the SD
+     * card's FUSE layer takes 1 to 3 ms on the owner's phone, and a full
+     * cache holds some 300 files: a stat of each, twice, before every
+     * fetch kept a book a second or two from starting.
+     */
+    private fun size(f: File): Long {
+        if (PARTIAL.any { f.name.endsWith(it) }) return f.length()
+        val s =
+            f.name
+                .substringBefore('.')
+                .toLongOrNull()
+                ?.let { app.catalog.value.byId[it] }
+        return s?.size?.takeIf { it > 0 } ?: f.length()
     }
 
     /** On the same storage as Downloads, so a promotion is a rename. */

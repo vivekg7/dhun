@@ -163,6 +163,22 @@ taught, below.
   phone's own storage, which is the same folder when there is no card.
   A window is never promoted, so it gives nothing up by not sitting beside
   Downloads; the songs stay on the card.
+- **So does every `stat` on it.** With the card fixed, a book still took
+  4–10 s to start. Timing logs showed the network answering in 10–200 ms,
+  but the fetcher spending 2.7–4 s in the cache trim before each fetch, and
+  a cold start takes three: at launch, at play, and at the jump to the
+  resume point. Each `stat` through Android's FUSE layer for the card costs
+  1–3 ms, and a full cache holds some 300 files. The trim ran a `stat` on
+  each file for every comparison of its sort (`sortedBy` calls the selector
+  every time, not once per file), even when the cache was under its limit,
+  then read every size from the disk twice more, for the total and for
+  Settings.
+  It now sorts only when over the limit, with one `stat` per file, and
+  takes a whole file's size from the song list, against which the fetcher
+  checked it. A pass is 60–340 ms. Measured on the owner's phone (Queue 13,
+  resuming a 64 kbps book at 2 h 02 m): about 14 s from launch to sound on
+  0.18.0, 1.2–1.3 s from launch to the bytes at the resume point now, and
+  the audio starts at once on play.
 
 ## Open questions
 
