@@ -42,7 +42,8 @@ import kotlin.concurrent.withLock
  * Plain files beside Downloads, not Media3's SimpleCache, so a cached song
  * becomes a download by a rename (docs/plans/007_client_architecture.md);
  * a file's modification time is when it was last played, for dropping the
- * oldest at the limit. Never holds a downloaded song.
+ * oldest at the limit. Never holds a downloaded song. Windows are the
+ * exception: they sit on the phone's own storage ([windows]).
  */
 class SongCache(
     private val app: App,
@@ -279,7 +280,8 @@ class SongCache(
     init {
         app.scope.launch(Dispatchers.IO) {
             // Which bytes of a window had arrived was only known in memory.
-            dir()?.listFiles()?.filter { f -> PARTIAL.drop(1).any { f.name.endsWith(it) } }?.forEach { it.delete() }
+            // Both folders: earlier versions put windows on the SD card.
+            files().filter { f -> PARTIAL.drop(1).any { f.name.endsWith(it) } }.forEach { it.delete() }
             measure()
             for (unit in wake) {
                 try {
@@ -302,8 +304,7 @@ class SongCache(
     /** A cached song's whole file, marked as just played; null if it is not all here. */
     fun complete(song: Long): File? {
         val s = app.catalog.value.byId[song] ?: return null
-        val dir = dir() ?: return null
-        return File(dir, s.fileName).takeIf { it.exists() }?.also { it.setLastModified(System.currentTimeMillis()) }
+        return whole(s)?.also { it.setLastModified(System.currentTimeMillis()) }
     }
 
     /**
@@ -330,7 +331,7 @@ class SongCache(
             if (e.done || e.gone) return null
             if (e.ahead == 0L && pos > e.arrived(0) + SEEK_AHEAD) return null
             // Finished just now, between the player's look for a whole file and this.
-            if (File(dir, s.fileName).exists()) return null.also { entries.remove(song, e) }
+            if (whole(s) != null) return null.also { entries.remove(song, e) }
             e.file.createNewFile()
             // Opened under the lock that renames it: the descriptor stays good
             // after the rename. The generation is read before the file is
@@ -358,7 +359,9 @@ class SongCache(
 
     /**
      * Moves a cached song into [dir], as a download (REQUIREMENTS: never
-     * fetched twice); null if it is not all here.
+     * fetched twice); null if it is not all here. A long file that a window
+     * fetched whole is on the phone, not beside Downloads, and is fetched
+     * again: a window is never promoted.
      */
     fun promote(
         s: Song,
@@ -383,12 +386,12 @@ class SongCache(
         val dir = dir() ?: return
         val limit = app.prefs.cacheLimitGb * Downloads.GB
         val plan = if (limit > 0) plan() else emptyList()
-        trim(dir, limit, plan)
+        trim(limit, plan)
         for (s in plan) {
             if (replan) return
-            if (File(dir, s.fileName).exists()) continue
+            if (whole(s) != null) continue
             if (!fetch(s, dir, current = s.id == plan.first().id)) return
-            trim(dir, limit, plan)
+            trim(limit, plan)
         }
     }
 
@@ -430,7 +433,7 @@ class SongCache(
         dir: File,
     ): Entry {
         val ahead = aheadBytes(s)
-        val file = File(dir, s.fileName + if (ahead > 0) WINDOW else PART)
+        val file = if (ahead > 0) File(windows() ?: dir, s.fileName + WINDOW) else File(dir, s.fileName + PART)
         return Entry(s.id, file, ahead, if (ahead > 0) BEHIND_MINUTES * perMinute(s) else 0).also {
             if (ahead == 0L) it.add(0, file.length())
             // The song list's size until the server says: opened without
@@ -468,16 +471,16 @@ class SongCache(
         try {
             var backoff = 1_000L
             while (true) {
-                if (replan && !stillFirst(s, dir)) return false
+                if (replan && !stillFirst(s)) return false
                 val from =
                     e.next() ?: run {
-                        if (e.whole) finish(s, e, dir)
+                        if (e.whole) finish(s, e)
                         return true
                     }
                 try {
                     when (withContext(Dispatchers.IO) { download(s, e, from) }) {
                         Outcome.WHOLE -> {
-                            finish(s, e, dir)
+                            finish(s, e)
                             return true
                         }
 
@@ -503,13 +506,12 @@ class SongCache(
         }
     }
 
-    /** The file is whole: a cached song now, by its final name. */
+    /** The file is whole: a cached song now, by its final name, in the folder it was fetched in. */
     private fun finish(
         s: Song,
         e: Entry,
-        dir: File,
     ) {
-        val file = File(dir, s.fileName)
+        val file = File(e.file.parentFile, s.fileName)
         synchronized(e) {
             if (!e.file.renameTo(file)) throw IOException("Could not save ${file.name}")
             e.file = file
@@ -619,12 +621,9 @@ class SongCache(
     }
 
     /** True if [s] is still the first song of the plan not yet whole: the plan changed, but not for it. */
-    private suspend fun stillFirst(
-        s: Song,
-        dir: File,
-    ): Boolean {
+    private suspend fun stillFirst(s: Song): Boolean {
         replan = false
-        val first = plan().firstOrNull { !File(dir, it.fileName).exists() }
+        val first = plan().firstOrNull { whole(it) == null }
         if (first?.id == s.id) return true
         replan = true
         return false
@@ -639,12 +638,11 @@ class SongCache(
      * and sits outside the music budget.
      */
     private fun trim(
-        dir: File,
         limit: Long,
         plan: List<Song>,
     ) {
         val keep = plan.map { it.fileName }.toSet()
-        val files = dir.listFiles()?.toMutableList() ?: return
+        val files = files().toMutableList()
         files.removeAll { f ->
             val id = f.name.substringBefore('.').toLongOrNull()
             val downloaded = id?.let { app.downloads.file(it) } != null
@@ -672,7 +670,7 @@ class SongCache(
     }
 
     private fun measure() {
-        val files = dir()?.listFiles().orEmpty()
+        val files = files()
         // Blocks, not length: a window is a sparse file as long as the whole book.
         _used.value = files.sumOf { f -> runCatching { Os.stat(f.path).st_blocks * 512L }.getOrDefault(f.length()) }
         _songs.value =
@@ -684,6 +682,23 @@ class SongCache(
 
     /** On the same storage as Downloads, so a promotion is a rename. */
     private fun dir(): File? = app.downloads.dir(DIR)
+
+    /**
+     * Where windows go: the phone's own storage, whose ext4 or f2fs keeps a
+     * sparse file sparse. An SD card is exFAT, which has no holes: a write
+     * at hour four of a book first writes every byte before it as zeros, 9 s
+     * for 450 MB on the owner's card, before the first sound, and again at
+     * every roll (docs/plans/037_long_file_cache_window.md). A window is
+     * never promoted, so it need not sit beside Downloads. Without an SD
+     * card this is [dir].
+     */
+    private fun windows(): File? = app.getExternalFilesDir(DIR)?.also { it.mkdirs() }
+
+    /** Both folders' files, once each when they are one folder. */
+    private fun files(): List<File> = listOfNotNull(dir(), windows()).distinct().flatMap { it.listFiles().orEmpty().asList() }
+
+    /** [s]'s whole file in either folder, or null. */
+    private fun whole(s: Song): File? = listOfNotNull(dir(), windows()).firstNotNullOfOrNull { d -> File(d, s.fileName).takeIf { it.exists() } }
 
     /** A cached file's name without a `.part` or `.window`. */
     private fun base(name: String) = name.removeSuffix(PART).removeSuffix(WINDOW)

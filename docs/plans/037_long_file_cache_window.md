@@ -105,9 +105,11 @@ falls back to the stream for a long file. The Mac already works this way
 through `SparseFile` and `Fetch`; Android gains the same for windows, while
 its music parts stay sequential and resumable across restarts.
 
-A window file is named `<id>.<ext>.window`, next to the `.part` of a song
-being fetched whole, so each platform's start-up, trim and offline rules
-can tell them apart by name alone.
+A window file is named `<id>.<ext>.window`, so each platform's start-up,
+trim and offline rules can tell it from the `.part` of a song being fetched
+whole by name alone. On Android it lives in the cache folder on the phone's
+own storage, even when songs are cached on the SD card: see what use
+taught, below.
 
 ## Plan
 
@@ -143,6 +145,24 @@ can tell them apart by name alone.
 - **Episodes fetched whole by earlier versions were still in the cache**,
   723 MB of them on the emulator. A long file cached whole is dropped once
   it leaves the plan, as a window is, unless `cacheAhead` is 0.
+
+## What use taught
+
+- **An SD card has no sparse files** (2026-11-11). After two weeks of
+  books on the owner's Galaxy A35, a book still took a long time to start.
+  The server and network were not the cause (3.3 MB/s, 0.3 s to the first
+  byte). The cause was the card: it is exFAT, which cannot leave a hole,
+  so the first write at byte 450 MB of an empty window made the card
+  write 450 MB of zeros first. Measured with `dd` on the phone, that took
+  9 s and left 429 MB on the card for one byte, against 0.1 s and 12 KB on
+  the phone's own f2fs. It happened at every app start, since start-up
+  drops windows, at every seek forward, and at every roll, which rewrote
+  the zeros up to the reader each time: about 18 s and 900 MB of card
+  writes per roll near the end of a 900 MB part. The emulator, with no
+  card, could not show it. Windows now go in the cache folder on the
+  phone's own storage, which is the same folder when there is no card.
+  A window is never promoted, so it gives nothing up by not sitting beside
+  Downloads; the songs stay on the card.
 
 ## Open questions
 
