@@ -540,7 +540,15 @@ components:
         albumArtist: { type: string }
         composer: { type: string }
         genre: { type: string }
-        genres: { type: array, items: { type: string } }
+        genres:
+          {
+            type: array,
+            items: { type: string },
+            description: Split on,
+            ; and a spaced & (an & inside a word,
+            as in R&B,
+            stays),
+          }
         year: { type: integer }
         track: { type: integer }
         disc: { type: integer }
@@ -570,6 +578,16 @@ components:
             Fetch one through /art/{id} of any song with that key. Omitted
             without art.
         hasLyrics: { type: boolean }
+        score:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: >
+            Popularity, from the curation tool's plays on JioSaavn, Spotify,
+            YouTube Music and Apple Music (_meta/index/ on the NAS). Spread
+            about evenly: 50 is the library's median. Omitted when there is
+            none. Search uses it to order equal matches
+            (docs/plans/041_search_filters_and_popularity.md).
         addedAt: { type: string, format: date-time }
         missing:
           { type: boolean, description: File gone; keep the song's data, hide it }

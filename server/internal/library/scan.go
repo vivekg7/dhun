@@ -38,7 +38,8 @@ type Scanner struct {
 	Podcasts, Audiobooks string
 	Log                  *slog.Logger
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	scored scoreStamp // the score files as last applied
 }
 
 type root struct{ kind, dir string }
@@ -65,11 +66,12 @@ type Stats struct {
 	Added, Updated, Moved, Missing, Unchanged, Failed int
 	Regrouped                                         int // podcast and audiobook files whose book, show or place changed
 	Playlists                                         int
+	Scored                                            int // songs whose popularity score changed
 }
 
 func (s Stats) String() string {
-	return fmt.Sprintf("added=%d updated=%d moved=%d missing=%d unchanged=%d failed=%d regrouped=%d playlists=%d",
-		s.Added, s.Updated, s.Moved, s.Missing, s.Unchanged, s.Failed, s.Regrouped, s.Playlists)
+	return fmt.Sprintf("added=%d updated=%d moved=%d missing=%d unchanged=%d failed=%d regrouped=%d playlists=%d scored=%d",
+		s.Added, s.Updated, s.Moved, s.Missing, s.Unchanged, s.Failed, s.Regrouped, s.Playlists, s.Scored)
 }
 
 type songRow struct {
@@ -276,10 +278,34 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 	}
 	st.Playlists = n
 
-	if st.Added+st.Updated+st.Moved+st.Missing+st.Regrouped+st.Playlists == 0 {
+	// Reading the score files takes a moment at 100,000 songs, so only when
+	// they changed or songs arrived that need a score.
+	stamp := s.scoreStamp()
+	if stamp != s.scored || st.Added+st.Moved > 0 {
+		scores, err := readScores(s.Root)
+		switch {
+		case errors.Is(err, errNoScores):
+		case err != nil:
+			// Most likely caught while the curation tool writes it: the
+			// next scan tries again, and the scores stay as they were.
+			s.Log.Warn("scan: cannot read the popularity scores", "err", err)
+			stamp = s.scored
+		default:
+			if st.Scored, err = applyScores(ctx, tx, scores, version); err != nil {
+				return st, err
+			}
+		}
+	}
+
+	if st.Added+st.Updated+st.Moved+st.Missing+st.Regrouped+st.Playlists+st.Scored == 0 {
+		s.scored = stamp
 		return st, nil // nothing changed: roll back, so the version is not burned
 	}
-	return st, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return st, err
+	}
+	s.scored = stamp
+	return st, nil
 }
 
 func takeMatch(cands []*songRow, matched map[int64]bool) *songRow {

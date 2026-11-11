@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `PROPOSED` — language filter waits on the curation tool writing a language per song
+**Status:** `IN PROGRESS` — server side built (score, genre fix); the apps next. Language waits on the curation tool
 **Started:** 2026-11-11
 
 ## Problem

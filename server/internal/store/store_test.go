@@ -107,3 +107,38 @@ func TestQueueCapMigration(t *testing.T) {
 		t.Errorf("short queue = %v, version %d; want it untouched", got, v)
 	}
 }
+
+// 0013 reads again only the songs whose genre has an "&" inside a word,
+// which used to split "R&B/Soul" in two; "Sufi & Ghazals" still splits.
+func TestGenreRereadMigration(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "d.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := migrate(db, 12); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []string{"R&B/Soul", "Rock &Roll", "Sufi & Ghazals", "Pop"} {
+		if _, err := db.Exec(`INSERT INTO songs (path, size, mtime_ns, quick_hash, title, genre, added_at, updated_at, version)
+			VALUES (?, 1, 5, x'00', 't', ?, 't', 't', 1)`, g+".mp3", g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := migrate(db, 13); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(`SELECT genre FROM songs WHERE mtime_ns = 0 ORDER BY genre`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reread []string
+	for rows.Next() {
+		var g string
+		rows.Scan(&g)
+		reread = append(reread, g)
+	}
+	if want := []string{"R&B/Soul", "Rock &Roll"}; !slices.Equal(reread, want) {
+		t.Errorf("re-read %q, want %q", reread, want)
+	}
+}

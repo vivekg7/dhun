@@ -79,8 +79,8 @@ func readTags(abs, rel string, spoken bool) (tags, error) {
 	t.AlbumArtist = first(taglib.AlbumArtist)
 	t.Composer = strings.Join(m[taglib.Composer], "; ")
 	t.Genre = strings.Join(m[taglib.Genre], "; ")
-	t.Artists = splitNames(m[taglib.Artist])
-	t.Genres = splitNames(m[taglib.Genre])
+	t.Artists = splitOn(nameSeparators, m[taglib.Artist])
+	t.Genres = splitOn(genreSeparators, m[taglib.Genre])
 	t.Year = leadingInt(first(taglib.Date, "ORIGINALDATE", "YEAR"))
 	t.Track = leadingInt(first(taglib.TrackNumber))
 	t.Disc = leadingInt(first(taglib.DiscNumber))
@@ -133,11 +133,15 @@ func openMatroska(abs string) (*os.File, int64, bool) {
 // "/" is deliberately not a separator: it would split AC/DC.
 var nameSeparators = regexp.MustCompile(`\s*(?:,|;|&|\bfeat\.|\bft\.|\bfeaturing\b)\s*`)
 
-func splitNames(values []string) []string {
+// genreSeparators split "Sufi & Ghazals" but not "R&B/Soul": in a genre an
+// "&" inside a word is part of the name.
+var genreSeparators = regexp.MustCompile(`\s*(?:,|;)\s*|\s+&\s+`)
+
+func splitOn(sep *regexp.Regexp, values []string) []string {
 	out := []string{}
 	seen := map[string]bool{}
 	for _, v := range values {
-		for _, part := range nameSeparators.Split(v, -1) {
+		for _, part := range sep.Split(v, -1) {
 			part = strings.TrimSpace(part)
 			if part != "" && !seen[strings.ToLower(part)] {
 				seen[strings.ToLower(part)] = true
