@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `IN PROGRESS` — server side built (score, genre fix); the apps next. Language waits on the curation tool
+**Status:** `IN PROGRESS` — server and Android built; macOS, web and Linux next. Language waits on the curation tool
 **Started:** 2026-11-11
 
 ## Problem
@@ -63,10 +63,13 @@ Its `song_id` maps to a path through `_meta/index/songs.jsonl`.
 
 ### How filters are applied
 
-- **A. Filter chips under the search box**, building the same query terms
-  the typed syntax builds. One matching path, and a typed filter shows up as
-  a chip.
-- **B. A separate filter screen.** More taps, and it hides what is applied.
+- **A. Filter chips building the typed syntax's terms** (`artist:"…"`).
+  One matching path, but every typed word must match, so two artists would
+  mean songs by both, and a name picked from a list needs no fuzzy match.
+  Rejected while building.
+- **B. Filter chips testing the song's own values.** Exact, and several
+  picks can mean any of them. Chosen; see Filters.
+- **C. A separate filter screen.** More taps, and it hides what is applied.
   Rejected.
 
 ## Decision
@@ -104,45 +107,71 @@ with the song.
 
 ### Filters
 
-A **Filters** chip at the start of the section-chip row opens a sheet with:
+A row of **filter chips** sits under the search box, always in view: Year,
+Artist, Genre, Popular and Sort. A chip names what it is set to ("1990s",
+"Kumar Sanu +1", "Most popular") and opens a small dialog to set it. A
+single sheet holding all of them was the first idea; the app's pattern is
+dialogs ([018](018_settings_layout.md)), and a chip per filter keeps what is
+applied on screen with one tap fewer.
 
-| Filter     | Control                                                | Term built                 |
-| ---------- | ------------------------------------------------------ | -------------------------- |
-| Year       | decade chips (50s … 20s) plus a from–to range          | `year:1990-1999`           |
-| Artist     | searchable list, several allowed (any of them matches) | `artist:"…"` (OR'd)        |
-| Genre      | the genres in the library, several allowed             | `genre:"…"` (OR'd)         |
-| Popularity | "Popular only": score 70 or more (about the top third) | `popular:`                 |
-| Language   | waits on the data; see Open questions                  | `language:hindi`           |
-| Sort       | Best match (default), Most popular, Newest, Oldest     | none; a sort, not a filter |
+| Filter   | Dialog                                                                |
+| -------- | --------------------------------------------------------------------- |
+| Year     | each decade from the 2020s to the 1950s, "Before 1950", or a from–to  |
+| Artist   | the library's artists, searched as the tab searches, most songs first |
+| Genre    | the library's genres, the same way                                    |
+| Popular  | no dialog: a toggle for score 70 or more, about the top third         |
+| Sort     | Best match (default), Most popular, Newest, Oldest                    |
+| Language | waits on the data; see Open questions                                 |
 
-Applied filters show as chips with a ✕ next to the box. **Filters work with
-an empty box**: the Songs section then lists every song that passes, in the
-chosen sort. "Most popular" is the default sort with no query. That makes
-search a browser too: 90s, Kumar Sanu, most popular first. A song tapped
-there plays the list, as any list does.
+**Filters test the song itself, not words.** An artist or a genre is picked
+from the library's own list, so it is compared with the song's values,
+ignoring case, as the Artists and Genres tabs group them. The typed
+`artist:` and `genre:` words stay as they were. They could not have done
+this job: every typed word must match, so two artists would mean songs by
+both. Picked ones mean **any of them**, and different filters all apply:
+"Arijit or Atif, from the 2010s". A song with no year is in no range, and
+sorts last by year.
 
-Several artists or genres OR together; different filters AND. That is the
-reading of "Arijit or Atif, from the 2010s" that people mean.
+**Filters work with an empty box**: the Songs section then lists every
+song that passes, most popular first unless another sort is picked. That
+makes search a browser too: 90s, Kumar Sanu, most popular first. A song
+tapped there plays the list, as any list does, and the queue is named
+after the query and the filters ("Search: 1990s · Kumar Sanu +1"). With a
+filter set, **only songs are found**, all of them rather than the first
+300: the question is about songs, and an album or folder section would
+answer a different one. A sort alone keeps every section and reorders the
+songs.
 
-The typed syntax stays and gains `popular:`. Filters are part of the query,
-so they go into recent searches with it.
+The filters stay set while the tab is away, as the box keeps its text, but
+not across a restart, and they are not kept in recent searches, which stay
+plain text. A typed `popular:` was planned and dropped: the chip does it,
+and every port would have needed it.
+
+Measured on the Pixel emulator, release build, 35,282 songs (2026-11-11):
+the 1990s with an empty box, 6,903 songs, takes 11–41 ms off the main
+thread. A keystroke over songs is 6–34 ms with one 75 ms outlier, against
+8–28 ms for the build before, within the emulator's noise.
 
 ### In playlists
 
 The song's playlists show in three places (owner, 2026-11-11):
 
-- **Song info**: a new sheet from the song menu ("Info"), with the tags,
-  format, plays, score and **In playlists**. A tap opens the playlist.
-  No client has a song-info view today; this adds one, kept to one screen.
+- **Song info**: "Info" in the song menu opens a dialog with the tags, the
+  file, the folder, plays, popularity and **In playlists**. A tap opens the
+  playlist. No client had a song-info view; this adds one, kept to one
+  screen.
 - **Song menu**: "In playlists…", shown only when there is at least one,
-  opening the same list.
-- **Search**: the Playlists section also lists playlists that hold the top
-  songs found, after the ones whose names match, so "kesariya" shows
-  "Arijit Singh - Top 200", "Pritam - Top 200" and "Wedding". Only the top 3 songs are
-  looked up, or a broad query would list every playlist.
+  for NAS songs.
+- **Search**: the playlists that hold the top 3 songs found join the
+  Playlists section, after the ones whose names match, so "kesariya" shows
+  "Arijit Singh - Top 200", "Pritam - Top 200" and "Wedding". Only the top
+  3, or a broad query would list every playlist. When no playlist's name
+  matched, the section comes right after the songs, not before: a search
+  for a song's title wants the song first.
 
 Membership comes from the playlists in the catalogue, which list their
-songs. Each client builds a song → playlists map with the search index.
+songs, some 18,000 entries over 233 playlists. The phone works out each
+song's playlists once per change to the list, not on every keystroke.
 
 ### Found while measuring
 
@@ -159,8 +188,12 @@ on any `&`. A migration makes the next scan read those 152 files again.
    scan; `score` in the library JSON; genre split fix; tests for a missing
    file, a changed score bumping the version and an unchanged one not.
 2. `api/`: document `score` in the library response.
-3. Android: store `score`; tie-break; Filters sheet and chips; empty-query
-   browse; song info; "In playlists…"; playlists in search.
+3. Android: store `score`, and pull the library again once
+   (`LIBRARY_FORMAT` 3), since a phone whose cursor is past the server's
+   scoring would never get the scores; tie-break; filter chips; empty-box
+   browse; song info; "In playlists…"; playlists in search. Built.
+   The "How it works" guide is shared by every app, so its section on
+   filters waits for the others.
 4. macOS, web, Linux: the same, as in 029. Filters on the Mac sit in the
    toolbar's search menu, not in the page.
 5. Measure against the 50 ms per keystroke target at 100,000 songs

@@ -58,6 +58,7 @@ import io.github.vivekg7.dhun.data.Folder
 import io.github.vivekg7.dhun.data.Group
 import io.github.vivekg7.dhun.data.LyricsHit
 import io.github.vivekg7.dhun.data.Playlist
+import io.github.vivekg7.dhun.data.SearchFilters
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.SearchQuery
 import io.github.vivekg7.dhun.data.Shelf
@@ -97,13 +98,25 @@ private const val SHOWN = 3
 /** Songs found are many in a big library; past this many, the query is too loose to read through. */
 private const val SONGS_SHOWN = 300
 
-/** Every section with something in it, the one with the best match first; on a tie, in [Kind]'s order. */
+/**
+ * Every section with something in it, the one with the best match first; on a tie, in [Kind]'s order.
+ * With [filters] picked only songs are found, and with an empty box they are
+ * every song that passes: "90s Kumar Sanu, most popular first" is a question
+ * about songs (docs/plans/041_search_filters_and_popularity.md).
+ */
 private fun find(
     catalog: Catalog,
     playlists: List<Playlist>,
     q: SearchQuery,
+    filters: SearchFilters,
     boost: (Song) -> Int,
 ): List<Found> {
+    if (!filters.isEmpty) {
+        val t0 = System.nanoTime()
+        val songs = filters.apply(if (q.isEmpty) catalog.songs else catalog.songIndex.search(q, boost).map { it.first }, ranked = !q.isEmpty)
+        Log.d(App.TAG, "search \"${q.whole}\" filtered: ${songs.size} of ${catalog.songs.size} in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        return if (songs.isEmpty()) emptyList() else listOf(Found(Kind.Songs, songs, 0))
+    }
     if (q.isEmpty) return emptyList()
 
     fun <T> section(
@@ -118,8 +131,9 @@ private fun find(
         return hits.takeIf { it.isNotEmpty() }?.let { Found(kind, it.map { h -> h.first as Any }, it.first().second) }
     }
     return listOfNotNull(
-        section(Kind.Artists, catalog.artistIndex),
-        section(Kind.Albums, catalog.albumIndex),
+        // Among equal matches, the better known first (docs/plans/041_search_filters_and_popularity.md).
+        section(Kind.Artists, catalog.artistIndex) { it.score },
+        section(Kind.Albums, catalog.albumIndex) { it.score },
         section(Kind.Genres, catalog.genreIndex),
         section(Kind.Folders, catalog.folderIndex),
         section(Kind.Playlists, SearchIndex.names(playlists, "playlist") { it.name }),
@@ -127,8 +141,40 @@ private fun find(
         section(Kind.Shows, catalog.showIndex),
         section(Kind.Episodes, catalog.episodeIndex),
         section(Kind.Songs, catalog.songIndex, boost),
-    ).sortedBy { it.best }
+    ).map { f ->
+        @Suppress("UNCHECKED_CAST")
+        if (f.kind == Kind.Songs && filters.sort != SearchFilters.Sort.Best) Found(f.kind, filters.apply(f.hits as List<Song>, ranked = true), f.best) else f
+    }.let { withPlaylistsOfSongs(it, playlists) }
+        .sortedBy { it.best }
 }
+
+/**
+ * The playlists that hold the top songs found join the Playlists section,
+ * after those whose names match, so "kesariya" shows where Kesariya is.
+ * Only the top few: a broad query's songs would list every playlist.
+ * With no playlist named so, the section comes right after the songs: a
+ * search for a song's title wants the song first.
+ */
+private fun withPlaylistsOfSongs(
+    found: List<Found>,
+    playlists: List<Playlist>,
+): List<Found> {
+    val songs = found.firstOrNull { it.kind == Kind.Songs } ?: return found
+    val named = found.firstOrNull { it.kind == Kind.Playlists }
+    val have = named?.hits.orEmpty().toSet()
+    val holding =
+        songs.hits
+            .take(SHOWN)
+            .flatMap { playlistsOf(playlists, (it as Song).id) }
+            .distinct()
+            .filterNot { it in have }
+    if (holding.isEmpty()) return found
+    val section = Found(Kind.Playlists, named?.hits.orEmpty() + holding, named?.best ?: (songs.best + 1))
+    return if (named == null) found + section else found.map { if (it === named) section else it }
+}
+
+/** The filters stay set while the tab is away, as the box keeps its text. */
+private val searchFilters = mutableStateOf(SearchFilters())
 
 // The last results and what they were for, kept while the tab is away.
 private var lastFound: Pair<List<Any>, List<Found>> = emptyList<Any>() to emptyList()
@@ -142,17 +188,19 @@ fun SearchScreen(nav: Nav) {
     val favorites by app.store.favorites.collectAsState()
     val stats by app.store.playStats.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
+    var filters by searchFilters
     val q = remember(query) { SearchQuery(query) }
     // Off the main thread: the first search builds the catalog's indexes.
     // Starts from the last results when they still hold: the tab coming back
     // from one must show them in its first frame, or its saved scroll is lost.
-    val foundFor = listOf(catalog, playlists, query)
-    val found by produceState(lastFound.takeIf { it.first == foundFor }?.second ?: emptyList(), catalog, playlists, q) {
+    val foundFor = listOf(catalog, playlists, query, filters)
+    val found by produceState(lastFound.takeIf { it.first == foundFor }?.second ?: emptyList(), catalog, playlists, q, filters) {
         val favs = favorites.map { it.song }.toSet()
         val plays = stats.associate { it.song to it.count }
         value =
             withContext(Dispatchers.Default) {
-                find(catalog, playlists, q) { s -> (if (s.id in favs) 3 else 0) + minOf(2, (plays[s.id] ?: 0) / 5) }
+                // The user's own taste first, then the world's: popularity breaks only the ties left.
+                find(catalog, playlists, q, filters) { s -> ((if (s.id in favs) 3 else 0) + minOf(2, (plays[s.id] ?: 0) / 5)) * 128 + s.score }
             }
         lastFound = foundFor to value
     }
@@ -192,22 +240,30 @@ fun SearchScreen(nav: Nav) {
 
     fun shown(f: Found) =
         when {
+            // Filtered, the songs are a list to browse and play, not a loose query's tail.
+            f.kind == Kind.Songs && !filters.isEmpty -> f.hits
+
             f.kind == Kind.Songs -> f.hits.take(SONGS_SHOWN)
+
             whole(f) -> f.hits
+
             else -> f.hits.take(SHOWN)
         }
 
     fun more(f: Found) = !whole(f) && f.hits.size > SHOWN
 
-    val lyrics = inLyrics
+    val lyrics = inLyrics?.let { l -> if (filters.isEmpty) l else l.filter { filters.accepts(it.first) } }
+    val browse = query.isNotBlank() || !filters.isEmpty
+    // What a queue played from here is named, and what nothing matched.
+    val label = listOf(query.trim(), filters.describe()).filter { it.isNotEmpty() }.joinToString(" · ")
     // Each section's chip and where its heading is in the list: after the
     // field, and the chips themselves when there are two sections to jump between.
     val names = found.map { it.kind.label } + if (lyrics.isNullOrEmpty()) emptyList() else listOf("Lyrics")
-    val chips = query.isNotBlank() && names.size > 1
+    val chips = browse && names.size > 1
     val starts =
         found
             .runningFold(
-                if (chips) 2 else 1,
+                if (chips) 3 else 2,
             ) { at, f -> at + 1 + shown(f).size + if (more(f)) 1 else 0 }
             .let { if (lyrics.isNullOrEmpty()) it.dropLast(1) else it }
     var chipsHeight by remember { mutableIntStateOf(0) }
@@ -221,7 +277,8 @@ fun SearchScreen(nav: Nav) {
                     if (canHear) Tip("Search by voice") { IconButton({ hear.launch(listen()) }) { Icon(Icons.Mic, "Search by voice", Modifier.size(22.dp)) } }
                 }
             }
-            if (query.isBlank()) {
+            item(key = "filters") { SearchFilterChips(filters, catalog) { filters = it } }
+            if (!browse) {
                 recent(app.prefs.recentSearches, { query = it }, catalog.songs.size)
                 return@LazyColumn
             }
@@ -239,7 +296,7 @@ fun SearchScreen(nav: Nav) {
                     itemsIndexed(songs, key = { _, s -> "song/${s.id}" }) { i, s ->
                         SongRow(s, onClick = {
                             keep()
-                            playList(nav, "Search: ${query.trim()}", "search", songs, i)
+                            playList(nav, "Search: $label", "search", songs, i)
                         }, menu = SongMenu(nav = nav))
                     }
                 } else {
@@ -263,7 +320,7 @@ fun SearchScreen(nav: Nav) {
                     }, menu = SongMenu(nav = nav), detail = "“$line”")
                 }
             }
-            if (found.isEmpty() && lyrics?.isEmpty() == true) item { Empty("Nothing matches “${query.trim()}”") }
+            if (found.isEmpty() && lyrics?.isEmpty() == true) item { Empty("Nothing matches “$label”") }
         }
     }
 }

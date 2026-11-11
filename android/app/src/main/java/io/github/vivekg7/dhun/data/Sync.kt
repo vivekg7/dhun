@@ -365,9 +365,10 @@ fun mergePhoneSongs(
 /**
  * Raised when songs gain a field: 1 is the art key (docs/plans/019_networking_and_caching.md),
  * 2 podcasts and audiobooks, which the server sends only to a client that
- * asks for them from the start (docs/plans/031_podcasts_and_audiobooks.md).
+ * asks for them from the start (docs/plans/031_podcasts_and_audiobooks.md),
+ * 3 the popularity score (docs/plans/041_search_filters_and_popularity.md).
  */
-const val LIBRARY_FORMAT = 2L
+const val LIBRARY_FORMAT = 3L
 
 // A blip is over in seconds; the 15 minutes this once grew to left the app
 // offline long after the network was back (docs/plans/019_networking_and_caching.md).

@@ -328,6 +328,7 @@ data class SongDto(
     val group: String = "",
     val groupTitle: String = "",
     val groupIndex: Int = 0,
+    val score: Int = 0,
 ) {
     fun toSong() =
         Song(
@@ -361,6 +362,7 @@ data class SongDto(
             group,
             groupTitle,
             groupIndex,
+            score,
         )
 }
 

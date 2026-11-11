@@ -42,7 +42,7 @@ class Catalog(
     }
 
     val artists: List<Group> by lazy { group { it.artistList.ifEmpty { listOf(it.displayArtist) } } }
-    val genres: List<Group> by lazy { group { it.genreList.ifEmpty { listOf("Unknown genre") } } }
+    val genres: List<Group> by lazy { group { it.genreList.ifEmpty { listOf(SearchFilters.UNKNOWN_GENRE) } } }
 
     /**
      * Every folder, keyed by its path relative to the Music folder ("" is the
@@ -186,12 +186,17 @@ data class Album(
     val artist: String,
     val year: Int,
     val songs: List<Song>,
-)
+) {
+    /** Its best song's popularity: among equal search matches the better known comes first. */
+    val score by lazy { songs.maxOfOrNull { it.score } ?: 0 }
+}
 
 data class Group(
     val name: String,
     val songs: List<Song>,
-)
+) {
+    val score by lazy { songs.maxOfOrNull { it.score } ?: 0 }
+}
 
 /**
  * An audiobook or a podcast show (docs/plans/031_podcasts_and_audiobooks.md):

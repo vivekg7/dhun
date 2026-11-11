@@ -2,6 +2,8 @@ package io.github.vivekg7.dhun
 
 import io.github.vivekg7.dhun.data.Fold
 import io.github.vivekg7.dhun.data.LyricsRow
+import io.github.vivekg7.dhun.data.SearchFilters
+import io.github.vivekg7.dhun.data.SearchFilters.Sort
 import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.SearchQuery
 import io.github.vivekg7.dhun.data.Song
@@ -92,5 +94,49 @@ class SearchTest {
         assertEquals("Tere bina kya wajood mera", hits[0].line)
         // Words spread over two lines are not a match.
         assertEquals(emptyList<Long>(), searchKept(rows, SearchQuery("nothing gaye")).map { it.song })
+    }
+
+    // docs/plans/041_search_filters_and_popularity.md
+    private fun rated(
+        id: Long,
+        artist: String,
+        year: Int,
+        score: Int,
+    ) = song(id, "Song $id", artist, year = year).copy(score = score)
+
+    private val rated =
+        listOf(
+            rated(1, "Arijit Singh", 2013, 97),
+            rated(2, "Atif Aslam", 2009, 80),
+            rated(3, "Arijit Singh", 2019, 40),
+            rated(4, "Kumar Sanu", 1993, 90),
+            rated(5, "Kumar Sanu", 0, 60),
+        )
+
+    private fun ids(
+        f: SearchFilters,
+        ranked: Boolean = false,
+    ) = f.apply(rated, ranked).map { it.id }
+
+    @Test
+    fun severalArtistsMeanAnyOfThemAndFiltersMeanAll() {
+        val f = SearchFilters(artists = setOf("arijit singh", "Atif Aslam"))
+        assertEquals(listOf(1L, 2L, 3L), ids(f))
+        assertEquals(listOf(1L, 3L), ids(f.copy(years = 2010..2019)))
+        assertEquals(listOf(1L, 2L), ids(f.copy(popular = true)))
+    }
+
+    @Test
+    fun aSongWithNoYearIsInNoRangeAndSortsLast() {
+        assertEquals(listOf(4L), ids(SearchFilters(years = 1..1999)))
+        assertEquals("Before 2000", SearchFilters.yearsLabel(1..1999))
+        assertEquals(listOf(4L, 2L, 1L, 3L, 5L), ids(SearchFilters(sort = Sort.Oldest)))
+    }
+
+    @Test
+    fun withNoQueryBestMatchIsMostPopular() {
+        assertEquals(listOf(1L, 4L, 2L, 5L, 3L), ids(SearchFilters(years = 0..3000)))
+        // With a query, best match keeps the order the search ranked.
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L), ids(SearchFilters(years = 0..3000), ranked = true))
     }
 }

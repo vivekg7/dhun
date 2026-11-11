@@ -466,6 +466,9 @@ fun SongMenuButton(
     if (adding) AddToPlaylistDialog(listOf(song)) { adding = false }
     var queueing by remember { mutableStateOf(false) }
     if (queueing) AddToQueueDialog(listOf(song)) { queueing = false }
+    var info by remember { mutableStateOf("") }
+    if (info == "info") SongInfoDialog(song, menu.nav) { info = "" }
+    if (info == "playlists") InPlaylistsDialog(song, menu.nav) { info = "" }
     val pin = rememberPinner()
     Box {
         Tip("Song options") {
@@ -497,6 +500,11 @@ fun SongMenuButton(
             // A phone song stays out of playlists, and is on the phone already (docs/plans/025_phone_local_songs.md);
             // so do episodes and books, which a playlist file in Music cannot name (docs/plans/031_podcasts_and_audiobooks.md).
             if (!song.onPhone && !song.spoken) MenuItem("Add to playlist…", close) { adding = true }
+            if (!song.onPhone && !song.spoken) {
+                val playlists by app.store.playlists.collectAsState()
+                if (playlistsOf(playlists, song.id).isNotEmpty()) MenuItem("In playlists…", close) { info = "playlists" }
+            }
+            MenuItem("Info", close) { info = "info" }
             val pins by app.downloads.pins.collectAsState()
             val files by app.downloads.files.collectAsState()
             val key = Downloads.key(Downloads.SONG, song.id.toString())
