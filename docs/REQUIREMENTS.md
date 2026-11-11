@@ -353,6 +353,17 @@ since 0.13.0. Anything else waits for a later release.
   (दिल and dil), accents, and a typo where nothing better matches. Recent
   searches are kept (owner, 2026-10-10;
   [plans/029](plans/029_search.md)).
+- **Search filters and popularity** (owner, 2026-11-11; proposed in
+  [plan 041](plans/041_search_filters_and_popularity.md)). Filters by year
+  range, artist and language, the last waiting until the curation tool writes
+  a language per song. Equal matches are ordered by the popularity score the
+  curation tool computes. A song's playlists show in its info, its menu and
+  in search results.
+- **Play radio** (owner, 2026-11-11; proposed in
+  [plan 042](plans/042_play_radio.md)). "Play radio" in a song's menu makes a
+  new queue: the song, then about 10 similar ones. Tapping a found song still
+  plays the other matches by default, and a setting can change that. Radio
+  needs the server; offline it is unavailable.
 - **Asking by voice, on Android.** A mic in the Search box puts what the
   phone's recogniser heard into the box, on the device where it can. The
   phone's assistant can be asked to play something "on Dhun" with the app
