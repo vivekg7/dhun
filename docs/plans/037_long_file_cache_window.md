@@ -1,6 +1,6 @@
 # 037 — A window, not the whole file, for long files in the cache
 
-**Status:** `RELEASED` — in the 0.16.1 GitHub release (2026-10-21); 0.16.1 on the owner's phone and Mac; the server stays at `server-v0.16.0`
+**Status:** `RELEASED` — in the 0.16.1 GitHub release (2026-10-21), on the phone and the Mac; Android's SD card and trim fixes in 0.18.1 (2026-11-11), on the owner's phone
 **Started:** 2026-10-20
 
 ## Problem
