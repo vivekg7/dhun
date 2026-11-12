@@ -481,3 +481,101 @@ export const nameIndex = (items, field, name) => new Index(items, [[field, 0, na
 
 /** At most this many songs found in lyrics, here and on the server. */
 export const lyricsHits = 50;
+
+// MARK: Filters (docs/plans/041_search_filters_and_popularity.md)
+
+/** "Popular only": about the top third, as the scores spread evenly from 9 to 98. */
+export const popularScore = 70;
+export const unknownGenre = "Unknown genre";
+/** How the songs found can be ordered, by key. */
+export const filterSorts = {
+  best: "Best match",
+  popular: "Most popular",
+  newest: "Newest",
+  oldest: "Oldest",
+};
+
+/**
+ * What the Search page's filter chips picked. Artists and genres are names
+ * picked from the library's own lists, so they test a song's values exactly
+ * rather than as words, and several of them mean any of them: "Arijit or
+ * Atif, from the 2010s", which the typed `artist:` words, all of which must
+ * match, cannot say. `years` is `[from, to]` or null.
+ */
+export class Filters {
+  constructor({
+    years = null,
+    artists = [],
+    genres = [],
+    popular = false,
+    sort = "best",
+  } = {}) {
+    Object.assign(this, { years, artists, genres, popular, sort });
+    // Compared ignoring case, as the catalogue groups them.
+    this.artistKeys = new Set(artists.map((a) => a.toLowerCase()));
+    this.genreKeys = new Set(genres.map((g) => g.toLowerCase()));
+  }
+
+  with(change) {
+    const { years, artists, genres, popular, sort } = this;
+    return new Filters({ years, artists, genres, popular, sort, ...change });
+  }
+
+  /** No filter, whatever the sort: the box alone decides what is found. */
+  get empty() {
+    return !this.years && !this.artists.length && !this.genres.length && !this.popular;
+  }
+
+  accepts(s) {
+    const any = (list, keys) => list.some((x) => keys.has(x.toLowerCase()));
+    return (
+      (!this.years || (s.year >= this.years[0] && s.year <= this.years[1])) &&
+      (!this.popular || s.score >= popularScore) &&
+      (!this.artists.length ||
+        any(s.artists.length ? s.artists : [s.displayArtist], this.artistKeys)) &&
+      (!this.genres.length ||
+        any(s.genres.length ? s.genres : [unknownGenre], this.genreKeys))
+    );
+  }
+
+  /** What is picked, in a few words: a queue played from it is named so. */
+  describe() {
+    return [
+      this.years && yearsLabel(this.years),
+      names(this.artists),
+      names(this.genres),
+      this.popular && "Popular",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  /**
+   * `found` filtered, in the order picked; with no query to rank by, "best
+   * match" is the most popular. A song with no year sorts last either way:
+   * it says nothing about when.
+   */
+  apply(found, ranked) {
+    const kept = this.empty ? found.slice() : found.filter((s) => this.accepts(s));
+    const order = this.sort === "best" && !ranked ? "popular" : this.sort;
+    const year = (s) => (s.year > 0 ? s.year : Infinity);
+    const by = {
+      popular: (a, b) => b.score - a.score,
+      newest: (a, b) => b.year - a.year || b.score - a.score,
+      oldest: (a, b) => (year(a) === year(b) ? b.score - a.score : year(a) - year(b)),
+    }[order];
+    return by ? kept.sort(by) : kept;
+  }
+}
+
+/** "1990s", "Before 1950", "2001", "2001–2005" */
+export function yearsLabel([from, to]) {
+  // From 1, not 0: a song with no year says nothing about when.
+  if (from <= 1) return `Before ${to + 1}`;
+  if (from % 10 === 0 && to === from + 9) return `${from}s`;
+  return from === to ? String(from) : `${from}–${to}`;
+}
+
+/** The first name, and how many more: "Kumar Sanu +1". */
+export const names = (list) =>
+  list.length > 1 ? `${list[0]} +${list.length - 1}` : (list[0] ?? "");

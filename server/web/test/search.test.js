@@ -3,7 +3,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { text, words, key, Query, songIndex } from "../js/search.js";
+import {
+  text,
+  words,
+  key,
+  Query,
+  songIndex,
+  Filters,
+  yearsLabel,
+  names,
+} from "../js/search.js";
 import { song } from "../js/catalog.js";
 
 const s = (id, title, { artist = "", album = "", composer = "", year = 0 } = {}) =>
@@ -98,4 +107,39 @@ test("an index built a slice at a time answers as one built whole", () => {
     );
   }
   assert.equal(sliced.ready, true);
+});
+
+// The search filters (plan 041), as the phone's SearchTest.
+const rated = [
+  [1, "Arijit Singh", 2013, 97],
+  [2, "Atif Aslam", 2009, 80],
+  [3, "Arijit Singh", 2019, 40],
+  [4, "Kumar Sanu", 1993, 90],
+  [5, "Kumar Sanu", 0, 60],
+].map(([id, artist, year, score]) => ({
+  ...s(id, `Song ${id}`, { artist, year }),
+  score,
+}));
+
+const ids = (f, ranked = false) => new Filters(f).apply(rated, ranked).map((x) => x.id);
+
+test("several artists mean any of them, and the filters all apply", () => {
+  const f = { artists: ["arijit singh", "Atif Aslam"] };
+  assert.deepEqual(ids(f), [1, 2, 3]);
+  assert.deepEqual(ids({ ...f, years: [2010, 2019] }), [1, 3]);
+  assert.deepEqual(ids({ ...f, popular: true }), [1, 2]);
+  assert.equal(names(f.artists), "arijit singh +1");
+});
+
+test("a song with no year is in no range and sorts last", () => {
+  assert.deepEqual(ids({ years: [1, 1999] }), [4]);
+  assert.equal(yearsLabel([1, 1999]), "Before 2000");
+  assert.equal(yearsLabel([1990, 1999]), "1990s");
+  assert.deepEqual(ids({ sort: "oldest" }), [4, 2, 1, 3, 5]);
+});
+
+test("with no query best match is the most popular", () => {
+  assert.deepEqual(ids({ years: [0, 3000] }), [1, 4, 2, 5, 3]);
+  // With a query, best match keeps the order the search ranked.
+  assert.deepEqual(ids({ years: [0, 3000] }, true), [1, 2, 3, 4, 5]);
 });

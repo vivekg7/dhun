@@ -5,27 +5,55 @@
 
 import { h, count, debounce } from "../util.js";
 import { icon } from "../icons.js";
-import { Query, nameIndex, lyricsHits } from "../search.js";
+import { Query, nameIndex, lyricsHits, Filters } from "../search.js";
 import { emptyNote, contextMenu } from "./kit.js";
 import { SongList, thumb, items, songMenu } from "./songs.js";
 import { playShelf } from "./spoken.js";
 import { day } from "../catalog.js";
 import { frame } from "./pages.js";
 import { ctx } from "./ctx.js";
+import { filterChips } from "./searchfilters.js";
 
 /** Results a section shows before "Show all": one strong song should not sit under twenty albums. */
 const shown = 3;
 /** Songs found are many in a big library; past this many, the query is too loose to read through. */
 const songsShown = 300;
 
-/** Every section with something in it, the one with the best match first; on a tie, in this order. */
+/**
+ * The filters stay set while the page is away, as the address keeps the
+ * query, but not across a reload; recent searches stay plain text (plan 041).
+ */
+let filters = new Filters();
+
+/**
+ * Every section with something in it, the one with the best match first; on
+ * a tie, in this order. With filters picked only songs are found, and with an
+ * empty box they are every song that passes: "90s Kumar Sanu, most popular
+ * first" is a question about songs (plan 041).
+ */
 function find(q) {
   const { app } = ctx;
   const c = app.catalog;
   const favs = new Set(app.marked("fav"));
+  // The user's own taste first, then the world's: popularity breaks only the ties left.
   const boost = (s) =>
-    (favs.has(s.id) ? 3 : 0) +
-    Math.min(2, Math.floor((app.playStats.get(s.id)?.count ?? 0) / 5));
+    ((favs.has(s.id) ? 3 : 0) +
+      Math.min(2, Math.floor((app.playStats.get(s.id)?.count ?? 0) / 5))) *
+      128 +
+    s.score;
+  if (!filters.empty) {
+    const songs = filters.apply(
+      q.empty
+        ? c.songs
+        : c
+            .index("songs")
+            .search(q, boost)
+            .map((x) => x.item),
+      !q.empty,
+    );
+    return songs.length ? [{ kind: "Songs", rows: songs, best: 0 }] : [];
+  }
+  if (q.empty) return [];
   const group = (kind) => (g) => ({
     title: g.name,
     detail: count(g.songs.length),
@@ -35,22 +63,55 @@ function find(q) {
   const section = (kind, index, row, b) => {
     const hits = index.search(q, b);
     if (!hits.length) return null;
-    return {
-      kind,
-      rows: hits
-        .slice(0, kind === "Songs" ? songsShown : hits.length)
-        .map((x) => row(x.item)),
-      best: hits[0].score,
-    };
+    return { kind, items: hits.map((x) => x.item), row, best: hits[0].score };
   };
+  // Among equal matches, the better known first.
+  const popular = (x) => x.score;
+  const playlistRow = (p) => ({
+    title: p.name,
+    detail: count(c.songsOf(p.songs).length),
+    icon: p.shared ? "shared" : "playlist",
+    href: ctx.nav.href("playlist", p.id),
+  });
+  const songs = section("Songs", c.index("songs"), (s) => s, boost);
+  if (songs && filters.sort !== "best") songs.items = filters.apply(songs.items, true);
+  let playlists = section(
+    "Playlists",
+    nameIndex(app.playlists, "playlist", (p) => p.name),
+    playlistRow,
+  );
+  // The playlists that hold the top songs found join the section, after those
+  // whose names match, so "kesariya" shows where Kesariya is. Only the top few:
+  // a broad query's songs would list every playlist. With no playlist named
+  // so, the section comes right after the songs: a search for a song's title
+  // wants the song first.
+  if (songs) {
+    const have = new Set(playlists?.items);
+    const holding = new Set(
+      songs.items.slice(0, shown).flatMap((s) => app.playlistsOf(s.id)),
+    );
+    const more = [...holding].filter((p) => !have.has(p));
+    if (more.length)
+      playlists = {
+        kind: "Playlists",
+        items: [...(playlists?.items ?? []), ...more],
+        row: playlistRow,
+        best: playlists?.best ?? songs.best + 1,
+      };
+  }
   const found = [
-    section("Artists", c.index("artists"), group("artist")),
-    section("Albums", c.index("albums"), (a) => ({
-      title: a.name,
-      detail: [a.artist, a.year > 0 ? a.year : ""].filter(Boolean).join(" · "),
-      song: a.songs[0],
-      href: ctx.nav.href("album", a.id),
-    })),
+    section("Artists", c.index("artists"), group("artist"), popular),
+    section(
+      "Albums",
+      c.index("albums"),
+      (a) => ({
+        title: a.name,
+        detail: [a.artist, a.year > 0 ? a.year : ""].filter(Boolean).join(" · "),
+        song: a.songs[0],
+        href: ctx.nav.href("album", a.id),
+      }),
+      popular,
+    ),
     section("Genres", c.index("genres"), group("genre")),
     // Many folders share a name ("CD1"), so the path says which.
     section("Folders", c.index("folders"), (f) => ({
@@ -61,16 +122,7 @@ function find(q) {
       icon: "folder",
       href: ctx.nav.href("folder", f.path),
     })),
-    section(
-      "Playlists",
-      nameIndex(app.playlists, "playlist", (p) => p.name),
-      (p) => ({
-        title: p.name,
-        detail: count(c.songsOf(p.songs).length),
-        icon: p.shared ? "shared" : "playlist",
-        href: ctx.nav.href("playlist", p.id),
-      }),
-    ),
+    playlists,
     // Under their own headings (plan 031), before the songs, which can run to
     // hundreds and would bury them.
     section("Audiobooks", c.index("books"), (b) => ({
@@ -95,11 +147,19 @@ function find(q) {
         if (shelf) playShelf(shelf, s);
       },
     })),
-    section("Songs", c.index("songs"), (s) => s, boost),
+    songs,
   ];
   // Stable, so a tie keeps the order above.
   return found
-    .map((f, i) => f && { ...f, i })
+    .map(
+      (f, i) =>
+        f && {
+          kind: f.kind,
+          rows: (f === songs ? f.items.slice(0, songsShown) : f.items).map(f.row),
+          best: f.best,
+          i,
+        },
+    )
     .filter(Boolean)
     .sort((a, b) => a.best - b.best || a.i - b.i);
 }
@@ -151,6 +211,18 @@ export function searchPage(initial, { field = false } = {}) {
   });
   const empty = h("div");
   list.el.append(empty);
+  // Out of the scroller, under the box, so what is applied stays in view.
+  const filterRow = h("nav.filters", { "aria-label": "Filters" });
+  const drawFilters = () =>
+    filterRow.replaceChildren(
+      ...filterChips(filters, (f) => {
+        filters = f;
+        drawFilters();
+        draw();
+      }),
+    );
+  /** What a queue played from here is named, and what nothing matched. */
+  const label = () => [query.trim(), filters.describe()].filter(Boolean).join(" · ");
 
   // Chips that jump to a section (plan 029): in the scroller itself, not its
   // head, so they stay in view under the field for the whole list.
@@ -248,7 +320,7 @@ export function searchPage(initial, { field = false } = {}) {
       if (seq !== lyricsSeq) return;
       const songs = hits
         .map((x) => ({ song: ctx.app.catalog.byId.get(x.song), line: x.line }))
-        .filter((x) => x.song);
+        .filter((x) => x.song && (filters.empty || filters.accepts(x.song)));
       showLyrics(songs);
     } catch {
       if (seq === lyricsSeq) {
@@ -299,7 +371,7 @@ export function searchPage(initial, { field = false } = {}) {
 
   let found = [];
   const noResults = () => {
-    const q = query.trim();
+    const q = label();
     empty.replaceChildren(
       q && !found.length && !lyricsBox.childElementCount
         ? emptyNote(
@@ -315,8 +387,9 @@ export function searchPage(initial, { field = false } = {}) {
     const q = new Query(query);
     expanded = query === draw.last ? expanded : new Set();
     draw.last = query;
-    recent.replaceChildren(...(q.empty ? recentSearches() : []));
-    found = q.empty ? [] : find(q);
+    const browse = !q.empty || !filters.empty;
+    recent.replaceChildren(...(browse ? [] : recentSearches()));
+    found = browse ? find(q) : [];
     const songsAt = found.findIndex((f) => f.kind === "Songs");
     const songs = songsAt >= 0 ? found[songsAt].rows : [];
     before.replaceChildren(
@@ -327,7 +400,7 @@ export function searchPage(initial, { field = false } = {}) {
     );
     songsHead.hidden = !songs.length;
     // "Search: …", as on the phone: a bare query could name, and refill, an album's queue.
-    list.o.name = `Search: ${query.trim()}`;
+    list.o.name = `Search: ${label()}`;
     list.set(items(songs));
     lyricsSeq++;
     lyricsBox.replaceChildren();
@@ -369,8 +442,10 @@ export function searchPage(initial, { field = false } = {}) {
     ];
   };
 
+  drawFilters();
   draw();
   const el = frame({ title: "Search", body: list.el, cls: "searchpage" });
+  list.el.before(filterRow);
   if (input)
     el.querySelector(".pagebar").replaceChildren(
       h("label.searchfield", icon("search"), input),

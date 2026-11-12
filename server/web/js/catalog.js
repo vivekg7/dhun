@@ -6,7 +6,7 @@
 // right after the catalogue, so the first keystroke finds them ready.
 
 import { naturalKey, sortBy, compareText, shuffled, nowMs, parseTime } from "./util.js";
-import { songIndex, nameIndex, Index, Query } from "./search.js";
+import { songIndex, nameIndex, Index, Query, unknownGenre } from "./search.js";
 
 /** A song as the server sends it (api/openapi.yaml `Song`), with every optional field filled in. */
 export function song(s) {
@@ -52,6 +52,8 @@ export function song(s) {
     group: s.group ?? "",
     groupTitle: s.groupTitle ?? "",
     groupIndex: s.groupIndex ?? 0,
+    // Popularity, 1–100, 0 for none: orders equal search matches (plan 041).
+    score: s.score ?? 0,
   };
 }
 
@@ -93,7 +95,7 @@ export class Catalog {
       s.artists.length ? s.artists : [s.displayArtist],
     );
     this.genres = group(this.songs, (s) =>
-      s.genres.length ? s.genres : ["Unknown genre"],
+      s.genres.length ? s.genres : [unknownGenre],
     );
     this.folders = folders(this.songs, this.spoken);
     this.books = shelves(present, audiobook);
@@ -268,10 +270,14 @@ function albums(songs) {
       artist: first.albumArtist || mostCommon(songs.map((s) => s.displayArtist)),
       year: Math.max(...songs.map((s) => s.year)),
       songs,
+      score: best(songs),
     });
   }
   return sortBy(out, byName);
 }
+
+/** Its best song's popularity: among equal search matches the better known comes first (plan 041). */
+const best = (songs) => songs.reduce((m, s) => Math.max(m, s.score), 0);
 
 function group(songs, keys) {
   const map = new Map();
@@ -279,8 +285,9 @@ function group(songs, keys) {
     for (const k of keys(s)) {
       const l = k.toLowerCase();
       let g = map.get(l);
-      if (!g) map.set(l, (g = { id: l, name: k, songs: [] }));
+      if (!g) map.set(l, (g = { id: l, name: k, songs: [], score: 0 }));
       g.songs.push(s);
+      g.score = Math.max(g.score, s.score);
     }
   return sortBy([...map.values()], byName);
 }

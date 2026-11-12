@@ -109,6 +109,10 @@ export function songMenu(songs, { play, extra = [] } = {}) {
         },
       ],
     },
+    // Music only: a playlist cannot hold an episode or a book (plan 031).
+    one && !one.spoken && app.playlistsOf(one.id).length
+      ? { label: "In playlists…", action: () => inPlaylists(one) }
+      : null,
     "-",
     {
       label: allFav ? "Remove from Favorites" : "Add to Favorites",
@@ -140,7 +144,7 @@ export function songMenu(songs, { play, extra = [] } = {}) {
     one && !one.spoken
       ? { label: "Go to artist", action: () => nav.artist(one) }
       : null,
-    one ? { label: "Song info", action: () => songInfo(one) } : null,
+    one ? { label: "Info", action: () => songInfo(one) } : null,
     ...(extra.length ? ["-", ...extra] : []),
   ].filter(Boolean);
 }
@@ -175,42 +179,80 @@ function leftOut(spoken) {
   return ` · ${what} left out`;
 }
 
-/** What the file is, as the phone's song details show. */
+/** A song's tags, file and plays, and the playlists it is in: one screen, as on the phone (plan 041). */
 async function songInfo(s) {
+  const app = ctx.app;
   const rows = [
-    ["Title", s.title],
     ["Artist", s.artist],
     ["Album", s.album],
     ["Album artist", s.albumArtist],
     ["Composer", s.composer],
     ["Genre", s.genres.join(", ")],
-    ["Year", s.year || ""],
+    ["Year", s.year > 0 ? s.year : ""],
     ["Track", s.track ? (s.disc ? `${s.disc}.${s.track}` : s.track) : ""],
     ["Length", s.durationMs ? clock(s.durationMs / 1000) : ""],
-    ["Format", [s.format, s.codec].filter(Boolean).join(" · ")],
     [
-      "Quality",
+      "File",
       [
+        s.format,
+        s.codec,
         s.bitrate && `${s.bitrate} kbit/s`,
         s.sampleRate && `${s.sampleRate / 1000} kHz`,
         s.bitDepth && `${s.bitDepth}-bit`,
+        s.size && `${(s.size / 1e6).toFixed(1)} MB`,
       ]
         .filter(Boolean)
         .join(" · "),
     ],
-    ["Size", s.size ? `${(s.size / 1e6).toFixed(1)} MB` : ""],
-    ["File", s.path],
-  ].filter(([, v]) => v !== "" && v != null);
+    // The whole path, which the web showed before: its folder is in it.
+    ["Path", s.path],
+    ["Plays", app.playStats.get(s.id)?.count ?? 0],
+    // Spread about evenly over the library: 50 is its median.
+    ["Popularity", s.score > 0 ? `${s.score} of 100` : ""],
+  ].filter(([, v]) => v !== "");
+  const held = app.playlistsOf(s.id);
   await dialog(
     s.title,
-    h(
-      "dl.info",
-      rows.map(([k, v]) => [h("dt", k), h("dd", String(v))]),
-    ),
+    [
+      h(
+        "dl.info",
+        rows.map(([k, v]) => [h("dt", k), h("dd", String(v))]),
+      ),
+      ...(held.length
+        ? [h("h3.dialog-head", "In playlists"), playlistLinks(held)]
+        : []),
+    ],
     [{ label: "Close", submit: true, primary: true }],
     { cls: "wide" },
   );
 }
+
+/** The playlists `s` is in, a click away. */
+const inPlaylists = (s) =>
+  dialog(
+    "In playlists",
+    [h("p", s.title), playlistLinks(ctx.app.playlistsOf(s.id))],
+    [{ label: "Close", submit: true, primary: true }],
+  );
+
+const playlistLinks = (list) =>
+  h(
+    "div.picklist",
+    list.map((p) =>
+      h(
+        "button.row",
+        {
+          type: "button",
+          onclick: (e) => {
+            e.currentTarget.closest("dialog").close();
+            ctx.nav.go("playlist", p.id);
+          },
+        },
+        icon(p.shared ? "shared" : "playlist"),
+        h("span.main", p.name),
+      ),
+    ),
+  );
 
 /**
  * A list of songs. Double-click, Return or (on a touch screen) a tap plays

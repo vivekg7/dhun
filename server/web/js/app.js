@@ -6,7 +6,15 @@
 
 import { Catalog, Heard, song as toSong } from "./catalog.js";
 import * as db from "./db.js";
-import { nowMs, parseTime, formatTime, uuid, debounce, distinct } from "./util.js";
+import {
+  nowMs,
+  parseTime,
+  formatTime,
+  uuid,
+  debounce,
+  distinct,
+  compareText,
+} from "./util.js";
 
 class ApiError extends Error {
   constructor(status, message, code = "") {
@@ -24,9 +32,11 @@ const browserPrefs = ["theme", "palette", "speed", "miniPlayer", "sleepFinish"];
 
 /**
  * Raised when songs gain a field the cache lacks; 1 is the art key (plan
- * 019), 2 the podcasts and audiobooks, which `kinds=all` asks for (plan 031).
+ * 019), 2 the podcasts and audiobooks, which `kinds=all` asks for (plan 031),
+ * 3 the popularity score (plan 041): a cursor already past the server's first
+ * scoring scan would never bring the scores.
  */
-const libraryFormat = 2;
+const libraryFormat = 3;
 
 /** A listen this far into an episode or a book's file marks it played, as the server does (plan 031). */
 const playedPercent = 90;
@@ -505,12 +515,31 @@ export class App extends EventTarget {
     this.record(type, { playlist, ...fields }, { tag: `pl${p.id}` });
   }
 
+  /** A new list on every change, never the old one edited: `playlistsOf` keeps its work by the list. */
   putPlaylist(p) {
-    upsert(this.playlists, p);
-    this.playlists.sort(
+    this.playlists = [...this.playlists.filter((x) => x.id !== p.id), p].sort(
       (a, b) => Number(b.shared) - Number(a.shared) || a.name.localeCompare(b.name),
     );
     this.changed("playlists");
+  }
+
+  /**
+   * The playlists that hold song `id`, by name (plan 041). Search asks on
+   * every keystroke, and the playlists hold some 18,000 entries, so each
+   * song's are worked out once per change to the list.
+   */
+  playlistsOf(id) {
+    if (this.membership?.of !== this.playlists) {
+      const by = new Map();
+      const named = [...this.playlists].sort((a, b) => compareText(a.name, b.name));
+      for (const p of named)
+        for (const s of new Set(p.songs)) {
+          if (!by.has(s)) by.set(s, []);
+          by.get(s).push(p);
+        }
+      this.membership = { of: this.playlists, by };
+    }
+    return this.membership.by.get(id) ?? [];
   }
 
   createPlaylist(name, songs) {
