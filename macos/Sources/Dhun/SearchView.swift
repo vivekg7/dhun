@@ -34,27 +34,50 @@ private let shown = 3
 /// Songs found are many in a big library; past this many, the query is too loose to read through.
 private let songsShown = 300
 
-/// Every section with something in it, the one with the best match first; on a tie, in this order.
+/// Every section with something in it, the one with the best match first;
+/// on a tie, in this order. With filters picked only songs are found, all of
+/// them, and with an empty box every song that passes: "90s Kumar Sanu, most
+/// popular first" is a question about songs (plan 041).
 private func find(
-    _ c: Catalog, _ playlists: [Playlist], _ heard: Heard, _ q: SearchQuery, boost: (Song) -> Int
+    _ c: Catalog, _ playlists: [Playlist], _ inPlaylists: [Int: [Playlist]], _ heard: Heard, _ q: SearchQuery,
+    _ filters: SearchFilters, boost: (Song) -> Int
 ) -> [Found] {
+    func songRow(_ s: Song) -> Row {
+        Row(id: "s/\(s.id)", title: s.title, detail: dotted([s.displayArtist, s.album]), song: s)
+    }
+    func playlistRow(_ p: Playlist) -> Row {
+        Row(
+            id: "playlist/\(p.id)", title: p.name, detail: count(c.songsOf(p.songs).count), song: nil,
+            icon: p.shared ? "music.note.house" : "music.note.list", route: .playlist(p.id))
+    }
+    if !filters.isEmpty {
+        let found = q.isEmpty ? c.songs : c.songIndex.search(q, boost: boost).map(\.item)
+        let songs = filters.apply(found, ranked: !q.isEmpty)
+        return songs.isEmpty ? [] : [Found(kind: .songs, rows: songs.map(songRow), best: 0)]
+    }
     if q.isEmpty { return [] }
     func section<T>(_ kind: Kind, _ index: SearchIndex<T>, boost: (T) -> Int = { _ in 0 }, _ row: (T) -> Row)
         -> Found?
     {
         let hits = index.search(q, boost: boost)
         guard let first = hits.first else { return nil }
-        return Found(
-            kind: kind, rows: hits.prefix(kind == .songs ? songsShown : hits.count).map { row($0.item) },
-            best: first.score)
+        return Found(kind: kind, rows: hits.map { row($0.item) }, best: first.score)
+    }
+    let hits = c.songIndex.search(q, boost: boost)
+    // A sort alone keeps every section and reorders the songs, all of them before the first few hundred are kept.
+    let songs = hits.first.map {
+        Found(
+            kind: .songs, rows: filters.apply(hits.map(\.item), ranked: true).prefix(songsShown).map(songRow),
+            best: $0.score)
     }
     let found = [
-        section(.artists, c.artistIndex) {
+        // Among equal matches, the better known first (plan 041).
+        section(.artists, c.artistIndex, boost: { $0.score }) {
             Row(
                 id: "artist/\($0.id)", title: $0.name, detail: count($0.songs.count), song: $0.songs.first,
                 route: .artist($0.name))
         },
-        section(.albums, c.albumIndex) {
+        section(.albums, c.albumIndex, boost: { $0.score }) {
             Row(
                 id: "album/\($0.id)", title: $0.name,
                 detail: dotted([$0.artist, $0.year > 0 ? String($0.year) : ""]),
@@ -72,11 +95,7 @@ private func find(
                 id: "folder/\(f.path)", title: f.name, detail: parent.replacing("/", with: " › "),
                 song: nil, icon: "folder", route: .folder(f.path))
         },
-        section(.playlists, SearchIndex.names(playlists, "playlist") { $0.name }) {
-            Row(
-                id: "playlist/\($0.id)", title: $0.name, detail: count(c.songsOf($0.songs).count), song: nil,
-                icon: $0.shared ? "music.note.house" : "music.note.list", route: .playlist($0.id))
-        },
+        section(.playlists, SearchIndex.names(playlists, "playlist") { $0.name }, playlistRow),
         section(.books, c.bookIndex) {
             Row(
                 id: "shelf/\($0.id)", title: $0.title,
@@ -94,17 +113,30 @@ private func find(
                 id: "e/\($0.id)", title: $0.title,
                 detail: dotted([$0.groupTitle, $0.day]), song: $0)
         },
-        section(.songs, c.songIndex, boost: boost) {
-            Row(
-                id: "s/\($0.id)", title: $0.title,
-                detail: dotted([$0.displayArtist, $0.album]), song: $0)
-        },
+        songs,
     ]
     // Stable, so a tie keeps the order above.
-    return found.compactMap { $0 }.enumerated().sorted {
+    var sorted = found.compactMap { $0 }.enumerated().sorted {
         ($0.element.best, $0.offset) < ($1.element.best, $1.offset)
     }
     .map(\.element)
+    // The playlists that hold the top songs found join the Playlists section,
+    // after those whose names match, so "kesariya" shows where Kesariya is.
+    // Only the top few: a broad query's songs would list every playlist. With
+    // no playlist named so, the section comes right after the songs: a search
+    // for a song's title wants the song first.
+    guard let songs, let at = sorted.firstIndex(where: { $0.kind == .songs }) else { return sorted }
+    let named = sorted.firstIndex { $0.kind == .playlists }
+    var have = Set(named.map { sorted[$0].rows.map(\.id) } ?? [])
+    let held = songs.rows.prefix(shown).flatMap { inPlaylists[$0.song!.id] ?? [] }
+    let holding = held.map(playlistRow).filter { have.insert($0.id).inserted }
+    if holding.isEmpty { return sorted }
+    if let named {
+        sorted[named] = Found(kind: .playlists, rows: sorted[named].rows + holding, best: sorted[named].best)
+    } else {
+        sorted.insert(Found(kind: .playlists, rows: holding, best: songs.best), at: at + 1)
+    }
+    return sorted
 }
 
 /// What the window's search field finds: artists, albums, genres, folders,
@@ -115,6 +147,7 @@ struct SearchResults: View {
     @Environment(AppModel.self) private var app
     @Environment(Nav.self) private var nav
     let query: String
+    let filters: SearchFilters
     @State private var found: [Found]?
     /// The server's, once typing stops; nil while it is asked.
     @State private var inLyrics: [(song: Song, line: String)]? = []
@@ -135,6 +168,13 @@ struct SearchResults: View {
         let query: String
         let catalog: ObjectIdentifier
         let playlists: [Playlist]
+        var filters = SearchFilters()
+    }
+
+    /// What a queue played from here is named, and what nothing matched.
+    private var label: String {
+        [query.trimmingCharacters(in: .whitespaces), filters.describe()].filter { !$0.isEmpty }.joined(
+            separator: " · ")
     }
 
     var body: some View {
@@ -143,7 +183,8 @@ struct SearchResults: View {
         let nav = self.nav
         let found = self.found ?? []
         let songs = found.first { $0.kind == .songs }?.rows.compactMap(\.song) ?? []
-        let lyrics = inLyrics
+        let test = filters.test()
+        let lyrics = filters.isEmpty ? inLyrics : inLyrics?.filter { test($0.song) }
         // The chips' names, in the sections' order (plan 029): Lyrics only once it has some.
         let chips = found.map(\.kind.rawValue) + (lyrics?.isEmpty == false ? ["Lyrics"] : [])
         let atTop = chips.last { (tops[$0] ?? .infinity) - listFrame.minY <= 8 } ?? chips.first
@@ -195,11 +236,14 @@ struct SearchResults: View {
                     }
             }
         }
-        .onChange(of: query) {
-            expanded = []
-            tops = [:]
-            tapped = nil
-        }
+        .onChange(of: query) { reset() }
+        .onChange(of: filters) { reset() }
+    }
+
+    private func reset() {
+        expanded = []
+        tops = [:]
+        tapped = nil
     }
 
     /// `scrollTo` matches an id by its own type, so an `AnyHashable` is unwrapped first.
@@ -299,21 +343,30 @@ struct SearchResults: View {
         }
         .overlay {
             if self.found?.isEmpty == true && lyrics?.isEmpty == true {
-                ContentUnavailableView.search(text: query)
+                ContentUnavailableView("Nothing matches “\(label)”", systemImage: "magnifyingglass")
             }
         }
         .navigationTitle("Search")
+        // What the search menu applies, in view while it does.
+        .navigationSubtitle(dotted([filters.describe(), filters.sort == .best ? "" : filters.sort.rawValue]))
         // Off the main thread: the first search builds the catalog's indexes.
-        .task(id: Key(query: query, catalog: ObjectIdentifier(app.catalog), playlists: app.playlists)) {
+        .task(
+            id: Key(
+                query: query, catalog: ObjectIdentifier(app.catalog), playlists: app.playlists,
+                filters: filters)
+        ) {
             let c = app.catalog
             let playlists = app.playlists
+            let inPlaylists = app.inPlaylists
+            let filters = filters
             let q = SearchQuery(query)
             let favs = Set(app.favorites.map(\.song))
             let plays = app.playStats.mapValues(\.count)
             let heard = app.heard
             let result = await Task.detached {
-                find(c, playlists, heard, q) { s in
-                    (favs.contains(s.id) ? 3 : 0) + min(2, (plays[s.id] ?? 0) / 5)
+                find(c, playlists, inPlaylists, heard, q, filters) { s in
+                    // The user's own taste first, then the world's: popularity breaks only the ties left.
+                    ((favs.contains(s.id) ? 3 : 0) + min(2, (plays[s.id] ?? 0) / 5)) * 128 + s.score
                 }
             }.value
             if !Task.isCancelled { self.found = result }
@@ -345,7 +398,7 @@ struct SearchResults: View {
         }
         // "Search: …", as on the phone: a bare query could name, and refill, an album's queue.
         if tags.contains(where: { $0.hasPrefix("s/") }) {
-            return ("Search: \(q)", songs, songs.filter { tags.contains("s/\($0.id)") })
+            return ("Search: \(label)", songs, songs.filter { tags.contains("s/\($0.id)") })
         }
         return ("Lyrics: \(q)", inLyrics, inLyrics.filter { tags.contains("l/\($0.id)") })
     }

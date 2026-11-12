@@ -27,8 +27,9 @@ public final class Sync {
 
     /// Raised when songs gain a field: 1 is the art key (plan 019), 2 podcasts
     /// and audiobooks, which the server sends only to a client that asks for
-    /// them from the start (plan 031).
-    static let libraryFormat = 2
+    /// them from the start (plan 031), 3 the popularity score: a Mac whose
+    /// cursor is past the server's first scoring scan would never get it (plan 041).
+    static let libraryFormat = 3
 
     init(app: AppModel) {
         self.app = app

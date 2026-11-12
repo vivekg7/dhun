@@ -43,7 +43,7 @@ public final class Catalog: Sendable {
         for a in albums { for s in a.songs { albumOf[s.id] = a.id } }
         self.albumOf = albumOf
         artists = Catalog.group(songs) { $0.artists.isEmpty ? [$0.displayArtist] : $0.artists }
-        genres = Catalog.group(songs) { $0.genres.isEmpty ? ["Unknown genre"] : $0.genres }
+        genres = Catalog.group(songs) { $0.genres.isEmpty ? [SearchFilters.unknownGenre] : $0.genres }
         folders = Catalog.folders(songs, all.filter(\.spoken))
         books = Catalog.shelves(all, Song.audiobook)
         shows = Catalog.shelves(all, Song.podcast)
@@ -251,12 +251,15 @@ public struct Album: Identifiable, Hashable, Sendable {
     public let artist: String
     public let year: Int
     public let songs: [Song]
+    /// Its best song's popularity: among equal search matches the better known comes first (plan 041).
+    public var score: Int { songs.lazy.map(\.score).max() ?? 0 }
 }
 
 public struct Group: Identifiable, Hashable, Sendable {
     public let name: String
     public let songs: [Song]
     public var id: String { name.lowercased() }
+    public var score: Int { songs.lazy.map(\.score).max() ?? 0 }
 }
 
 extension [Group] {

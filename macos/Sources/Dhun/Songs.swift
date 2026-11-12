@@ -264,7 +264,14 @@ struct SongMenu: View {
                 } else {
                     if !s.album.isEmpty { Button("Go to Album") { nav.goToAlbum(s, app) } }
                     Button("Go to Artist") { nav.goToArtist(s) }
+                    // Playlists hold music only (plan 031); a submenu, as Add to Playlist is (plan 041).
+                    if let held = app.inPlaylists[s.id], !held.isEmpty {
+                        Menu("In Playlists") {
+                            ForEach(held) { p in Button(p.name) { nav.open(.playlist(p.id)) } }
+                        }
+                    }
                 }
+                Button("Get Info") { nav.sheet = .info(s) }
             } else {
                 Button("Download") {
                     for s in songs { app.downloads.pin(Downloads.song, String(s.id), s.title) }
@@ -286,6 +293,66 @@ struct SongMenu: View {
                     ? "Added \(adding) to “\(p.name)” · \(skipped) already there"
                     : "Added \(count(adding)) to “\(p.name)”")
             + (spoken > 0 ? " · \(spoken) podcast or audiobook files left out" : "")
+    }
+}
+
+/// A song's tags, file and plays, and the playlists it is in: one sheet, opened from the menu (plan 041).
+struct SongInfo: View {
+    @Environment(AppModel.self) private var app
+    @Environment(Nav.self) private var nav
+    @Environment(\.dismiss) private var dismiss
+    let song: Song
+
+    var body: some View {
+        let s = song
+        let rate = s.sampleRate % 1000 == 0 ? "\(s.sampleRate / 1000)" : "\(Double(s.sampleRate) / 1000)"
+        let rows = [
+            ("Artist", s.artist), ("Album", s.album), ("Album artist", s.albumArtist),
+            ("Composer", s.composer),
+            ("Genre", s.genres.joined(separator: ", ")), ("Year", s.year > 0 ? String(s.year) : ""),
+            ("Length", duration(s)),
+            (
+                "File",
+                dotted([
+                    s.format, s.bitrate > 0 ? "\(s.bitrate) kbit/s" : "",
+                    s.sampleRate > 0 ? "\(rate) kHz" : "",
+                    s.size > 0 ? formatBytes(s.size) : "",
+                ])
+            ),
+            ("Folder", s.folder), ("Plays", String(app.playStats[s.id]?.count ?? 0)),
+            // Spread about evenly over the library: 50 is its median.
+            ("Popularity", s.score > 0 ? "\(s.score) of 100" : ""),
+        ].filter { !$0.1.isEmpty }
+        let held = s.spoken ? [] : app.inPlaylists[s.id] ?? []
+        VStack(spacing: 0) {
+            Form {
+                SwiftUI.Section(s.title) {
+                    ForEach(rows, id: \.0) { name, value in
+                        LabeledContent(name) { Text(value).textSelection(.enabled) }
+                    }
+                }
+                if !held.isEmpty {
+                    SwiftUI.Section("In playlists") {
+                        ForEach(held) { p in
+                            Button {
+                                dismiss()
+                                nav.open(.playlist(p.id))
+                            } label: {
+                                Label(p.name, systemImage: p.shared ? "music.note.house" : "music.note.list")
+                            }
+                            .buttonStyle(.link)
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding([.horizontal, .bottom], 16)
+        }
+        .frame(width: 460, height: 520)
     }
 }
 

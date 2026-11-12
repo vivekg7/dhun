@@ -544,3 +544,92 @@ public func searchKept(_ rows: [(song: Int, text: String)], _ q: SearchQuery) ->
         }
         .prefix(lyricsHits).map(\.element.hit))
 }
+
+/// What the search menu's filters picked (plan 041). Artists and genres are
+/// names picked from the library's own lists, so they test a song's values
+/// exactly rather than as words, and several of them mean any of them:
+/// "Arijit or Atif, from the 2010s", which the typed `artist:` words, all of
+/// which must match, cannot say.
+public struct SearchFilters: Hashable, Sendable {
+    public enum Sort: String, CaseIterable, Sendable {
+        case best = "Best match", popular = "Most popular", newest = "Newest", oldest = "Oldest"
+    }
+
+    public var years: ClosedRange<Int>?
+    /// As the library's lists name them; compared ignoring case, as `Catalog` groups them.
+    public var artists: Set<String> = []
+    public var genres: Set<String> = []
+    public var popular = false
+    public var sort = Sort.best
+
+    public init(
+        years: ClosedRange<Int>? = nil, artists: Set<String> = [], genres: Set<String> = [],
+        popular: Bool = false, sort: Sort = .best
+    ) {
+        self.years = years
+        self.artists = artists
+        self.genres = genres
+        self.popular = popular
+        self.sort = sort
+    }
+
+    /// No filter, whatever the sort: the box alone decides what is found.
+    public var isEmpty: Bool { years == nil && artists.isEmpty && genres.isEmpty && !popular }
+
+    /// Whether a song passes. Made once per list, not called per song: the
+    /// picked names are lowered here, and a song's would be every time.
+    public func test() -> (Song) -> Bool {
+        let years = years
+        let popular = popular
+        let artists = Set(artists.map { $0.lowercased() })
+        let genres = Set(genres.map { $0.lowercased() })
+        return { s in
+            if let years, !years.contains(s.year) { return false }
+            if popular && s.score < SearchFilters.popularScore { return false }
+            let a = s.artists.isEmpty ? [s.displayArtist] : s.artists
+            if !artists.isEmpty && !a.contains(where: { artists.contains($0.lowercased()) }) { return false }
+            let g = s.genres.isEmpty ? [SearchFilters.unknownGenre] : s.genres
+            return genres.isEmpty || g.contains { genres.contains($0.lowercased()) }
+        }
+    }
+
+    /// What is picked, in a few words: a queue played from it is named so.
+    public func describe() -> String {
+        [years.map(Self.yearsLabel), Self.names(artists), Self.names(genres), popular ? "Popular" : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// `found` filtered, in the order picked; with no query to rank by,
+    /// "best match" is the most popular. A song with no year sorts last
+    /// either way: it says nothing about when.
+    public func apply(_ found: [Song], ranked: Bool) -> [Song] {
+        let kept = isEmpty ? found : found.filter(test())
+        // The place found breaks the last ties: `sorted` does not promise to keep it.
+        func by(_ key: (Song) -> (Int, Int)) -> [Song] {
+            kept.enumerated().map { (key($0.element), $0.offset, $0.element) }
+                .sorted { ($0.0.0, $0.0.1, $0.1) < ($1.0.0, $1.0.1, $1.1) }.map(\.2)
+        }
+        switch sort == .best && !ranked ? .popular : sort {
+        case .best: return kept
+        case .popular: return by { (-$0.score, 0) }
+        case .newest: return by { (-$0.year, -$0.score) }
+        case .oldest: return by { ($0.year > 0 ? $0.year : .max, -$0.score) }
+        }
+    }
+
+    public static func yearsLabel(_ r: ClosedRange<Int>) -> String {
+        // From 1, not 0: a song with no year says nothing about when.
+        if r.lowerBound <= 1 { return "Before \(r.upperBound + 1)" }
+        if r.lowerBound % 10 == 0 && r.upperBound == r.lowerBound + 9 { return "\(r.lowerBound)s" }
+        return r.lowerBound == r.upperBound ? "\(r.lowerBound)" : "\(r.lowerBound)–\(r.upperBound)"
+    }
+
+    /// The first name, and how many more. A set has no order, so first is alphabetical.
+    public static func names(_ set: Set<String>) -> String? {
+        set.min { $0.lowercased() < $1.lowercased() }.map { set.count > 1 ? "\($0) +\(set.count - 1)" : $0 }
+    }
+
+    /// "Popular only": about the top third, as the scores spread evenly from 9 to 98.
+    public static let popularScore = 70
+    public static let unknownGenre = "Unknown genre"
+}

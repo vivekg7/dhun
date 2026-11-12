@@ -101,13 +101,45 @@ final class Nav {
     var findRequests = 0
     var inspector = false
     var inspectorTab = InspectorTab.queue
+    /// The search menu's filters (plan 041): kept while the window shows
+    /// something else, as the field keeps its text, but not across a relaunch.
+    var filters = SearchFilters()
+    /// Picking a filter shows what it finds, the box empty or not, until a section is opened.
+    var browsing = false
+    /// A sheet over the window, asked for from a menu, which cannot hold one.
+    var sheet: Sheet?
 
     enum InspectorTab: Hashable { case queue, lyrics }
+
+    enum Sheet: Identifiable {
+        case info(Song), artists, genres, years
+        var id: String {
+            switch self {
+            case .info(let s): "info/\(s.id)"
+            case .artists: "artists"
+            case .genres: "genres"
+            case .years: "years"
+            }
+        }
+    }
+
+    /// The results show over any page, as typing shows them.
+    func filter(_ f: SearchFilters) {
+        filters = f
+        browsing = true
+        path = []
+    }
+
+    /// Search results show: something typed, or filters picked.
+    var searching: Bool {
+        !search.trimmingCharacters(in: .whitespaces).isEmpty || (browsing && !filters.isEmpty)
+    }
 
     func open(_ s: Section, _ route: Route? = nil) {
         section = s
         path = route.map { [$0] } ?? []
         search = ""
+        browsing = false
     }
 
     /// The song's album, or the book or show of an episode or a book's file.

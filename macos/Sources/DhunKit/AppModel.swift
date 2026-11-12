@@ -25,6 +25,8 @@ public final class AppModel {
 
     public private(set) var catalog = Catalog.empty
     public private(set) var playlists: [Playlist] = []
+    /// Each song's playlists, by name (plan 041).
+    public private(set) var inPlaylists: [Int: [Playlist]] = [:]
     public private(set) var queues: [QueueRow] = []
     public private(set) var favorites: [Mark] = []
     public private(set) var listenLater: [Mark] = []
@@ -170,7 +172,16 @@ public final class AppModel {
         playback.catalogChanged()
     }
 
-    public func reloadPlaylists() { playlists = db.playlists() }
+    public func reloadPlaylists() {
+        playlists = db.playlists()
+        // Once per change to the list, not per keystroke: search asks for the top songs' on every
+        // one, and the playlists hold some 18,000 entries (plan 041).
+        var held: [Int: [Playlist]] = [:]
+        for p in playlists.sorted(by: { $0.name.lowercased() < $1.name.lowercased() }) {
+            for id in Set(p.songs) { held[id, default: []].append(p) }
+        }
+        inPlaylists = held
+    }
     public func reloadQueues() { queues = db.queues() }
     public func reloadMarks() {
         favorites = db.marks(Store.fav)

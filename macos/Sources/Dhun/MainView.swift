@@ -45,6 +45,7 @@ struct MainView: View {
                 }
                 .searchable(text: $nav.search, placement: .toolbar, prompt: "Songs, albums, artists, lyrics")
                 .searchSuggestions { RecentSearches() }
+                .toolbar { ToolbarItem { FilterMenu() } }
                 .searchFocused($searching)
                 .onChange(of: nav.findRequests) { searching = true }
                 // Typing shows the results again, over any page opened from them. Not when
@@ -63,6 +64,14 @@ struct MainView: View {
             Banners()
             NowPlayingBar()
         }
+        .sheet(item: $nav.sheet) { s in
+            switch s {
+            case .info(let song): SongInfo(song: song)
+            case .artists: PickSheet(genres: false)
+            case .genres: PickSheet(genres: true)
+            case .years: YearsSheet()
+            }
+        }
     }
 }
 
@@ -72,8 +81,8 @@ struct Detail: View {
     @Environment(Nav.self) private var nav
 
     var body: some View {
-        if !nav.search.trimmingCharacters(in: .whitespaces).isEmpty {
-            SearchResults(query: nav.search)
+        if nav.searching {
+            SearchResults(query: nav.search, filters: nav.filters)
         } else {
             switch nav.section {
             case .queues: QueuesView()

@@ -36,6 +36,8 @@ public struct Song: Identifiable, Hashable, Sendable {
     public var groupKey = ""
     public var groupTitle = ""
     public var groupIndex = 0
+    /// Popularity, 1–100 from the server, 0 for none: orders equal search matches (plan 041).
+    public var score = 0
 
     public static let podcast = "podcast"
     public static let audiobook = "audiobook"

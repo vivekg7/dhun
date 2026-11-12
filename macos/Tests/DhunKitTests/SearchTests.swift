@@ -82,3 +82,44 @@ private func find(_ q: String) -> [Int] { index.search(SearchQuery(q)).map(\.ite
     // Words spread over two lines are not a match.
     #expect(searchKept(rows, SearchQuery("nothing gaye")).isEmpty)
 }
+
+// Plan 041.
+private func rated(_ id: Int, _ artist: String, _ year: Int, _ score: Int) -> Song {
+    var s = song(id, "Song \(id)", artist: artist, year: year)
+    s.score = score
+    return s
+}
+
+private let ratedSongs = [
+    rated(1, "Arijit Singh", 2013, 97),
+    rated(2, "Atif Aslam", 2009, 80),
+    rated(3, "Arijit Singh", 2019, 40),
+    rated(4, "Kumar Sanu", 1993, 90),
+    rated(5, "Kumar Sanu", 0, 60),
+]
+
+private func ids(_ f: SearchFilters, ranked: Bool = false) -> [Int] {
+    f.apply(ratedSongs, ranked: ranked).map(\.id)
+}
+
+@Test func severalArtistsMeanAnyOfThemAndFiltersMeanAll() {
+    var f = SearchFilters(artists: ["arijit singh", "Atif Aslam"])
+    #expect(ids(f) == [1, 2, 3])
+    f.years = 2010...2019
+    #expect(ids(f) == [1, 3])
+    f.years = nil
+    f.popular = true
+    #expect(ids(f) == [1, 2])
+}
+
+@Test func aSongWithNoYearIsInNoRangeAndSortsLast() {
+    #expect(ids(SearchFilters(years: 1...1999)) == [4])
+    #expect(SearchFilters.yearsLabel(1...1999) == "Before 2000")
+    #expect(ids(SearchFilters(sort: .oldest)) == [4, 2, 1, 3, 5])
+}
+
+@Test func withNoQueryBestMatchIsMostPopular() {
+    #expect(ids(SearchFilters(years: 0...3000)) == [1, 4, 2, 5, 3])
+    // With a query, best match keeps the order the search ranked.
+    #expect(ids(SearchFilters(years: 0...3000), ranked: true) == [1, 2, 3, 4, 5])
+}
