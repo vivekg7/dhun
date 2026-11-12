@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `IN PROGRESS` — server in `server-v0.18.2` on the NAS (2026-11-12); built on Android, macOS, web and Linux, to ship together as 0.19.0. Language waits on the curation tool
+**Status:** `RELEASED` — 0.19.0, in the GitHub release with every platform (2026-11-12); `server-v0.18.2` on the NAS. Language waits on the curation tool
 **Started:** 2026-11-11
 
 ## Problem
@@ -210,7 +210,14 @@ on any `&`. A migration makes the next scan read those 152 files again.
      rows: they run to thousands and the results list builds every row.
 5. Measure against the 50 ms per keystroke target at 100,000 songs
    ([036](036_fast_at_100k.md)). The filters are array lookups, but an empty
-   query with a sort sorts the whole library.
+   query with a sort sorts the whole library. On the Linux laptop at 36,183
+   songs (2026-11-12) a keystroke is 20–50 ms with no filter but 56–71 ms
+   with filters and a narrow query, 136–147 ms with a broad one, and about
+   120 ms for an empty box with Popular. Filtering is 10–40 ms of that; the
+   rest is a new song table built, the old one torn down and the new one
+   attached on every keystroke. Keeping one table and replacing its rows
+   would fix it, and the "Filter songs" box on long lists, which rebuilds
+   the same way, with it. Not yet done.
 
 ## Rejected
 
