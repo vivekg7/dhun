@@ -33,7 +33,27 @@ fn show(button: &impl IsA<gtk::Widget>, label: &gtk::Label, value: Option<String
 
 /// The row of filters, and what shows it as the filters are now: the page calls it at each fill.
 pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
-    let row = gtk::Box::builder().spacing(6).margin_start(12).margin_end(12).margin_top(6).margin_bottom(6).build();
+    // Wrapping onto a second line in a narrow window, where in one line the
+    // names would shrink to "…" and not say what is set; packed at the start
+    // in a wide one, rather than spread over its width.
+    let row = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .halign(gtk::Align::Start)
+        .max_children_per_line(5)
+        .column_spacing(6)
+        .row_spacing(6)
+        .margin_start(12)
+        .margin_end(12)
+        .margin_top(6)
+        .margin_bottom(6)
+        .build();
+    // Its buttons take the focus, not the box's own cells around them.
+    let add = |w: &gtk::Widget| {
+        row.append(w);
+        if let Some(cell) = w.parent() {
+            cell.set_focusable(false);
+        }
+    };
     let chip = |name: &str, open: fn(&Rc<Nav>, &gtk::Widget)| {
         let label =
             gtk::Label::builder().label(name).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(24).build();
@@ -47,7 +67,7 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
                 open(&n, b.upcast_ref());
             }
         });
-        row.append(&b);
+        add(b.upcast_ref());
         (b, label)
     };
     let year = chip("Year", year_dialog);
@@ -62,7 +82,7 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
             change(&n, |f| f.popular = on);
         }
     });
-    row.append(&popular);
+    add(popular.upcast_ref());
     let sorts = gio::Menu::new();
     for (i, s) in Sort::ALL.iter().enumerate() {
         let item = gio::MenuItem::new(Some(s.label()), None);
@@ -70,7 +90,7 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
         sorts.append_item(&item);
     }
     let sort = gtk::MenuButton::builder().label("Sort").menu_model(&sorts).always_show_arrow(true).build();
-    row.append(&sort);
+    add(sort.upcast_ref());
     // A radio menu: the action's state is the sort picked.
     let pick = gio::SimpleAction::new_stateful("sort", Some(glib::VariantTy::INT32), &0i32.to_variant());
     let n = Rc::downgrade(nav);
@@ -95,8 +115,6 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
         pick.set_state(&(f.sort as i32).to_variant());
     });
     refresh();
-    // No scroller around it: the page's first is the one a rebuild keeps
-    // scrolled, and the names ellipsize to fit a narrow window instead.
     (row.upcast(), refresh)
 }
 
