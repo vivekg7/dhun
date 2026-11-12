@@ -226,6 +226,14 @@ fn label(text: &str, filters: &Filters) -> String {
     [text.trim().to_string(), filters.describe()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
 }
 
+/// The lyrics under the table of filtered songs take no room with none to
+/// show: an empty scroller still keeps its scrollbar's height.
+fn fit(lyrics: &gtk::ListBox, under_table: &glib::WeakRef<gtk::ScrolledWindow>) {
+    if let Some(s) = under_table.upgrade() {
+        s.set_visible(lyrics.first_child().is_some());
+    }
+}
+
 /// Said when nothing is found.
 fn nothing(label: &str) -> adw::StatusPage {
     adw::StatusPage::builder().title(format!("Nothing matches “{label}”")).icon_name("edit-find-symbolic").build()
@@ -344,6 +352,13 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let lyrics_list =
         gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
     let (lyrics_in_results, lyrics_under_table) = (adw::Bin::new(), adw::Bin::new());
+    let under_table = gtk::ScrolledWindow::builder()
+        .child(&lyrics_under_table)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(240)
+        .visible(false)
+        .build();
     let table = adw::Bin::builder().vexpand(true).build();
     let views = gtk::Stack::new();
     let fill: Rc<dyn Fn()> = {
@@ -448,8 +463,14 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let found_in: Rc<RefCell<(String, Rc<Vec<SongRef>>)>> = Rc::default();
     let pending: Rc<Cell<Option<glib::SourceId>>> = Rc::default();
     let fill_lyrics: Rc<dyn Fn()> = {
-        let (nav, l, found_in, main, picked) =
-            (Rc::downgrade(nav), lyrics_list.downgrade(), found_in.clone(), list.downgrade(), picked.clone());
+        let (nav, l, found_in, main, picked, under) = (
+            Rc::downgrade(nav),
+            lyrics_list.downgrade(),
+            found_in.clone(),
+            list.downgrade(),
+            picked.clone(),
+            under_table.downgrade(),
+        );
         Rc::new(move || {
             let (Some(nav), Some(l)) = (nav.upgrade(), l.upgrade()) else { return };
             l.remove_all();
@@ -459,14 +480,15 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             let text = nav.search.text().to_string();
             let q = Query::new(&text);
             if q.lyrics.chars().count() < 3 {
-                return;
+                return fit(&l, &under);
             }
             // The songs the filters pick, in lyrics as anywhere.
             let filters = nav.filters.borrow().clone();
             l.append(&heading("In lyrics"));
             l.append(&heading("Searching lyrics…"));
-            let (nav2, l2, found_in, pending2, main, picked) =
-                (nav, l.downgrade(), found_in.clone(), pending.clone(), main.clone(), picked.clone());
+            fit(&l, &under);
+            let (nav2, l2, found_in, pending2, main, picked, under) =
+                (nav, l.downgrade(), found_in.clone(), pending.clone(), main.clone(), picked.clone(), under.clone());
             pending.set(Some(glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
                 pending2.take();
                 glib::spawn_future_local(async move {
@@ -485,7 +507,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                         if filters.is_empty() && main.upgrade().is_some_and(|m| m.first_child().is_none()) {
                             l.append(&nothing(&label(&text, &filters)));
                         }
-                        return;
+                        return fit(&l, &under);
                     }
                     l.append(&heading("In lyrics"));
                     for (s, line) in &hits {
@@ -523,14 +545,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     views.add_named(&widgets::scrolled(&both), Some("results"));
     let narrowed = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     narrowed.append(&table);
-    narrowed.append(
-        &gtk::ScrolledWindow::builder()
-            .child(&lyrics_under_table)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .propagate_natural_height(true)
-            .max_content_height(240)
-            .build(),
-    );
+    narrowed.append(&under_table);
     views.add_named(&narrowed, Some("filtered"));
     fill();
     fill_lyrics();
