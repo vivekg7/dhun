@@ -37,6 +37,9 @@ pub struct Song {
     pub group_key: String,
     pub group_title: String,
     pub group_index: i64,
+    /// Popularity, 1–100 from the server, 0 for none: orders equal search
+    /// matches and drives the Popular filter (plan 041).
+    pub score: i64,
 }
 
 pub const PODCAST: &str = "podcast";

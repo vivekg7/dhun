@@ -767,6 +767,27 @@ pub fn song_actions(
             confirm_unpin(v.upcast_ref(), &s.title, move || d.unpin(&key));
         }),
     );
+    // A song's info and its playlists (plan 041), over the list it was picked in.
+    let (a, v) = (app.clone(), view.downgrade());
+    action(
+        "info",
+        None,
+        Box::new(move |s, _| {
+            if let (Some(s), Some(v)) = (s.first(), v.upgrade()) {
+                crate::songinfo::info(&a, &v, s);
+            }
+        }),
+    );
+    let (a, v) = (app.clone(), view.downgrade());
+    action(
+        "in-playlists",
+        None,
+        Box::new(move |s, _| {
+            if let (Some(s), Some(v)) = (s.first(), v.upgrade()) {
+                crate::songinfo::in_playlists(&a, &v, s);
+            }
+        }),
+    );
     let a = app.clone();
     action(
         "stop-after",
@@ -832,7 +853,7 @@ pub fn drag_rows(
 
 /// The phone's song menu for the songs picked (plan 011): play next, add to
 /// the playing queue or another, add to a playlist, the two lists, played,
-/// download, take out of this list, go to the album or artist.
+/// download, take out of this list, go to the album or artist, its playlists and its info.
 pub fn song_menu(app: &App, menu: &gio::Menu, songs: &[SongRef], play: &Play, edit: &Edit) {
     menu.remove_all();
     let item = |m: &gio::Menu, label: &str, action: &str, target: Option<glib::Variant>| {
@@ -927,6 +948,11 @@ pub fn song_menu(app: &App, menu: &gio::Menu, songs: &[SongRef], play: &Play, ed
             }
             item(&go, "Go to Artist", "win.go-artist", id);
         }
+        // Episodes and books' files are in no playlist (plan 031).
+        if !s.spoken() && !app.playlists_of(s.id).is_empty() {
+            item(&go, "In Playlists…", "songs.in-playlists", None);
+        }
+        item(&go, "Info", "songs.info", None);
         menu.append_section(None, &go);
     }
 }

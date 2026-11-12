@@ -12,8 +12,9 @@ use std::sync::Mutex;
 
 /// Raised when songs gain a field: 1 is the art key (plan 019), 2 podcasts
 /// and audiobooks, which the server sends only to a client that asks for
-/// them from the start (plan 031).
-pub const LIBRARY_FORMAT: i64 = 2;
+/// them from the start (plan 031), 3 the popularity score (plan 041): a
+/// cursor already past the server's first scoring scan would never bring it.
+pub const LIBRARY_FORMAT: i64 = 3;
 
 /// What a round changed, so the app reloads only what it must.
 #[derive(Default, Debug)]

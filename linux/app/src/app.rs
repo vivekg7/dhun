@@ -85,6 +85,8 @@ pub struct App {
     pub files: Arc<Files>,
     pub catalog: RefCell<Arc<Catalog>>,
     pub playlists: RefCell<Vec<Playlist>>,
+    /// Each song's playlists, as places in `playlists` by name; worked out when first asked after a change.
+    held: RefCell<Option<HashMap<i64, Vec<usize>>>>,
     pub queues: RefCell<Vec<QueueRow>>,
     pub settings: RefCell<Settings>,
     pub marks: RefCell<Marks>,
@@ -147,6 +149,7 @@ impl App {
             files: Arc::new(Files::new(dir.join("covers"))),
             catalog: RefCell::new(Arc::new(Catalog::empty())),
             playlists: RefCell::new(vec![]),
+            held: RefCell::new(None),
             queues: RefCell::new(vec![]),
             settings: RefCell::new(Settings::new()),
             marks: RefCell::default(),
@@ -345,7 +348,28 @@ impl App {
 
     pub fn reload_playlists(&self) {
         *self.playlists.borrow_mut() = self.db.lock().unwrap().playlists().unwrap_or_default();
+        self.held.take();
         self.changed(Change::Playlists);
+    }
+
+    /// The playlists that hold `song`, by name (plan 041). Search asks on
+    /// every keystroke, and the playlists hold some 18,000 entries, so each
+    /// song's are worked out once per change to the list.
+    pub fn playlists_of(&self, song: i64) -> Vec<Playlist> {
+        let lists = self.playlists.borrow();
+        let mut held = self.held.borrow_mut();
+        let held = held.get_or_insert_with(|| {
+            let mut order: Vec<usize> = (0..lists.len()).collect();
+            order.sort_by_cached_key(|&i| lists[i].name.to_lowercase());
+            let mut out: HashMap<i64, Vec<usize>> = HashMap::new();
+            for i in order {
+                for id in lists[i].songs.iter().collect::<HashSet<_>>() {
+                    out.entry(*id).or_default().push(i);
+                }
+            }
+            out
+        });
+        held.get(&song).map_or(vec![], |at| at.iter().map(|&i| lists[i].clone()).collect())
     }
 
     /// Debounced: a burst of events becomes one sync. A failed sync retries
@@ -636,6 +660,7 @@ impl App {
             self.forget_files();
         }
         self.playlists.borrow_mut().clear();
+        self.held.take();
         self.queues.borrow_mut().clear();
         self.settings.borrow_mut().clear();
         *self.marks.borrow_mut() = Marks::default();

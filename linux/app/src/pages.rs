@@ -55,6 +55,9 @@ pub struct Nav {
     pub search: gtk::SearchEntry,
     /// Fills the search page showing, if one is.
     search_fill: RefCell<Option<Rc<dyn Fn()>>>,
+    /// What the search page's filters picked (plan 041): kept while another
+    /// page shows, as the field keeps its text, but not across a restart.
+    pub filters: RefCell<dhun_core::search::Filters>,
     /// What the Downloads page was last built with, its pins and songs: it is
     /// built again when they change, between files rather than at each one.
     pins_shown: RefCell<Vec<String>>,
@@ -74,6 +77,7 @@ impl Nav {
             app: app.clone(),
             search: gtk::SearchEntry::builder().placeholder_text("Search").hexpand(true).build(),
             search_fill: RefCell::new(None),
+            filters: RefCell::default(),
             pins_shown: RefCell::default(),
             queue_shown: RefCell::default(),
             popping: Cell::new(false),
@@ -179,7 +183,8 @@ impl Nav {
         });
     }
 
-    /// The search page while the field is empty: the recent searches (plan 029).
+    /// The search page while the field is empty: the recent searches (plan
+    /// 029), or what the filters pick (plan 041).
     pub fn show_recent(self: &Rc<Self>) {
         if self.search.text().is_empty() && self.current() != Some(Route::Search) {
             self.open(Route::Search);

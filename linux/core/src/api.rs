@@ -93,6 +93,8 @@ pub struct SongDto {
     pub group: Option<String>,
     pub group_title: Option<String>,
     pub group_index: Option<i64>,
+    /// Omitted when 0, a song with no popularity (plan 041).
+    pub score: Option<i64>,
 }
 
 impl SongDto {
@@ -137,6 +139,7 @@ impl SongDto {
             group_key: self.group.unwrap_or_default(),
             group_title: self.group_title.unwrap_or_default(),
             group_index: self.group_index.unwrap_or(0),
+            score: self.score.unwrap_or(0),
         }
     }
 }

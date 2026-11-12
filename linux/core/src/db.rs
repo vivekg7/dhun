@@ -17,7 +17,7 @@ pub type Result<T> = rusqlite::Result<T>;
 
 /// Each step runs once, in order; a new one goes at the end. No step
 /// touches the outbox: an upgrade never loses an offline edit (AGENTS.md).
-const STEPS: [&str; 3] = [
+const STEPS: [&str; 4] = [
     "CREATE TABLE song (id INTEGER PRIMARY KEY, path TEXT NOT NULL, title TEXT NOT NULL,
       artist TEXT NOT NULL, artists TEXT NOT NULL, album TEXT NOT NULL, albumArtist TEXT NOT NULL,
       composer TEXT NOT NULL, genres TEXT NOT NULL, year INTEGER NOT NULL, track INTEGER NOT NULL,
@@ -56,6 +56,8 @@ const STEPS: [&str; 3] = [
     // Bookmarks in long files (plan 033).
     "CREATE TABLE bookmark (id TEXT PRIMARY KEY, song INTEGER NOT NULL, positionMs INTEGER NOT NULL,
       note TEXT NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL);",
+    // Popularity (plan 041): 0 until the library is pulled again (sync::LIBRARY_FORMAT).
+    "ALTER TABLE song ADD COLUMN score INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Joins and splits the text form of a list (artists, genres).
@@ -142,7 +144,7 @@ impl Db {
         self.rows(
             "SELECT id, path, title, artist, artists, album, albumArtist, composer, genres, year, track, disc,
             durationMs, format, bitrate, sampleRate, bitDepth, size, hasArt, hasLyrics, addedAt, missing, art,
-            kind, date, notes, chapters, groupKey, groupTitle, groupIndex FROM song WHERE missing = 0",
+            kind, date, notes, chapters, groupKey, groupTitle, groupIndex, score FROM song WHERE missing = 0",
             [],
             |r| {
                 Ok(Arc::new(Song {
@@ -176,6 +178,7 @@ impl Db {
                     group_key: r.get(27)?,
                     group_title: r.get(28)?,
                     group_index: r.get(29)?,
+                    score: r.get(30)?,
                 }))
             },
         )
@@ -192,7 +195,7 @@ impl Db {
                     "INSERT OR REPLACE INTO song (id, path, title, artist, artists, album, albumArtist, composer,
                     genres, year, track, disc, durationMs, format, bitrate, sampleRate, bitDepth, size, hasArt,
                     hasLyrics, addedAt, missing, art, kind, date, notes, chapters, groupKey, groupTitle,
-                    groupIndex) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    groupIndex, score) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 )?;
                 for s in batch {
                     st.execute(params![
@@ -226,6 +229,7 @@ impl Db {
                         s.group_key,
                         s.group_title,
                         s.group_index,
+                        s.score,
                     ])?;
                 }
             }

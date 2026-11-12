@@ -4,7 +4,10 @@
 //! spelling, and a query matches an item when every one of its words
 //! matches a word of the item. api/search-fold.tsv keeps the copies in step.
 
-use std::collections::HashMap;
+use crate::model::Song;
+use std::cmp::Reverse;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
@@ -687,11 +690,131 @@ pub fn names<T>(items: Vec<T>, field_name: &'static str, name: impl Fn(&T) -> St
     Index::new(items, vec![field(field_name, Some(0), name)])
 }
 
+/// The library's name for a song with no genre: the Genres list's, so the genre filter can pick it.
+pub const UNKNOWN_GENRE: &str = "Unknown genre";
+
+/// "Popular only": about the top third, as the scores spread evenly from 9 to 98 (plan 041).
+pub const POPULAR: i64 = 70;
+
+/// How the songs found are ordered.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Sort {
+    #[default]
+    Best,
+    Popular,
+    Newest,
+    Oldest,
+}
+
+impl Sort {
+    pub const ALL: [Sort; 4] = [Sort::Best, Sort::Popular, Sort::Newest, Sort::Oldest];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Sort::Best => "Best match",
+            Sort::Popular => "Most popular",
+            Sort::Newest => "Newest",
+            Sort::Oldest => "Oldest",
+        }
+    }
+}
+
+/// What the search page's filters picked (plan 041). Artists and genres are
+/// names picked from the library's own lists, so they test a song's values
+/// exactly rather than as words, and several of them mean any of them:
+/// "Arijit or Atif, from the 2010s", which the typed `artist:` words, all
+/// of which must match, cannot say.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Filters {
+    pub years: Option<std::ops::RangeInclusive<i64>>,
+    /// As the library's lists name them, in the order picked; compared ignoring case, as the catalogue groups them.
+    pub artists: Vec<String>,
+    pub genres: Vec<String>,
+    pub popular: bool,
+    pub sort: Sort,
+}
+
+impl Filters {
+    /// No filter, whatever the sort: the box alone decides what is found.
+    pub fn is_empty(&self) -> bool {
+        self.years.is_none() && self.artists.is_empty() && self.genres.is_empty() && !self.popular
+    }
+
+    /// The test a song must pass, with the names lowered once rather than once per song.
+    pub fn accepts(&self) -> impl Fn(&Song) -> bool + '_ {
+        let lower = |names: &[String]| names.iter().map(|n| n.to_lowercase()).collect::<HashSet<_>>();
+        let (artists, genres) = (lower(&self.artists), lower(&self.genres));
+        let any = |keys: &HashSet<String>, names: &[String], none: &str| {
+            if names.is_empty() {
+                keys.contains(&none.to_lowercase())
+            } else {
+                names.iter().any(|n| keys.contains(&n.to_lowercase()))
+            }
+        };
+        move |s: &Song| {
+            self.years.as_ref().is_none_or(|r| r.contains(&s.year))
+                && (!self.popular || s.score >= POPULAR)
+                && (artists.is_empty() || any(&artists, &s.artists, s.display_artist()))
+                && (genres.is_empty() || any(&genres, &s.genres, UNKNOWN_GENRE))
+        }
+    }
+
+    /// What is picked, in a few words: a queue played from it is named so.
+    pub fn describe(&self) -> String {
+        let parts = [
+            self.years.as_ref().map(Filters::years_label),
+            Filters::names(&self.artists),
+            Filters::names(&self.genres),
+            self.popular.then(|| "Popular".to_string()),
+        ];
+        parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+    }
+
+    /// `found` filtered, in the order picked; with no query to rank by,
+    /// "best match" is the most popular. A song with no year sorts last
+    /// either way: it says nothing about when. Every sort is stable, and
+    /// ties go to the more popular.
+    pub fn apply(&self, found: Vec<Arc<Song>>, ranked: bool) -> Vec<Arc<Song>> {
+        let mut kept = if self.is_empty() {
+            found
+        } else {
+            let ok = self.accepts();
+            found.into_iter().filter(|s| ok(s)).collect()
+        };
+        match if self.sort == Sort::Best && !ranked { Sort::Popular } else { self.sort } {
+            Sort::Best => {}
+            Sort::Popular => kept.sort_by_key(|s| Reverse(s.score)),
+            Sort::Newest => kept.sort_by_key(|s| (Reverse(s.year), Reverse(s.score))),
+            Sort::Oldest => kept.sort_by_key(|s| (if s.year > 0 { s.year } else { i64::MAX }, Reverse(s.score))),
+        }
+        kept
+    }
+
+    /// "1990s", "Before 1950", "2001", "2001–2005".
+    pub fn years_label(r: &std::ops::RangeInclusive<i64>) -> String {
+        let (a, b) = (*r.start(), *r.end());
+        // From 1, not 0: a song with no year says nothing about when.
+        if a <= 1 {
+            format!("Before {}", b + 1)
+        } else if a % 10 == 0 && b == a + 9 {
+            format!("{a}s")
+        } else if a == b {
+            a.to_string()
+        } else {
+            format!("{a}–{b}")
+        }
+    }
+
+    /// The first name, and how many more: "Kumar Sanu +1".
+    pub fn names(names: &[String]) -> Option<String> {
+        let first = names.first()?;
+        Some(if names.len() > 1 { format!("{first} +{}", names.len() - 1) } else { first.clone() })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Song;
-    use std::sync::Arc;
 
     fn song(id: i64, title: &str, artist: &str, album: &str, composer: &str, year: i64) -> Arc<Song> {
         Arc::new(Song {
@@ -771,5 +894,46 @@ mod tests {
         years.sort_unstable();
         assert_eq!(years, [4, 6]);
         assert_eq!(find("artist:\"arijit singh\" tum"), [1]);
+    }
+
+    // Plan 041, as the phone's SearchTest.
+    fn rated() -> Vec<Arc<Song>> {
+        [(1, "Arijit Singh", 2013, 97), (2, "Atif Aslam", 2009, 80), (3, "Arijit Singh", 2019, 40)]
+            .into_iter()
+            .chain([(4, "Kumar Sanu", 1993, 90), (5, "Kumar Sanu", 0, 60)])
+            .map(|(id, artist, year, score)| {
+                let mut s = Arc::unwrap_or_clone(song(id, &format!("Song {id}"), artist, "", "", year));
+                s.score = score;
+                Arc::new(s)
+            })
+            .collect()
+    }
+
+    fn ids(f: &Filters, ranked: bool) -> Vec<i64> {
+        f.apply(rated(), ranked).iter().map(|s| s.id).collect()
+    }
+
+    #[test]
+    fn several_artists_mean_any_of_them_and_filters_mean_all() {
+        let f = Filters { artists: vec!["arijit singh".into(), "Atif Aslam".into()], ..Default::default() };
+        assert_eq!(ids(&f, false), [1, 2, 3]);
+        assert_eq!(ids(&Filters { years: Some(2010..=2019), ..f.clone() }, false), [1, 3]);
+        assert_eq!(ids(&Filters { popular: true, ..f.clone() }, false), [1, 2]);
+        assert_eq!(Filters::names(&f.artists).as_deref(), Some("arijit singh +1"));
+    }
+
+    #[test]
+    fn a_song_with_no_year_is_in_no_range_and_sorts_last() {
+        assert_eq!(ids(&Filters { years: Some(1..=1999), ..Default::default() }, false), [4]);
+        assert_eq!(Filters::years_label(&(1..=1999)), "Before 2000");
+        assert_eq!(ids(&Filters { sort: Sort::Oldest, ..Default::default() }, false), [4, 2, 1, 3, 5]);
+    }
+
+    #[test]
+    fn with_no_query_best_match_is_most_popular() {
+        let all = Filters { years: Some(0..=3000), ..Default::default() };
+        assert_eq!(ids(&all, false), [1, 4, 2, 5, 3]);
+        // With a query, best match keeps the order the search ranked.
+        assert_eq!(ids(&all, true), [1, 2, 3, 4, 5]);
     }
 }

@@ -113,6 +113,16 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
         s.set_show_content(true);
     });
     window.add_action(&open);
+    // A playlist by id: the song info's "In playlists" (plan 041).
+    let open = gio::SimpleAction::new("open-playlist", Some(glib::VariantTy::INT64));
+    let (n, s) = (nav.clone(), split.clone());
+    open.connect_activate(move |_, v| {
+        let Some(id) = v.and_then(|v| v.get::<i64>()) else { return };
+        n.search.set_text("");
+        n.open(Route::Playlist(id));
+        s.set_show_content(true);
+    });
+    window.add_action(&open);
     keys(&window, app);
     // Syncs on becoming active, as on the phone and the Mac.
     let a = app.clone();

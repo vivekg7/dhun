@@ -1,14 +1,17 @@
 //! What the window's search field finds (plan 029), as the Mac's
 //! `SearchView`: artists, albums, genres, folders, playlists, books, shows,
 //! episodes and songs, the section with the best match first; then the
-//! songs whose lyrics hold the words, which the server searches.
+//! songs whose lyrics hold the words, which the server searches. The
+//! filters over it (plan 041) narrow the search to songs, and with an
+//! empty field list every song that passes.
 
 use crate::pages::{Nav, Route};
 use crate::widgets::{self, count, cover, row};
 use adw::prelude::*;
-use dhun_core::catalog::SongRef;
+use dhun_core::catalog::{Catalog, SongRef};
 use dhun_core::downloads as dl;
-use dhun_core::search::{self, Query};
+use dhun_core::model::Playlist;
+use dhun_core::search::{self, Filters, Query};
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -41,8 +44,40 @@ struct Found {
     best: i32,
 }
 
-fn find(nav: &Nav, text: &str) -> Vec<Found> {
-    let q = Query::new(text);
+/// A favourite, or a song played often, comes first among equal matches;
+/// popularity breaks only the ties left, so the user's own taste beats the world's (plan 041).
+fn boost(nav: &Nav) -> impl Fn(&SongRef) -> i64 {
+    let favs: HashSet<i64> = nav.app.marks.borrow().favs.iter().copied().collect();
+    let plays = nav.app.db.lock().unwrap().play_stats().unwrap_or_default();
+    move |s| {
+        let mine = (if favs.contains(&s.id) { 3 } else { 0 }) + plays.get(&s.id).map_or(0, |p| (p.count / 5).min(2));
+        mine * 128 + s.score
+    }
+}
+
+/// With a filter picked only songs are found, all of them, and with an
+/// empty field every song that passes: "90s Kumar Sanu, most popular
+/// first" is a question about songs (plan 041).
+fn filtered(nav: &Nav, q: &Query, filters: &Filters) -> Vec<SongRef> {
+    let c = nav.app.catalog();
+    if q.is_empty() {
+        return filters.apply(c.songs.clone(), false);
+    }
+    let ix = c.song_index();
+    filters.apply(ix.search(q, boost(nav)).into_iter().map(|(i, _)| ix.items[i].clone()).collect(), true)
+}
+
+fn playlist_hit(c: &Catalog, p: &Playlist) -> Hit {
+    Hit {
+        title: p.name.clone(),
+        detail: count(c.songs_of(&p.songs).len()),
+        song: None,
+        icon: Some("view-list-symbolic"),
+        route: Some(Route::Playlist(p.id)),
+    }
+}
+
+fn find(nav: &Nav, q: &Query, filters: &Filters) -> Vec<Found> {
     if q.is_empty() {
         return vec![];
     }
@@ -50,12 +85,12 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
     let mut found = Vec::new();
     let mut section = |kind: &'static str, scored: Vec<(usize, i32)>, hit: &dyn Fn(usize) -> Hit| {
         if let Some(&(_, best)) = scored.first() {
-            let n = if kind == "Songs" { SONGS_SHOWN } else { scored.len() };
-            found.push(Found { kind, hits: scored.iter().take(n).map(|&(i, _)| hit(i)).collect(), best });
+            found.push(Found { kind, hits: scored.iter().map(|&(i, _)| hit(i)).collect(), best });
         }
     };
+    // Among equal matches, the better known first (plan 041).
     let ix = c.artist_index();
-    section("Artists", ix.search(&q, |_| 0), &|i| {
+    section("Artists", ix.search(q, |g| g.score), &|i| {
         let g = &ix.items[i];
         Hit {
             title: g.name.clone(),
@@ -66,7 +101,7 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
         }
     });
     let ix = c.album_index();
-    section("Albums", ix.search(&q, |_| 0), &|i| {
+    section("Albums", ix.search(q, |a| a.score), &|i| {
         let a = &ix.items[i];
         let detail = if a.year > 0 { format!("{} · {}", a.artist, a.year) } else { a.artist.clone() };
         Hit {
@@ -78,7 +113,7 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
         }
     });
     let ix = c.genre_index();
-    section("Genres", ix.search(&q, |_| 0), &|i| {
+    section("Genres", ix.search(q, |_| 0), &|i| {
         let g = &ix.items[i];
         Hit {
             title: g.name.clone(),
@@ -90,7 +125,7 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
     });
     // Many folders share a name ("CD1"), so the path says which.
     let ix = c.folder_index();
-    section("Folders", ix.search(&q, |_| 0), &|i| {
+    section("Folders", ix.search(q, |_| 0), &|i| {
         let p = &ix.items[i];
         let (parent, name) = p.rsplit_once('/').unwrap_or(("Music", p));
         Hit {
@@ -102,18 +137,9 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
         }
     });
     let playlists = search::names(nav.app.playlists.borrow().clone(), "playlist", |p| p.name.clone());
-    section("Playlists", playlists.search(&q, |_| 0), &|i| {
-        let p = &playlists.items[i];
-        Hit {
-            title: p.name.clone(),
-            detail: count(c.songs_of(&p.songs).len()),
-            song: None,
-            icon: Some("view-list-symbolic"),
-            route: Some(Route::Playlist(p.id)),
-        }
-    });
+    section("Playlists", playlists.search(q, |_| 0), &|i| playlist_hit(&c, &playlists.items[i]));
     let ix = c.book_index();
-    section("Audiobooks", ix.search(&q, |_| 0), &|i| {
+    section("Audiobooks", ix.search(q, |_| 0), &|i| {
         let b = &ix.items[i];
         Hit {
             title: b.title.clone(),
@@ -124,7 +150,7 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
         }
     });
     let ix = c.show_index();
-    section("Podcasts", ix.search(&q, |_| 0), &|i| {
+    section("Podcasts", ix.search(q, |_| 0), &|i| {
         let s = &ix.items[i];
         Hit {
             title: s.title.clone(),
@@ -135,7 +161,7 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
         }
     });
     let ix = c.episode_index();
-    section("Episodes", ix.search(&q, |_| 0), &|i| {
+    section("Episodes", ix.search(q, |_| 0), &|i| {
         let e = &ix.items[i];
         let detail =
             [e.group_title.clone(), e.day()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
@@ -147,21 +173,62 @@ fn find(nav: &Nav, text: &str) -> Vec<Found> {
             route: c.shelf_of(e).map(|s| Route::Shelf(s.id.clone())),
         }
     });
-    // A favourite, or a song played often, comes first among equal matches.
-    let favs: HashSet<i64> = nav.app.marks.borrow().favs.iter().copied().collect();
-    let plays = nav.app.db.lock().unwrap().play_stats().unwrap_or_default();
     let ix = c.song_index();
-    let boost =
-        |s: &SongRef| (if favs.contains(&s.id) { 3 } else { 0 }) + plays.get(&s.id).map_or(0, |p| (p.count / 5).min(2));
-    section("Songs", ix.search(&q, boost), &|i| {
-        let s = &ix.items[i];
-        let detail =
-            [s.display_artist(), &s.album].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
-        Hit { title: s.title.clone(), detail, song: Some(s.clone()), icon: None, route: None }
-    });
+    let scored = ix.search(q, boost(nav));
+    if let Some(&(_, best)) = scored.first() {
+        // A sort alone keeps every section and orders the songs.
+        let songs = filters.apply(scored.iter().map(|&(i, _)| ix.items[i].clone()).collect(), true);
+        let hits = songs.iter().take(SONGS_SHOWN).map(|s| {
+            let detail =
+                [s.display_artist(), &s.album].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
+            Hit { title: s.title.clone(), detail, song: Some(s.clone()), icon: None, route: None }
+        });
+        found.push(Found { kind: "Songs", hits: hits.collect(), best });
+        with_playlists_of_songs(nav, &c, &mut found, &songs, best);
+    }
     // Stable, so a tie keeps the order above.
     found.sort_by_key(|f| f.best);
     found
+}
+
+/// The playlists that hold the top songs found join the Playlists section,
+/// after those whose names match, so "kesariya" shows where Kesariya is.
+/// Only the top few: a broad query's songs would list every playlist. With
+/// no playlist named so, the section comes right after the songs: a search
+/// for a song's title wants the song first.
+fn with_playlists_of_songs(nav: &Nav, c: &Catalog, found: &mut Vec<Found>, songs: &[SongRef], best: i32) {
+    let named = found.iter().position(|f| f.kind == "Playlists");
+    let mut have: HashSet<i64> = named
+        .map(|at| {
+            found[at]
+                .hits
+                .iter()
+                .filter_map(|h| if let Some(Route::Playlist(id)) = h.route { Some(id) } else { None })
+                .collect()
+        })
+        .unwrap_or_default();
+    let holding: Vec<Hit> = songs
+        .iter()
+        .take(SHOWN)
+        .flat_map(|s| nav.app.playlists_of(s.id))
+        .filter(|p| have.insert(p.id))
+        .map(|p| playlist_hit(c, &p))
+        .collect();
+    match named {
+        _ if holding.is_empty() => {}
+        Some(at) => found[at].hits.extend(holding),
+        None => found.push(Found { kind: "Playlists", hits: holding, best: best + 1 }),
+    }
+}
+
+/// What a queue played from the results is named after, and what nothing matched.
+fn label(text: &str, filters: &Filters) -> String {
+    [text.trim().to_string(), filters.describe()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
+}
+
+/// Said when nothing is found.
+fn nothing(label: &str) -> adw::StatusPage {
+    adw::StatusPage::builder().title(format!("Nothing matches “{label}”")).icon_name("edit-find-symbolic").build()
 }
 
 /// What a result's download is, by the page it opens.
@@ -270,23 +337,50 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
     let expanded: Rc<RefCell<HashSet<&'static str>>> = Rc::default();
     // What each row does, by its index in the list.
     let routes: Rc<RefCell<Vec<Option<Action>>>> = Rc::default();
+    let (bar, show_filters) = crate::filters::bar(nav);
+    // The songs whose lyrics hold the words, after the rest: the server
+    // answers a moment after typing stops. They scroll with the results,
+    // or sit under the table of songs the filters pick.
+    let lyrics_list =
+        gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
+    let (lyrics_in_results, lyrics_under_table) = (adw::Bin::new(), adw::Bin::new());
+    let table = adw::Bin::builder().vexpand(true).build();
+    let views = gtk::Stack::new();
     let fill: Rc<dyn Fn()> = {
         let (nav, list, expanded, routes, picked) =
             (Rc::downgrade(nav), list.downgrade(), expanded.clone(), routes.clone(), picked.clone());
+        let (lyrics, here, under, table, views) =
+            (lyrics_list.clone(), lyrics_in_results.clone(), lyrics_under_table.clone(), table.clone(), views.clone());
         Rc::new(move || {
             let (Some(nav), Some(list)) = (nav.upgrade(), list.upgrade()) else { return };
             list.remove_all();
             let mut routes = routes.borrow_mut();
             routes.clear();
+            show_filters();
             let text = nav.search.text();
+            let q = Query::new(&text);
+            let filters = nav.filters.borrow().clone();
+            let narrowed = !filters.is_empty();
+            let (at, away) = if narrowed { (&under, &here) } else { (&here, &under) };
+            if at.child().is_none() {
+                away.set_child(None::<&gtk::Widget>);
+                at.set_child(Some(&lyrics));
+            }
+            views.set_visible_child_name(if narrowed { "filtered" } else { "results" });
+            let label = label(&text, &filters);
+            if narrowed {
+                let songs = filtered(&nav, &q, &filters);
+                let shown = if songs.is_empty() { nothing(&label).upcast() } else { songs_table(&nav, &songs, &label) };
+                return table.set_child(Some(&shown));
+            }
+            table.set_child(None::<&gtk::Widget>);
             if text.trim().is_empty() {
                 return recent(&nav, &list, &mut routes);
             }
-            let found = find(&nav, &text);
+            let found = find(&nav, &q, &filters);
             // Words long enough to search lyrics wait for that answer before saying so.
-            if found.is_empty() && !text.is_empty() && Query::new(&text).lyrics.chars().count() < 3 {
-                let empty = adw::StatusPage::builder().title("No results").icon_name("edit-find-symbolic").build();
-                list.append(&empty);
+            if found.is_empty() && q.lyrics.chars().count() < 3 {
+                list.append(&nothing(&label));
                 routes.push(None);
             }
             for f in found {
@@ -316,7 +410,7 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                     list.append(&r);
                     routes.push(Some(match h.route {
                         Some(r) => Action::Open(r),
-                        None => Action::Play(text.to_string(), found.clone(), i),
+                        None => Action::Play(format!("Search: {label}"), found.clone(), i),
                     }));
                 }
                 if total > SHOWN && !all {
@@ -351,10 +445,6 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             None => {}
         }
     });
-    // The songs whose lyrics hold the words, after the rest: the server
-    // answers a moment after typing stops.
-    let lyrics_list =
-        gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).css_classes(["navigation-sidebar"]).build();
     let found_in: Rc<RefCell<(String, Rc<Vec<SongRef>>)>> = Rc::default();
     let pending: Rc<Cell<Option<glib::SourceId>>> = Rc::default();
     let fill_lyrics: Rc<dyn Fn()> = {
@@ -371,6 +461,8 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
             if q.lyrics.chars().count() < 3 {
                 return;
             }
+            // The songs the filters pick, in lyrics as anywhere.
+            let filters = nav.filters.borrow().clone();
             l.append(&heading("In lyrics"));
             l.append(&heading("Searching lyrics…"));
             let (nav2, l2, found_in, pending2, main, picked) =
@@ -379,16 +471,19 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
                 pending2.take();
                 glib::spawn_future_local(async move {
                     let hits = crate::lyrics::search(&nav2.app, q).await;
-                    let Some(l) = l2.upgrade().filter(|_| nav2.search.text() == text) else { return };
+                    let still = |n: &Nav| n.search.text() == text && *n.filters.borrow() == filters;
+                    let Some(l) = l2.upgrade().filter(|_| still(&nav2)) else { return };
                     l.remove_all();
                     let c = nav2.app.catalog();
-                    let hits: Vec<(SongRef, String)> =
-                        hits.into_iter().filter_map(|h| c.by_id.get(&h.song).map(|s| (s.clone(), h.line))).collect();
+                    let ok = filters.accepts();
+                    let hits: Vec<(SongRef, String)> = hits
+                        .into_iter()
+                        .filter_map(|h| c.by_id.get(&h.song).filter(|s| ok(s)).map(|s| (s.clone(), h.line)))
+                        .collect();
                     if hits.is_empty() {
-                        if main.upgrade().is_some_and(|m| m.first_child().is_none()) {
-                            l.append(
-                                &adw::StatusPage::builder().title("No results").icon_name("edit-find-symbolic").build(),
-                            );
+                        // Filtered, the table says so.
+                        if filters.is_empty() && main.upgrade().is_some_and(|m| m.first_child().is_none()) {
+                            l.append(&nothing(&label(&text, &filters)));
                         }
                         return;
                     }
@@ -422,19 +517,61 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
         f();
         fl();
     }));
-    fill();
-    fill_lyrics();
     let both = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     both.append(&list);
-    both.append(&lyrics_list);
+    both.append(&lyrics_in_results);
+    views.add_named(&widgets::scrolled(&both), Some("results"));
+    let narrowed = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    narrowed.append(&table);
+    narrowed.append(
+        &gtk::ScrolledWindow::builder()
+            .child(&lyrics_under_table)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .max_content_height(240)
+            .build(),
+    );
+    views.add_named(&narrowed, Some("filtered"));
+    fill();
+    fill_lyrics();
+    // The filters stay in view over whatever is found.
+    let page = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    page.append(&bar);
+    page.append(&views);
+    // The table of filtered songs has its own; this one is for the rows of results and lyrics.
     let group = widgets::song_actions(
         &nav.app,
-        both.upcast_ref(),
+        page.upcast_ref(),
         Rc::new(move || picked.borrow().clone()),
         Rc::new(Vec::new),
         &widgets::Play::List { name: String::new(), source: "search".into() },
         &widgets::Edit::None,
     );
-    both.insert_action_group("songs", Some(&group));
-    widgets::scrolled(&both).upcast()
+    page.insert_action_group("songs", Some(&group));
+    page.upcast()
+}
+
+/// The songs the filters pick: a table like any song list's, which builds
+/// rows only for what is on screen, since they can be thousands. A song
+/// played from it plays them all, named after what was asked.
+fn songs_table(nav: &Rc<Nav>, songs: &[SongRef], label: &str) -> gtk::Widget {
+    let play = widgets::Play::List { name: format!("Search: {label}"), source: "search".into() };
+    let view = widgets::song_list(&nav.app, songs, widgets::Columns::WITH_ALBUM, play, widgets::Edit::None);
+    let n = Rc::downgrade(nav);
+    view.connect_activate(move |_, _| {
+        if let Some(n) = n.upgrade() {
+            n.app.prefs.keep_search(&n.search.text());
+        }
+    });
+    let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    b.append(
+        &gtk::Label::builder()
+            .label(count(songs.len()))
+            .xalign(0.0)
+            .margin_start(18)
+            .css_classes(["dim-label"])
+            .build(),
+    );
+    b.append(&widgets::scrolled(&view));
+    b.upcast()
 }

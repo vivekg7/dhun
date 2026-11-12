@@ -6,7 +6,7 @@
 //! changed after, so any thread may read it.
 
 use crate::model::{AUDIOBOOK, PODCAST, Song};
-use crate::search::{self, Index, Query, field};
+use crate::search::{self, Index, Query, UNKNOWN_GENRE, field};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
@@ -18,11 +18,14 @@ pub struct Album {
     pub artist: String,
     pub year: i64,
     pub songs: Vec<SongRef>,
+    /// Its best song's popularity: among equal search matches the better known comes first (plan 041).
+    pub score: i64,
 }
 
 pub struct Group {
     pub name: String,
     pub songs: Vec<SongRef>,
+    pub score: i64,
 }
 
 impl Group {
@@ -126,8 +129,7 @@ impl Catalog {
         }
         let names = |s: &Song| if s.artists.is_empty() { vec![s.display_artist().into()] } else { s.artists.clone() };
         let artists = group(&songs, names);
-        let genres =
-            group(&songs, |s| if s.genres.is_empty() { vec!["Unknown genre".into()] } else { s.genres.clone() });
+        let genres = group(&songs, |s| if s.genres.is_empty() { vec![UNKNOWN_GENRE.into()] } else { s.genres.clone() });
         let spoken: Vec<SongRef> = all.iter().filter(|s| s.spoken()).cloned().collect();
         let folders = folders(&songs, &spoken);
         let books = shelves(&spoken, AUDIOBOOK);
@@ -342,6 +344,7 @@ fn albums(songs: &[SongRef]) -> Vec<Arc<Album>> {
                 name: first.album.clone(),
                 artist,
                 year: sorted.iter().map(|s| s.year).max().unwrap_or(0),
+                score: best_score(&sorted),
                 songs: sorted,
             })
         })
@@ -413,7 +416,12 @@ fn group(songs: &[SongRef], keys: impl Fn(&Song) -> Vec<String>) -> Vec<Arc<Grou
             map.entry(k.to_lowercase()).or_insert_with(|| (k, vec![])).1.push(s.clone());
         }
     }
-    natural_sorted(map.into_values().map(|(name, songs)| Arc::new(Group { name, songs })).collect(), |g| &g.name)
+    let groups = map.into_values().map(|(name, songs)| Arc::new(Group { name, score: best_score(&songs), songs }));
+    natural_sorted(groups.collect(), |g| &g.name)
+}
+
+fn best_score(songs: &[SongRef]) -> i64 {
+    songs.iter().map(|s| s.score).max().unwrap_or(0)
 }
 
 // The sorts below make each key once per item, not once per comparison: a
