@@ -12,6 +12,28 @@ let guideText = #"""
     A **playlist** is kept until you delete it. Changing a queue never changes
     a playlist.
 
+    ## Searching
+
+    When several songs match equally well, your favourites and the songs you
+    play most come first, then the better known ones. A closer match always
+    comes before a looser one, however popular.
+
+    The filters by the Search box (on the Mac, the filter button beside it)
+    narrow the songs to a **year** or a decade, one or more **artists** or
+    **genres**, or the **popular** ones, about the top third. They can also
+    **sort** the songs: most popular, newest or oldest. Several artists mean
+    songs by any of them, and different filters all apply: Arijit Singh or
+    Atif Aslam, from the 2010s. With a filter set, only songs are found, all
+    of them.
+
+    The filters work with nothing typed, too: pick the 1990s and Kumar Sanu
+    to list every one of his 90s songs, most popular first. Playing one plays
+    the whole list as a new queue.
+
+    A search for a song also shows the playlists it is in. So does **In
+    playlists** in a song's menu, and **Info** (**Get Info** on the Mac)
+    shows its tags, its file, your plays and its popularity.
+
     ## Asking by voice
 
     The mic in the Search box listens, and what you said goes into the box as

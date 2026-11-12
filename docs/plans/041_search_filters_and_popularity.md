@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `IN PROGRESS` — server in `server-v0.18.2` on the NAS (2026-11-12); Android built; macOS, web and Linux next. Language waits on the curation tool
+**Status:** `IN PROGRESS` — server in `server-v0.18.2` on the NAS (2026-11-12); built on Android, macOS, web and Linux, to ship together as 0.19.0. Language waits on the curation tool
 **Started:** 2026-11-11
 
 ## Problem
@@ -192,10 +192,22 @@ on any `&`. A migration makes the next scan read those 152 files again.
    (`LIBRARY_FORMAT` 3), since a phone whose cursor is past the server's
    scoring would never get the scores; tie-break; filter chips; empty-box
    browse; song info; "In playlists…"; playlists in search. Built.
-   The "How it works" guide is shared by every app, so its section on
-   filters waits for the others.
-4. macOS, web, Linux: the same, as in 029. Filters on the Mac sit in the
-   toolbar's search menu, not in the page.
+4. macOS, web, Linux: the same, as in 029, each with its own
+   `LIBRARY_FORMAT` 3 and a migration adding the score. Built, with the
+   guide's "Searching" section, which waited for every app to have the
+   filters. Where they differ from the phone:
+   - **Mac:** SwiftUI's toolbar search field has no menu of its own to
+     extend, so the filters sit in a filter button beside it; its icon
+     fills while one is applied and the results' subtitle names them.
+     "Get Info" and an "In Playlists" submenu, as the Mac names them.
+   - **Web:** the chips sit outside the scroller, so they stay in view;
+     Sort opens the web's own menu. The artist and genre lists show 200
+     names and say how many more are found by typing: a dialog there has
+     no lazy list, and the library has some 6,800 artists. Info keeps the
+     track, codec, bit depth and path it showed before.
+   - **Linux:** the search field is in the sidebar, so the filter row heads
+     the Search page. Filtered songs show as a song table, not result
+     rows: they run to thousands and the results list builds every row.
 5. Measure against the 50 ms per keystroke target at 100,000 songs
    ([036](036_fast_at_100k.md)). The filters are array lookups, but an empty
    query with a sort sorts the whole library.
