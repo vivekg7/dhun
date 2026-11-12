@@ -308,10 +308,20 @@ impl Nav {
     }
 }
 
-/// The first `T` under `w`, depth first.
+/// The first `T` under `w`, depth first, of what the page shows: not in a
+/// menu's popover, which has a scroller of its own, and in a stack only
+/// under the page it shows. The search page has both, its Sort menu and a
+/// stack of its results and its table of filtered songs, and a rebuild
+/// must keep the one on screen scrolled.
 fn first<T: IsA<gtk::Widget>>(w: &gtk::Widget) -> Option<T> {
     if let Some(v) = w.downcast_ref::<T>() {
         return Some(v.clone());
+    }
+    if w.is::<gtk::Popover>() {
+        return None;
+    }
+    if let Some(s) = w.downcast_ref::<gtk::Stack>() {
+        return first(&s.visible_child()?);
     }
     let mut c = w.first_child();
     while let Some(x) = c {
