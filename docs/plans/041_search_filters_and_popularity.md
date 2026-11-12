@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `IN PROGRESS` — server and Android built; macOS, web and Linux next. Language waits on the curation tool
+**Status:** `IN PROGRESS` — server in `server-v0.18.2` on the NAS (2026-11-12); Android built; macOS, web and Linux next. Language waits on the curation tool
 **Started:** 2026-11-11
 
 ## Problem

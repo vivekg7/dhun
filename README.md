@@ -12,10 +12,10 @@ APK, the Mac app, the Linux Flatpak and the server image. Android has moved
 on to the [0.18.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.18.1),
 an Android-only patch.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.18.0`: the library
-  scan, streaming, offline sync of queues and playlists (`.m3u8` files), a
-  log of every listen, resume points for long files, Favorites and Listen
-  Later.
+- **Server** (`server/`), on the owner's NAS as `server-v0.18.2`: the library
+  scan, each song's popularity score from the curation tool's index,
+  streaming, offline sync of queues and playlists (`.m3u8` files), a log of
+  every listen, resume points for long files, Favorites and Listen Later.
 - **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.18.1
   on the owner's phone: downloads, playlist editing, the sleep timer,
   lyrics, speed and pitch, hand-off, a song cache, playback that waits out a
