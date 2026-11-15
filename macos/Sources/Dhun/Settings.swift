@@ -217,6 +217,12 @@ struct PlaybackSettings: View {
                     choice("Finished at", Synced.finishedPercent) { "\($0)%" }
                         .disabled(!app.setting(Synced.autoRemove))
                 }
+                SwiftUI.Section("Search") {
+                    choice("Tapping a song found by its title", Synced.titleTap, info: "Play radio") {
+                        $0 == "radio" ? "Play radio" : "Play the matches"
+                    }
+                    .help("Radio plays the song, then songs like it.")
+                }
                 SwiftUI.Section("Speed and pitch") {
                     LabeledContent("Everyday on this Mac") {
                         Text(app.playback.everyday.label ?? "Normal")

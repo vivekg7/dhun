@@ -55,6 +55,14 @@ public final class Api: @unchecked Sendable {
             "/api/v1/search/lyrics?q=" + q.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!)
         return r.hits ?? []
     }
+    /// Up to `n` songs to play after `seed`, best first, none of `exclude`
+    /// (plan 042). Only the server can pick them: it has the whole family's listening.
+    public func radio(_ seed: Int, n: Int, exclude: [Int]) async throws -> [Int] {
+        var path = "/api/v1/radio/\(seed)?n=\(n)"
+        if !exclude.isEmpty { path += "&exclude=" + exclude.map(String.init).joined(separator: ",") }
+        let r: RadioDTO = try await call("GET", path)
+        return r.songs ?? []
+    }
     public func me() async throws -> Me { try await call("GET", "/api/v1/me") }
     public func nowPlaying() async throws -> NowPlaying? {
         let r: NowPlayingDTO = try await call("GET", "/api/v1/now-playing")
@@ -291,6 +299,7 @@ struct ThumbsDTO: Decodable { var thumbs: [String: String]? }
 struct NowPlayingDTO: Decodable { var nowPlaying: NowPlaying? }
 struct MembersDTO: Decodable { var users: [Member]? }
 struct LyricsHitsDTO: Decodable { var hits: [LyricsHit]? }
+struct RadioDTO: Decodable { var songs: [Int]? }
 
 public struct LyricsDTO: Decodable, Sendable {
     public var source: String?

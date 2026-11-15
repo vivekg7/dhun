@@ -339,6 +339,12 @@ struct SearchResults: View {
             let (name, list, chosen) = picked(tags, songs, lyrics?.map(\.song) ?? [])
             guard let first = chosen.first, let i = list.firstIndex(of: first) else { return }
             app.keepSearch(query)
+            // A song found by its name: the other matches only share words with it (plan 042).
+            if tags.contains("s/\(first.id)"), !first.spoken, app.setting(Synced.titleTap) == "radio",
+                SearchQuery(query).isTitle(of: first.title)
+            {
+                return app.playback.playRadio(first)
+            }
             app.playback.play(name: name, source: "search", songs: list, start: i)
         }
         .overlay {

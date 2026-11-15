@@ -191,6 +191,8 @@ struct SongMenu: View {
     var queueName = ""
     var source = ""
     var all: [Song] = []
+    /// The playing song's menu, in Now playing: it adds Add Similar Songs.
+    var playing = false
 
     var body: some View {
         if songs.isEmpty {
@@ -198,6 +200,11 @@ struct SongMenu: View {
         } else {
             if !all.isEmpty, let i = all.firstIndex(where: { $0.id == songs[0].id }) {
                 Button("Play") { app.playback.play(name: queueName, source: source, songs: all, start: i) }
+            }
+            // The server picks the songs, from what it alone knows (plan 042).
+            if songs.count == 1, !songs[0].spoken {
+                Button("Play Radio") { app.playback.playRadio(songs[0]) }
+                if playing { Button("Add Similar Songs") { app.playback.addSimilar() } }
             }
             Button("Play Next") { app.playback.playNext(songs) }
             Button("Add to Playing Queue") { app.playback.addToQueue(songs) }

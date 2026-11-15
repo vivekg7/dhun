@@ -42,7 +42,7 @@ struct NowPlayingBar: View {
             .animation(.smooth(duration: 0.3), value: p.current?.id)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { if let s = p.current { nav.goToAlbum(s, app) } }
-            .contextMenu { if let s = p.current { SongMenu(songs: [s]) } }
+            .contextMenu { if let s = p.current { SongMenu(songs: [s], playing: true) } }
             // The song on the left, the extras on the right, however wide the window.
             Spacer(minLength: 0)
 

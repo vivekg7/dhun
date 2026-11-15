@@ -276,6 +276,13 @@ public struct SearchQuery: Sendable {
     public let lyrics: String
     public var isEmpty: Bool { terms.isEmpty }
 
+    /// Whether a song with `title` was found by its title: the query is the
+    /// title, or its start, as the ranking that puts it first decides. Such
+    /// a click may play radio (plan 042).
+    public func isTitle(of title: String) -> Bool {
+        !whole.isEmpty && Fold.words(title).joined(separator: " ").hasPrefix(whole)
+    }
+
     public static let fields: Set<String> = [
         "title", "artist", "album", "composer", "genre", "year", "folder", "lyrics",
     ]

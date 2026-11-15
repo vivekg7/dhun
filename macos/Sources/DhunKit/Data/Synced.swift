@@ -15,6 +15,8 @@ public enum Synced {
     public static let cacheAhead = Key("longFiles.cacheAhead", 30, [10, 15, 30, 60, 0])
     public static let autoRemove = Key("listenLater.autoRemove", true)
     public static let finishedPercent = Key("listenLater.finishedPercent", 90, [80, 90, 95, 100])
+    /// What a click on a song found by its title plays: the matches, or its radio (plan 042).
+    public static let titleTap = Key("search.titleTap", "matches", ["matches", "radio"])
     /// Whether a show's page leaves out the episodes already played: set on that page, not in Settings.
     public static let hidePlayed = Key("podcasts.hidePlayed", true)
 
@@ -22,7 +24,7 @@ public enum Synced {
     public static let playback = [
         previousRestart.name, minMinutes.name, resume.name, previous.name, next.name, seekBack.name,
         seekForward.name, rewind.name, rewindAfter.name, cacheAhead.name, autoRemove.name,
-        finishedPercent.name,
+        finishedPercent.name, titleTap.name,
     ]
 
     public struct Key<Value: SyncedValue>: Sendable {

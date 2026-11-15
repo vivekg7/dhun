@@ -15,6 +15,11 @@ public final class Playback {
     public static let maxQueues = 20
     /// The most songs a queue holds (plan 040), trimmed as the server trims them.
     nonisolated public static let maxQueueSongs = 1000
+    /// How many songs "Play radio" puts after its song, and "Add similar
+    /// songs" adds: the owner's 5–10 (plan 042).
+    public static let radioSongs = 10
+    /// The source of a radio queue's plays, so its skips can tune the radio (plan 008).
+    public static let radioSource = "radio"
     /// The synced setting with the queues' order: their ids, as a JSON array.
     public static let orderSetting = "queues.order"
     /// A hand-off never starts closer than this to the song's end, nor is a resume point kept there.
@@ -395,17 +400,55 @@ public final class Playback {
         load(q, play: true)
     }
 
+    /// "Play radio": a new queue of `song` and the songs like it, picked by
+    /// the server (plan 042). Without the server it says so and plays
+    /// nothing, rather than something else.
+    public func playRadio(_ song: Song) {
+        Task {
+            guard let ids = await radio(song.id, exclude: []) else { return }
+            let found = ids.compactMap { app.catalog.byId[$0] }
+            play(name: "Radio · \(song.title)", source: Playback.radioSource, songs: [song] + found, start: 0)
+        }
+    }
+
+    /// "Add similar songs": `radioSongs` more like the playing song, at the
+    /// end of its queue, none already in it.
+    public func addSimilar() {
+        guard let seed = current else { return }
+        Task {
+            guard let ids = await radio(seed.id, exclude: items) else { return }
+            let found = ids.compactMap { app.catalog.byId[$0] }
+            guard !found.isEmpty else { return say("No more similar songs") }
+            insert(found, next: false, added: "Added \(found.count) similar songs")
+        }
+    }
+
+    /// The server's songs like `seed`, or nil after saying why there are none.
+    private func radio(_ seed: Int, exclude: [Int]) async -> [Int]? {
+        do {
+            return try await app.api.radio(seed, n: Playback.radioSongs, exclude: exclude)
+        } catch let e as ApiError {
+            // An older server has no radio: its 404 is for the endpoint, not the song.
+            let older = e.code == 404 && e.message.hasPrefix("endpoint")
+            say(older ? "Radio needs a newer server" : "No radio: \(e.message)")
+        } catch {
+            say("Radio needs the server")
+        }
+        return nil
+    }
+
     /// After the current song; songs already queued are moved, never duplicated.
     public func playNext(_ songs: [Song]) { insert(songs, next: true) }
     public func addToQueue(_ songs: [Song]) { insert(songs, next: false) }
 
-    private func insert(_ songs: [Song], next: Bool) {
+    /// `added` is the note for when every song fitted.
+    private func insert(_ songs: [Song], next: Bool, added: String? = nil) {
         guard let q = active else { return play(name: "Queue", source: "", songs: songs, start: 0) }
         let playing = current?.id
         let wanted = distinct(songs.map(\.id).filter { $0 != playing && app.catalog.byId[$0] != nil })
         // Counted on the queue as stored, which is what the server counts.
         let adding = Playback.fitting(wanted, into: q.songs)
-        say(capNote(wanted.count - adding.count, "not added"))
+        say(capNote(wanted.count - adding.count, "not added") ?? added)
         guard !adding.isEmpty else { return }
         items.removeAll { adding.contains($0) }
         let at = next ? (currentIndex.map { $0 + 1 } ?? 0) : items.count

@@ -134,3 +134,14 @@ private func ids(_ f: SearchFilters, ranked: Bool = false) -> [Int] {
     #expect(f.apply(songs, ranked: true).map(\.id) == [1, 2, 4])
     #expect(f.describe() == "Hindi +1")
 }
+
+// Only a song the query names plays radio (plan 042): an album or artist
+// match, or words from the middle of a title, play the matches as before.
+@Test func aSongIsFoundByItsTitleOnlyWhenTheQueryStartsIt() {
+    #expect(SearchQuery("tum hi").isTitle(of: "Tum Hi Ho"))
+    #expect(SearchQuery("Tum Hi Ho").isTitle(of: "Tum Hi Ho"))
+    #expect(SearchQuery("दिल").isTitle(of: "Dil Se"))
+    #expect(!SearchQuery("hi ho").isTitle(of: "Tum Hi Ho"))
+    #expect(!SearchQuery("aashiqui").isTitle(of: "Tum Hi Ho"))
+    #expect(!SearchQuery("artist:arijit").isTitle(of: "Arijit Singh"))
+}
