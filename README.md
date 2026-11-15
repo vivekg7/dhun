@@ -13,11 +13,11 @@ filters by year, artist, genre and language, popularity ranking and a
 song's playlists ([plan 041](docs/plans/041_search_filters_and_popularity.md)).
 The devices below run what is installed on them.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.19.0`: the library
+- **Server** (`server/`), on the owner's NAS as `server-v0.20.0`: the library
   scan, each song's popularity score from the curation tool's index,
   streaming, offline sync of queues and playlists (`.m3u8` files), a log of
   every listen, resume points for long files, Favorites and Listen Later.
-- **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.18.1
+- **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.20.0
   on the owner's phone: downloads, playlist editing, the sleep timer,
   lyrics, speed and pitch, hand-off, a song cache, playback that waits out a
   network drop ([019](docs/plans/019_networking_and_caching.md)),
@@ -27,7 +27,7 @@ The devices below run what is installed on them.
   managing family members ([023](docs/plans/023_users_on_android.md)), and
   songs already on the phone ([025](docs/plans/025_phone_local_songs.md)),
   playable without signing in ([026](docs/plans/026_without_an_account.md)).
-- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.19.0 on
+- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.20.0 on
   the owner's Mac: the Android app's level, offline included, with a menu
   bar control, a floating mini player and Open With from Finder.
 - **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.20.0 on
