@@ -29,12 +29,12 @@ import kotlinx.serialization.json.Json
         Song::class, Playlist::class, QueueRow::class, Mark::class, Resume::class, Setting::class, OutboxOp::class, PlayStat::class,
         Pin::class, Download::class, LyricsRow::class, Thumb::class, Bookmark::class,
     ],
-    version = 9,
+    version = 10,
     // Migrations are generated from the exported schemas, so an upgrade
     // keeps the outbox: offline edits are never lost (AGENTS.md).
     autoMigrations = [
         AutoMigration(1, 2), AutoMigration(2, 3), AutoMigration(3, 4), AutoMigration(4, 5), AutoMigration(5, 6), AutoMigration(6, 7),
-        AutoMigration(7, 8), AutoMigration(8, 9),
+        AutoMigration(7, 8), AutoMigration(8, 9), AutoMigration(9, 10),
     ],
 )
 abstract class Db : RoomDatabase() {
@@ -95,6 +95,8 @@ data class Song(
     @ColumnInfo(defaultValue = "0") val groupIndex: Int = 0,
     /** Popularity, 1–100 from the server, 0 for none: orders equal search matches (docs/plans/041_search_filters_and_popularity.md). */
     @ColumnInfo(defaultValue = "0") val score: Int = 0,
+    /** The language's name from the server ("Hindi", or "Instrumental"), "" for none: a search filter (docs/plans/041_search_filters_and_popularity.md). */
+    @ColumnInfo(defaultValue = "") val language: String = "",
 ) {
     val artistList get() = if (artists.isEmpty()) emptyList() else artists.split(SEP)
     val genreList get() = if (genres.isEmpty()) emptyList() else genres.split(SEP)

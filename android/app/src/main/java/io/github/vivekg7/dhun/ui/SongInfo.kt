@@ -64,6 +64,7 @@ fun SongInfoDialog(
             "Album artist" to song.albumArtist,
             "Composer" to song.composer,
             "Genre" to song.genreList.joinToString(", "),
+            "Language" to song.language,
             "Year" to (if (song.year > 0) "${song.year}" else ""),
             "Length" to duration(song.durationMs),
             "File" to

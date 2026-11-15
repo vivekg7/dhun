@@ -61,6 +61,7 @@ fun SearchFilterChips(
         item { Chip(filters.years?.let(SearchFilters::yearsLabel), "Year") { open = "year" } }
         item { Chip(SearchFilters.names(filters.artists), "Artist") { open = "artist" } }
         item { Chip(SearchFilters.names(filters.genres), "Genre") { open = "genre" } }
+        item { Chip(SearchFilters.names(filters.languages), "Language") { open = "language" } }
         item { FilterChip(filters.popular, { onChange(filters.copy(popular = !filters.popular)) }, { Text("Popular") }) }
         item { Chip(filters.sort.label.takeIf { filters.sort != Sort.Best }, "Sort") { open = "sort" } }
     }
@@ -77,6 +78,10 @@ fun SearchFilterChips(
 
         "genre" -> {
             PickDialog("Genres", catalog.genreIndex, filters.genres, close) { onChange(filters.copy(genres = it)) }
+        }
+
+        "language" -> {
+            PickDialog("Languages", catalog.languageIndex, filters.languages, close) { onChange(filters.copy(languages = it)) }
         }
 
         "sort" -> {
@@ -172,7 +177,7 @@ private fun YearDialog(
 }
 
 /**
- * Several artists or genres, picked from the library's list and searched
+ * Several artists, genres or languages, picked from the library's list and searched
  * as the tab searches them. The ones picked stay at the top.
  */
 @Composable

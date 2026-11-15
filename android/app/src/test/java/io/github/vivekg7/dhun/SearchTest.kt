@@ -1,5 +1,6 @@
 package io.github.vivekg7.dhun
 
+import io.github.vivekg7.dhun.data.Catalog
 import io.github.vivekg7.dhun.data.Fold
 import io.github.vivekg7.dhun.data.LyricsRow
 import io.github.vivekg7.dhun.data.SearchFilters
@@ -124,6 +125,16 @@ class SearchTest {
         assertEquals(listOf(1L, 2L, 3L), ids(f))
         assertEquals(listOf(1L, 3L), ids(f.copy(years = 2010..2019)))
         assertEquals(listOf(1L, 2L), ids(f.copy(popular = true)))
+    }
+
+    @Test
+    fun severalLanguagesMeanAnyOfThemAndNoLanguageIsInNone() {
+        val songs = rated.zip(listOf("Hindi", "Urdu", "English", "Instrumental", "")) { s, l -> s.copy(language = l) }
+        val f = SearchFilters(languages = setOf("hindi", "Instrumental"))
+        assertEquals(listOf(1L, 4L), f.apply(songs, ranked = true).map { it.id })
+        assertEquals("hindi +1", f.describe())
+        // A song with no language is in none, not in one with no name to pick.
+        assertEquals(listOf("English", "Hindi", "Instrumental", "Urdu"), Catalog(songs).languages.map { it.name })
     }
 
     @Test

@@ -508,7 +508,7 @@ class SearchIndex<T>(
 
 /**
  * What the Search tab's filter chips picked (docs/plans/041_search_filters_and_popularity.md).
- * Artists and genres are names picked from the library's own lists, so
+ * Artists, genres and languages are names picked from the library's own lists, so
  * they test a song's values exactly rather than as words, and several of
  * them mean any of them: "Arijit or Atif, from the 2010s", which the typed
  * `artist:` words, all of which must match, cannot say.
@@ -518,6 +518,7 @@ data class SearchFilters(
     /** As the library's lists name them; compared ignoring case, as [Catalog] groups them. */
     val artists: Set<String> = emptySet(),
     val genres: Set<String> = emptySet(),
+    val languages: Set<String> = emptySet(),
     val popular: Boolean = false,
     val sort: Sort = Sort.Best,
 ) {
@@ -532,15 +533,17 @@ data class SearchFilters(
 
     private val artistKeys by lazy { artists.mapTo(HashSet()) { it.lowercase() } }
     private val genreKeys by lazy { genres.mapTo(HashSet()) { it.lowercase() } }
+    private val languageKeys by lazy { languages.mapTo(HashSet()) { it.lowercase() } }
 
     /** No filter, whatever the sort: the box alone decides what is found. */
-    val isEmpty get() = years == null && artists.isEmpty() && genres.isEmpty() && !popular
+    val isEmpty get() = years == null && artists.isEmpty() && genres.isEmpty() && languages.isEmpty() && !popular
 
     fun accepts(s: Song): Boolean =
         (years == null || s.year in years) &&
             (!popular || s.score >= POPULAR) &&
             (artists.isEmpty() || s.artistList.ifEmpty { listOf(s.displayArtist) }.any { it.lowercase() in artistKeys }) &&
-            (genres.isEmpty() || s.genreList.ifEmpty { listOf(UNKNOWN_GENRE) }.any { it.lowercase() in genreKeys })
+            (genres.isEmpty() || s.genreList.ifEmpty { listOf(UNKNOWN_GENRE) }.any { it.lowercase() in genreKeys }) &&
+            (languages.isEmpty() || s.language.lowercase() in languageKeys)
 
     /** What is picked, in a few words: a queue played from it is named so. */
     fun describe(): String =
@@ -548,6 +551,7 @@ data class SearchFilters(
             years?.let(::yearsLabel),
             names(artists),
             names(genres),
+            names(languages),
             "Popular".takeIf { popular },
         ).joinToString(" · ")
 

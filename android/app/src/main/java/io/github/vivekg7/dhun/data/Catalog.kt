@@ -44,6 +44,9 @@ class Catalog(
     val artists: List<Group> by lazy { group { it.artistList.ifEmpty { listOf(it.displayArtist) } } }
     val genres: List<Group> by lazy { group { it.genreList.ifEmpty { listOf(SearchFilters.UNKNOWN_GENRE) } } }
 
+    /** About 40, for the Search tab's filter alone; a song with no language is in none of them. */
+    val languages: List<Group> by lazy { group { if (it.language.isEmpty()) emptyList() else listOf(it.language) } }
+
     /**
      * Every folder, keyed by its path relative to the Music folder ("" is the
      * top). Podcasts and audiobooks are browsed here too, under a root of
@@ -115,6 +118,7 @@ class Catalog(
     val albumIndex by lazy { SearchIndex(albums, listOf(Field<Album>("album", 0) { it.name }, Field("artist", 1) { it.artist })) }
     val artistIndex by lazy { SearchIndex.names(artists, "artist") { it.name } }
     val genreIndex by lazy { SearchIndex.names(genres, "genre") { it.name } }
+    val languageIndex by lazy { SearchIndex.names(languages, "language") { it.name } }
     val folderIndex by lazy {
         SearchIndex.names(folders.values.filter { it.path.isNotEmpty() }.sortedNatural { it.path }, "folder") { it.name }
     }
