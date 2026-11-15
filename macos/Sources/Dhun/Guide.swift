@@ -19,8 +19,10 @@ let guideText = #"""
     comes before a looser one, however popular.
 
     The filters by the Search box (on the Mac, the filter button beside it)
-    narrow the songs to a **year** or a decade, one or more **artists** or
-    **genres**, or the **popular** ones, about the top third. They can also
+    narrow the songs to a **year** or a decade, one or more **artists**,
+    **genres** or **languages**, or the **popular** ones, about the top third.
+    Instrumental tracks are a language of their own, so English never brings
+    up a piano album. They can also
     **sort** the songs: most popular, newest or oldest. Several artists mean
     songs by any of them, and different filters all apply: Arijit Singh or
     Atif Aslam, from the 2010s. With a filter set, only songs are found, all
@@ -32,7 +34,7 @@ let guideText = #"""
 
     A search for a song also shows the playlists it is in. So does **In
     playlists** in a song's menu, and **Info** (**Get Info** on the Mac)
-    shows its tags, its file, your plays and its popularity.
+    shows its tags, its language, its file, your plays and its popularity.
 
     ## Asking by voice
 
