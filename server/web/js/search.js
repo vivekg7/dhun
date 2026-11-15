@@ -306,6 +306,14 @@ export class Query {
  * "acdc"). A field's text is folded once per distinct string, since an
  * album's name comes once per song on it.
  */
+/**
+ * Whether a song with `title` was found by its title: the query's words
+ * with no field are the title, or its start, as the phone decides. Such a
+ * tap may play radio (plan 042).
+ */
+export const isTitleOf = (q, title) =>
+  q.whole !== "" && text(title).startsWith(q.whole);
+
 export class Index {
   constructor(items, fieldList) {
     this.items = items;

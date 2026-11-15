@@ -54,7 +54,7 @@ export const askName = (title, initial, action) =>
  * another, add to a playlist, the two lists, go to album or artist. `play`
  * plays the list from the first chosen song.
  */
-export function songMenu(songs, { play, extra = [] } = {}) {
+export function songMenu(songs, { play, extra = [], similar = false } = {}) {
   const { app, playback, nav } = ctx;
   if (!songs.length) return [];
   const allFav = songs.every((s) => app.isMarked("fav", s.id));
@@ -66,6 +66,13 @@ export function songMenu(songs, { play, extra = [] } = {}) {
   const shelf = one && app.catalog.shelfOf(one);
   return [
     play ? { label: "Play", action: play } : null,
+    // The server picks the songs, from what it alone knows (plan 042).
+    one && !one.spoken
+      ? { label: "Play radio", action: () => playback.playRadio(one) }
+      : null,
+    one && !one.spoken && similar
+      ? { label: "Add similar songs", action: () => playback.addSimilar() }
+      : null,
     { label: "Play next", action: () => playback.playNext(songs) },
     { label: "Add to playing queue", action: () => playback.addToQueue(songs) },
     {
@@ -437,6 +444,10 @@ export class SongList {
     const it = this.items[i];
     if (!it?.song) return;
     if (this.o.play) return this.o.play(it, i);
+    if (this.o.radio?.(it.song)) {
+      ctx.playback.playRadio(it.song);
+      return this.o.onPlayed?.();
+    }
     const songs = this.all.map((x) => x.song).filter(Boolean);
     const start = songs.indexOf(it.song);
     ctx.playback.playList(this.o.name, this.o.source, songs, Math.max(0, start));

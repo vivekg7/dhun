@@ -20,6 +20,8 @@ export const synced = {
   cacheAhead: s("longFiles.cacheAhead", 30, [10, 15, 30, 60, 0]),
   autoRemove: s("listenLater.autoRemove", true, [true, false]),
   finishedPercent: s("listenLater.finishedPercent", 90, [80, 90, 95, 100]),
+  // What tapping a song found by its title plays: the other matches, or its radio (plan 042).
+  titleTap: s("search.titleTap", "matches", ["matches", "radio"]),
   // Whether a show's page leaves out the episodes already played.
   hidePlayed: s("podcasts.hidePlayed", true, [true, false]),
 };

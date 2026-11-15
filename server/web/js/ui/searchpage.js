@@ -5,7 +5,8 @@
 
 import { h, count, debounce } from "../util.js";
 import { icon } from "../icons.js";
-import { Query, nameIndex, lyricsHits, Filters } from "../search.js";
+import { Query, nameIndex, lyricsHits, Filters, isTitleOf } from "../search.js";
+import { synced } from "../synced.js";
 import { emptyNote, contextMenu } from "./kit.js";
 import { SongList, thumb, items, songMenu } from "./songs.js";
 import { playShelf } from "./spoken.js";
@@ -202,6 +203,11 @@ export function searchPage(initial, { field = false } = {}) {
     name: "",
     source: "search",
     onPlayed: () => ctx.app.keepSearch(query),
+    // A song found by its title plays its radio, if the user asked for that (plan 042).
+    radio: (s) =>
+      !s.spoken &&
+      ctx.app.setting(synced.titleTap) === "radio" &&
+      isTitleOf(new Query(query), s.title),
   });
   const input = field ? searchField(initial) : null;
   input?.addEventListener("input", () => {

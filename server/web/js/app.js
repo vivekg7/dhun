@@ -1029,6 +1029,17 @@ export class App extends EventTarget {
     return this.lyricsCache.get(song);
   }
 
+  /**
+   * Up to `n` songs to play after `seed`, best first, none of `exclude`
+   * (plan 042). Only the server can pick them: it has the whole family's
+   * listening.
+   */
+  async radio(seed, n, exclude) {
+    const ex = exclude.length ? `&exclude=${exclude.join(",")}` : "";
+    const r = await this.call("GET", `/api/v1/radio/${seed}?n=${n}${ex}`);
+    return r.songs ?? [];
+  }
+
   /** Songs whose lyrics hold the words, with the line (plan 029). */
   async searchLyrics(q) {
     const r = await this.call(

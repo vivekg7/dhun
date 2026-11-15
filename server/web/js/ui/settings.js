@@ -291,6 +291,17 @@ export function settingsPage() {
       ),
       h(
         "section.group",
+        h("h2", "Search"),
+        row(
+          "Tapping a song found by its title",
+          choice(synced.titleTap, (v) =>
+            v === "radio" ? "Play radio" : "Play the matches",
+          ),
+          { tip: "Radio plays the song, then songs like it.", guide: "Play radio" },
+        ),
+      ),
+      h(
+        "section.group",
         h("h2", "Listen Later"),
         row(
           "Remove when finished",

@@ -10,6 +10,7 @@ import {
   Query,
   songIndex,
   Filters,
+  isTitleOf,
   yearsLabel,
   names,
 } from "../js/search.js";
@@ -66,6 +67,14 @@ test("words match across fields in any order", () => {
 test("the title ranks above the album", () => {
   // Song 7 only has it in its album name.
   assert.deepEqual(find("tum hi ho"), [1, 7]);
+});
+
+test("a song is found by its title when the query is the title's start", () => {
+  // Such a tap may play radio (plan 042); a word from the middle is a looser match.
+  assert.ok(isTitleOf(new Query("tum hi"), "Tum Hi Ho"));
+  assert.ok(isTitleOf(new Query("artist:arijit TUM HI HO"), "Tum Hi Ho (Reprise)"));
+  assert.ok(!isTitleOf(new Query("hi ho"), "Tum Hi Ho"));
+  assert.ok(!isTitleOf(new Query("artist:arijit"), "Tum Hi Ho"));
 });
 
 test("typos only when nothing better matches", () => {

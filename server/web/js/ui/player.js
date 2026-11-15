@@ -591,7 +591,7 @@ export function nowBar() {
   );
   contextMenu(
     left,
-    () => songMenu(p.current ? [p.current] : []),
+    () => songMenu(p.current ? [p.current] : [], { similar: true }),
     () => p.current?.title,
   );
   const el = h(
@@ -694,7 +694,13 @@ export function nowPage() {
   const moreBtn = iconButton(
     "more",
     "More",
-    (e) => p.current && menuAt(e.currentTarget, songMenu([p.current]), p.current.title),
+    (e) =>
+      p.current &&
+      menuAt(
+        e.currentTarget,
+        songMenu([p.current], { similar: true }),
+        p.current.title,
+      ),
   );
   swipe(stage, (dir) => (dir < 0 ? p.next(true) : p.previous(true)));
   // The line under the title names the album, so the queue is named here, as on the phone.

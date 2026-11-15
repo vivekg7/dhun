@@ -33,6 +33,8 @@ const fadeMs = 10_000;
 /** The note when songs did not fit in a queue (plan 040), grouped as "30,204" whatever the locale. */
 const capNote = (n, what) =>
   `A queue holds at most ${maxQueueSongs.toLocaleString("en-US")} songs: ${n.toLocaleString("en-US")} ${n === 1 ? "was" : "were"} ${what}`;
+/** How many songs "Play radio" puts after its song, and "Add similar songs" adds: the owner's 5–10 (plan 042). */
+const radioSongs = 10;
 /** The next song is opened this far from the current one's end. */
 const preloadSeconds = 30;
 
@@ -417,6 +419,45 @@ export class Playback extends EventTarget {
   }
 
   /** After the current song; songs already queued are moved, never duplicated. */
+  /**
+   * "Play radio" (plan 042): a new queue of `song` and the songs like it,
+   * picked by the server. Without the server it says so and plays nothing,
+   * rather than something else.
+   */
+  async playRadio(song) {
+    const ids = await this.radio(song.id, []);
+    if (!ids) return;
+    const byId = this.app.catalog.byId;
+    const songs = [song, ...ids.map((id) => byId.get(id)).filter(Boolean)];
+    this.playList(`Radio · ${song.title}`, "radio", songs, 0);
+  }
+
+  /** "Add similar songs": ten more like the playing song, at the end of its queue, none already in it. */
+  async addSimilar() {
+    const seed = this.current;
+    if (!seed || !this.active) return;
+    const ids = await this.radio(seed.id, this.items);
+    if (!ids) return;
+    const byId = this.app.catalog.byId;
+    const songs = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (!songs.length) return this.say("No more similar songs");
+    this.insert(songs, false, `Added ${count(songs.length, "similar song")}`);
+  }
+
+  /** The server's songs like `seed`, or null after saying why there are none. */
+  async radio(seed, exclude) {
+    try {
+      return await this.app.radio(seed, radioSongs, exclude);
+    } catch (e) {
+      // An older server has no radio: its 404 is for the endpoint, not the song.
+      if (e.status === 404 && e.message.startsWith("endpoint"))
+        this.say("Radio needs a newer server");
+      else if (e.status === 0) this.say("Radio needs the server");
+      else this.say(`No radio: ${e.message}`);
+      return null;
+    }
+  }
+
   playNext(songs) {
     this.insert(songs, true);
   }
@@ -425,7 +466,7 @@ export class Playback extends EventTarget {
     this.insert(songs, false);
   }
 
-  insert(songs, next) {
+  insert(songs, next, added) {
     const q = this.active;
     if (!q) return this.playList("Queue", "", songs, 0);
     const playing = this.current?.id;
@@ -451,9 +492,10 @@ export class Playback extends EventTarget {
     );
     if (adding.length === wanted.length)
       this.say(
-        next
-          ? `${count(adding.length)} to play next`
-          : `${count(adding.length)} added to the queue`,
+        added ??
+          (next
+            ? `${count(adding.length)} to play next`
+            : `${count(adding.length)} added to the queue`),
       );
     this.updateSleep();
   }
