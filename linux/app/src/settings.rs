@@ -311,6 +311,13 @@ fn playback(app: &Rc<App>, dialog: &adw::PreferencesDialog) -> adw::PreferencesP
     later.add(&pct);
     page.add(&later);
 
+    let search = adw::PreferencesGroup::builder().title("Search").build();
+    let tap: fn(&str) -> &'static str = |v| if v == "radio" { "Play radio" } else { "Play the matches" };
+    let row = text("Tapping a song found by its title", &synced::TITLE_TAP, tap);
+    row.set_subtitle("Radio plays the song, then songs like it.");
+    search.add(&with_info(row, "Play radio"));
+    page.add(&search);
+
     let speed = adw::PreferencesGroup::builder().title("Speed and pitch").build();
     let everyday = app.prefs.get().everyday();
     let row = adw::ActionRow::builder()

@@ -252,6 +252,14 @@ fn pin_of(r: &Route) -> Option<(&'static str, String)> {
     }
 }
 
+/// Whether tapping `song` plays its radio: the setting asks for it, and it
+/// is music the server has, found by its title.
+fn radio_tap(nav: &Nav, song: Option<&SongRef>) -> bool {
+    let Some(s) = song.filter(|s| !s.spoken()) else { return false };
+    let radio = dhun_core::synced::TITLE_TAP.get(&nav.app.settings.borrow()) == "radio";
+    radio && Query::new(&nav.search.text()).is_title_of(&s.title)
+}
+
 /// A section's heading, a row of its own.
 fn heading(text: &str) -> gtk::ListBoxRow {
     let l =
@@ -455,6 +463,9 @@ pub fn page(nav: &Rc<Nav>) -> gtk::Widget {
         }
         match action {
             Some(Action::Open(route)) => n.push(route),
+            // A song found by its title may play its radio rather than the
+            // songs that only share words with it, as Settings says (plan 042).
+            Some(Action::Play(_, songs, i)) if radio_tap(&n, songs.get(i)) => n.app.playback().play_radio(&songs[i]),
             Some(Action::Play(name, songs, i)) => n.app.playback().play_list(&name, "search", &songs, i),
             Some(Action::Search(q)) => n.search.set_text(&q),
             None => {}

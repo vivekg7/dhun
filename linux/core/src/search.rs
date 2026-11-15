@@ -378,6 +378,13 @@ impl Query {
     pub fn is_empty(&self) -> bool {
         self.terms.is_empty()
     }
+
+    /// Whether a song with `title` was found by its title: the query is the
+    /// title, or its start, as the ranking that puts it first decides. Such a
+    /// tap may play radio (plan 042).
+    pub fn is_title_of(&self, title: &str) -> bool {
+        !self.whole.is_empty() && words(title).join(" ").starts_with(&self.whole)
+    }
 }
 
 /// The tokens of `(\p{L}+):("[^"]*"|\S+)|"[^"]*"|\S+`, as (field, its value, the whole match).
@@ -878,6 +885,15 @@ mod tests {
     fn the_title_ranks_above_the_album() {
         // Song 7 only has it in its album name.
         assert_eq!(find("tum hi ho"), [1, 7]);
+    }
+
+    #[test]
+    fn a_song_is_found_by_its_title_or_its_start() {
+        assert!(Query::new("tum hi").is_title_of("Tum Hi Ho"));
+        assert!(Query::new("tum hi ho").is_title_of("Tum Hi Ho"));
+        // Its words elsewhere in the query, or a field, are not its title.
+        assert!(!Query::new("hi ho").is_title_of("Tum Hi Ho"));
+        assert!(!Query::new("artist:arijit").is_title_of("Tum Hi Ho"));
     }
 
     #[test]

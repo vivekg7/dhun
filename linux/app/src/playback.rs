@@ -18,8 +18,8 @@ use dhun_core::store::{self, Listen};
 use dhun_core::synced;
 use dhun_core::tempo::{self, Tempo};
 use dhun_core::time::{now_ms, parse};
-use gtk::glib;
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -27,6 +27,13 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 type Notice = Box<dyn Fn(&str)>;
+
+/// How many songs Play Radio puts after its song, and Add Similar Songs
+/// adds: within the owner's 5–10 (plan 042).
+const RADIO_SONGS: usize = 10;
+
+/// The source of a radio queue's plays, so its skips can tune the radio (plan 008).
+const RADIO: &str = "radio";
 
 /// A listen still open (plan 008): saved every few seconds, so a crash
 /// loses at most those.
@@ -595,6 +602,49 @@ impl Playback {
         self.load(q, true, None);
     }
 
+    /// "Play radio": a new queue of `song` and the songs like it, picked by
+    /// the server (plan 042). Without the server it says so and plays
+    /// nothing, rather than something else.
+    pub fn play_radio(self: &Rc<Self>, song: &SongRef) {
+        let song = song.clone();
+        self.radio(song.id, Vec::new(), move |p, ids| {
+            let mut songs = vec![song.clone()];
+            songs.extend(p.app.catalog().songs_of(&ids));
+            p.play_list(&format!("Radio · {}", song.title), RADIO, &songs, 0);
+        });
+    }
+
+    /// "Add similar songs": `RADIO_SONGS` more like the playing song, at the
+    /// end of its queue, none already in it.
+    pub fn add_similar(self: &Rc<Self>) {
+        let Some(seed) = self.current() else { return };
+        self.radio(seed.id, self.items(), |p, ids| {
+            let songs = p.app.catalog().songs_of(&ids);
+            if songs.is_empty() {
+                return p.notice("No more similar songs");
+            }
+            let n = p.insert(&songs, false);
+            if n > 0 {
+                p.notice(&format!("Added {n} similar songs"));
+            }
+        });
+    }
+
+    /// Asks the server for the songs like `seed`, off the main thread, and
+    /// gives them to `then`; or says why there are none.
+    fn radio(&self, seed: i64, exclude: Vec<i64>, then: impl FnOnce(&Rc<Playback>, Vec<i64>) + 'static) {
+        let (api, w) = (self.app.api.clone(), self.me.clone());
+        glib::spawn_future_local(async move {
+            let got = gio::spawn_blocking(move || api.radio(seed, RADIO_SONGS, &exclude)).await;
+            let Some(p) = w.upgrade() else { return };
+            match got {
+                Ok(Ok(ids)) => then(&p, ids),
+                Ok(Err(e)) => p.notice(&dhun_core::api::radio_failure(&e)),
+                Err(_) => p.notice("Radio needs the server"),
+            }
+        });
+    }
+
     /// After the current song; songs already queued are moved, never duplicated.
     pub fn play_next(self: &Rc<Self>, songs: &[SongRef]) {
         self.insert(songs, true);
@@ -603,8 +653,12 @@ impl Playback {
         self.insert(songs, false);
     }
 
-    fn insert(self: &Rc<Self>, songs: &[SongRef], next: bool) {
-        let Some(mut q) = self.active() else { return self.play_list("Queue", "", songs, 0) };
+    /// How many songs went in; a note says when some did not fit.
+    fn insert(self: &Rc<Self>, songs: &[SongRef], next: bool) -> usize {
+        let Some(mut q) = self.active() else {
+            self.play_list("Queue", "", songs, 0);
+            return 0;
+        };
         let playing = self.current().map(|s| s.id);
         let mut wanted = self.known(songs);
         wanted.retain(|&i| Some(i) != playing);
@@ -613,7 +667,7 @@ impl Playback {
         let adding = queue::fitting(&q.songs, wanted);
         self.say(queue::cap_note(n - adding.len(), "not added"));
         if adding.is_empty() {
-            return;
+            return 0;
         }
         let at = {
             let set: HashSet<i64> = adding.iter().copied().collect();
@@ -631,6 +685,7 @@ impl Playback {
         self.app.store(|db| store::insert_into_queue(db, &q, &adding, Some(after)));
         self.app.reload_queues();
         self.changed();
+        adding.len()
     }
 
     pub fn remove_from(self: &Rc<Self>, id: &str, songs: &HashSet<i64>) {

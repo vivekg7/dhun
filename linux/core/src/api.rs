@@ -228,6 +228,11 @@ struct Members {
 }
 
 #[derive(Deserialize)]
+struct RadioBody {
+    songs: Option<Vec<i64>>,
+}
+
+#[derive(Deserialize)]
 struct LyricsHits {
     hits: Option<Vec<crate::lyrics::Hit>>,
 }
@@ -391,6 +396,20 @@ impl Api {
         Ok(r.hits.unwrap_or_default())
     }
 
+    /// Up to `n` songs to play after `seed`, best first, none of `exclude`
+    /// (plan 042). Only the server can pick them: it has the whole family's
+    /// listening.
+    pub fn radio(&self, seed: i64, n: usize, exclude: &[i64]) -> Result<Vec<i64>> {
+        let mut path = format!("/api/v1/radio/{seed}?n={n}");
+        let ids: Vec<String> = exclude.iter().filter(|&&i| i > 0).map(i64::to_string).collect();
+        if !ids.is_empty() {
+            path.push_str("&exclude=");
+            path.push_str(&ids.join(","));
+        }
+        let r: RadioBody = self.call("GET", &path, None, true)?;
+        Ok(r.songs.unwrap_or_default())
+    }
+
     // Family members, for the admin (plan 023).
 
     pub fn members(&self) -> Result<Vec<Member>> {
@@ -481,6 +500,17 @@ impl Api {
         }
         serde_json::from_reader(std::io::BufReader::with_capacity(1 << 16, reader))
             .map_err(|e| Error::Network(e.to_string()))
+    }
+}
+
+/// Why radio plays nothing, for a note: without the server it says so
+/// rather than playing something else (plan 042). An older server has no
+/// radio, and its 404 is for the endpoint, not the song.
+pub fn radio_failure(e: &Error) -> String {
+    match e {
+        Error::Network(_) => "Radio needs the server".into(),
+        Error::Http { code: 404, message } if message.starts_with("endpoint") => "Radio needs a newer server".into(),
+        Error::Http { message, .. } => format!("No radio: {message}"),
     }
 }
 

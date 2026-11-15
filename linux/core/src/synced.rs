@@ -40,11 +40,13 @@ pub const REWIND_AFTER: Int = Int("longFiles.rewindAfter", 5, &[1, 5, 10, 30, 60
 pub const CACHE_AHEAD: Int = Int("longFiles.cacheAhead", 30, &[10, 15, 30, 60, 0]);
 pub const AUTO_REMOVE: Bool = Bool("listenLater.autoRemove", true);
 pub const FINISHED_PERCENT: Int = Int("listenLater.finishedPercent", 90, &[80, 90, 95, 100]);
+/// What a tap on a song found by its title plays: the other matches, or its radio (plan 042).
+pub const TITLE_TAP: Text = Text("search.titleTap", "matches", &["matches", "radio"]);
 /// Whether a show's page leaves out the episodes already played: set on that page, not in Settings.
 pub const HIDE_PLAYED: Bool = Bool("podcasts.hidePlayed", true);
 
 /// The ones on the Playback page, which its Reset to Defaults clears.
-pub const PLAYBACK: [&str; 12] = [
+pub const PLAYBACK: [&str; 13] = [
     PREVIOUS_RESTART.0,
     MIN_MINUTES.0,
     RESUME.0,
@@ -57,6 +59,7 @@ pub const PLAYBACK: [&str; 12] = [
     CACHE_AHEAD.0,
     AUTO_REMOVE.0,
     FINISHED_PERCENT.0,
+    TITLE_TAP.0,
 ];
 
 /// The synced setting with the queues' order: their ids, as a JSON array.

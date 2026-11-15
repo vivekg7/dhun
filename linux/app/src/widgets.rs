@@ -682,6 +682,19 @@ pub fn song_actions(
         a.connect_activate(move |_, v| f(selected(), v));
         group.add_action(&a);
     };
+    // Radio from the song picked, and more like the playing one (plan 042).
+    let a = app.clone();
+    action(
+        "radio",
+        None,
+        Box::new(move |s, _| {
+            if let Some(s) = s.first() {
+                a.playback().play_radio(s);
+            }
+        }),
+    );
+    let a = app.clone();
+    action("similar", None, Box::new(move |_, _| a.playback().add_similar()));
     let a = app.clone();
     action("play-next", None, Box::new(move |s, _| a.playback().play_next(&s)));
     let a = app.clone();
@@ -861,11 +874,22 @@ pub fn song_menu(app: &App, menu: &gio::Menu, songs: &[SongRef], play: &Play, ed
         i.set_action_and_target_value(Some(action), target.as_ref());
         m.append_item(&i);
     };
+    let pb = app.playback();
     let first = gio::Menu::new();
+    // The server picks the songs, from what it alone knows (plan 042): music
+    // only, and more like the song only for the one playing.
+    if let [s] = songs {
+        if !s.spoken() {
+            item(&first, "Play Radio", "songs.radio", None);
+            let playing = matches!(play, Play::Queue(id) if *id == pb.active_id());
+            if playing && pb.current().is_some_and(|c| c.id == s.id) {
+                item(&first, "Add Similar Songs", "songs.similar", None);
+            }
+        }
+    }
     item(&first, "Play Next", "songs.play-next", None);
     item(&first, "Add to Playing Queue", "songs.add-to-queue", None);
     let queues = gio::Menu::new();
-    let pb = app.playback();
     for q in pb.ordered() {
         item(&queues, &q.name, "songs.add-to", Some(q.id.to_variant()));
     }

@@ -218,6 +218,29 @@ pub fn bar(
         }
     });
     text.add_controller(twice);
+    // The playing song's own menu on a right-click, with Play Radio and Add
+    // Similar Songs among the rest (plan 042). Its actions are made for the
+    // song then playing, as the queue panel's are for the row clicked.
+    let held = gtk::GestureClick::builder().button(3).build();
+    let (a, t) = (app.clone(), text.downgrade());
+    held.connect_pressed(move |_, _, x, y| {
+        let (Some(t), Some(s)) = (t.upgrade(), a.playback().current()) else { return };
+        let play = widgets::Play::Queue(a.playback().active_id());
+        let song = s.clone();
+        let group = widgets::song_actions(
+            &a,
+            t.upcast_ref(),
+            Rc::new(move || vec![song.clone()]),
+            Rc::new(Vec::new),
+            &play,
+            &widgets::Edit::None,
+        );
+        t.insert_action_group("songs", Some(&group));
+        let menu = gtk::gio::Menu::new();
+        widgets::song_menu(&a, &menu, std::slice::from_ref(&s), &play, &widgets::Edit::None);
+        widgets::popup(&menu, &t, x, y);
+    });
+    text.add_controller(held);
     outer.append(&b);
 
     let pb = app.playback().clone();
