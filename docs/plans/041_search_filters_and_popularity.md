@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `RELEASED` — 0.19.0, in the GitHub release with every platform and on the NAS (2026-11-12). Language: `BUILT` in every app, not released
+**Status:** `RELEASED` — 0.19.0, in the GitHub release with every platform and on the NAS (2026-11-12). Language: `RELEASED` in 0.20.0 (2026-11-15), not yet on the NAS
 **Started:** 2026-11-11
 
 ## Problem

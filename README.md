@@ -7,13 +7,13 @@ downloads and synced lyrics. Inspired by Musicolet, the offline Android
 player, rebuilt for a music collection that lives on a NAS.
 
 **Status:** every platform is in the
-[0.19.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.19.0): the
+[0.20.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.20.0): the
 APK, the Mac app, the Linux Flatpak and the server image, with search
-filters, popularity ranking and a song's playlists
-([plan 041](docs/plans/041_search_filters_and_popularity.md)). The devices
-below run what is installed on them.
+filters by year, artist, genre and language, popularity ranking and a
+song's playlists ([plan 041](docs/plans/041_search_filters_and_popularity.md)).
+The devices below run what is installed on them.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.18.2`: the library
+- **Server** (`server/`), on the owner's NAS as `server-v0.19.0`: the library
   scan, each song's popularity score from the curation tool's index,
   streaming, offline sync of queues and playlists (`.m3u8` files), a log of
   every listen, resume points for long files, Favorites and Listen Later.
@@ -27,10 +27,10 @@ below run what is installed on them.
   managing family members ([023](docs/plans/023_users_on_android.md)), and
   songs already on the phone ([025](docs/plans/025_phone_local_songs.md)),
   playable without signing in ([026](docs/plans/026_without_an_account.md)).
-- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.18.0 on
+- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.19.0 on
   the owner's Mac: the Android app's level, offline included, with a menu
   bar control, a floating mini player and Open With from Finder.
-- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.18.0 on
+- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.20.0 on
   the owner's laptop, in Rust and GTK: the same level, with a tray icon, a
   mini window, the desktop's media controls and Open With from the file
   manager.
