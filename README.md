@@ -7,11 +7,13 @@ downloads and synced lyrics. Inspired by Musicolet, the offline Android
 player, rebuilt for a music collection that lives on a NAS.
 
 **Status:** every platform is in the
-[0.20.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.20.0): the
-APK, the Mac app, the Linux Flatpak and the server image, with search
-filters by year, artist, genre and language, popularity ranking and a
-song's playlists ([plan 041](docs/plans/041_search_filters_and_popularity.md)).
-The devices below run what is installed on them.
+[0.21.0 release](https://github.com/vivekg7/dhun/releases/tag/v0.21.0): the
+APK, the Mac app, the Linux Flatpak and the server image, with Play radio,
+a song and ten like it ([plan 042](docs/plans/042_play_radio.md)), after
+0.20.0's search filters by year, artist, genre and language, popularity
+ranking and a song's playlists
+([plan 041](docs/plans/041_search_filters_and_popularity.md)). The devices
+below run what is installed on them.
 
 - **Server** (`server/`), on the owner's NAS as `server-v0.20.0`: the library
   scan, each song's popularity score from the curation tool's index,

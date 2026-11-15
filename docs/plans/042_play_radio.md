@@ -1,6 +1,6 @@
 # 042 — Play radio: a song and the songs like it
 
-**Status:** `IN PROGRESS` — built on the server and every app (2026-11-15), not yet released
+**Status:** `RELEASED` — 0.21.0, in the GitHub release with every platform (2026-11-15), not yet on the NAS; the weights are still to be tuned by listening
 **Started:** 2026-11-11
 
 ## Problem
