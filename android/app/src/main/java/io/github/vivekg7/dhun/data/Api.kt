@@ -137,6 +137,21 @@ class Api(
                 ).build(),
         ).hits
 
+    /**
+     * Up to [n] songs to play after [seed], best first, none of [exclude]
+     * (docs/plans/042_play_radio.md). Only the server can pick them: it
+     * has the whole family's listening.
+     */
+    suspend fun radio(
+        seed: Long,
+        n: Int,
+        exclude: Collection<Long>,
+    ): List<Long> {
+        val u = url("radio/$seed").toHttpUrl().newBuilder().addQueryParameter("n", n.toString())
+        if (exclude.isNotEmpty()) u.addQueryParameter("exclude", exclude.joinToString(","))
+        return call<RadioDto>(Request.Builder().url(u.build()).build()).songs
+    }
+
     suspend fun me(): Me = get("me")
 
     suspend fun nowPlaying(): NowPlaying? = get<NowPlayingResponse>("now-playing").nowPlaying
@@ -492,6 +507,10 @@ data class SyncState(
 @Serializable data class LyricsHit(
     val song: Long = 0,
     val line: String = "",
+)
+
+@Serializable data class RadioDto(
+    val songs: List<Long> = emptyList(),
 )
 
 @Serializable data class LyricsHits(

@@ -289,6 +289,13 @@ class SearchQuery(
 
     val isEmpty get() = terms.isEmpty()
 
+    /**
+     * Whether a song with [title] was found by its title: the query is the
+     * title, or its start, as the ranking that puts it first decides. Such
+     * a tap may play radio (docs/plans/042_play_radio.md).
+     */
+    fun isTitleOf(title: String) = whole.isNotEmpty() && Fold.words(title).joinToString(" ").startsWith(whole)
+
     init {
         val terms = mutableListOf<Term>()
         for (m in TOKEN.findAll(text)) {

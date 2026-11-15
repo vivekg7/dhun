@@ -63,6 +63,7 @@ import io.github.vivekg7.dhun.data.SearchIndex
 import io.github.vivekg7.dhun.data.SearchQuery
 import io.github.vivekg7.dhun.data.Shelf
 import io.github.vivekg7.dhun.data.Song
+import io.github.vivekg7.dhun.data.Synced
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -190,6 +191,8 @@ fun SearchScreen(nav: Nav) {
     var query by rememberSaveable { mutableStateOf("") }
     var filters by searchFilters
     val q = remember(query) { SearchQuery(query) }
+    val settings by app.store.settings.collectAsState()
+    val titleRadio = Synced.titleTap.of(settings) == "radio"
     // Off the main thread: the first search builds the catalog's indexes.
     // Starts from the last results when they still hold: the tab coming back
     // from one must show them in its first frame, or its saved scroll is lost.
@@ -296,7 +299,11 @@ fun SearchScreen(nav: Nav) {
                     itemsIndexed(songs, key = { _, s -> "song/${s.id}" }) { i, s ->
                         SongRow(s, onClick = {
                             keep()
-                            playList(nav, "Search: $label", "search", songs, i)
+                            if (titleRadio && !s.onPhone && !s.spoken && q.isTitleOf(s.title)) {
+                                app.playback.playRadio(s)
+                            } else {
+                                playList(nav, "Search: $label", "search", songs, i)
+                            }
                         }, menu = SongMenu(nav = nav))
                     }
                 } else {

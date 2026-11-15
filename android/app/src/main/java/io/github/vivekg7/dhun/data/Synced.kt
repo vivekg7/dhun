@@ -55,6 +55,7 @@ class Synced<T> private constructor(
         val longCacheAhead = int("longFiles.cacheAhead", 30, 10, 15, 30, 60, 0)
         val laterAutoRemove = bool("listenLater.autoRemove", true)
         val laterFinishedPercent = int("listenLater.finishedPercent", 90, 80, 90, 95, 100)
+        val titleTap = string("search.titleTap", "matches", "matches", "radio")
 
         // On a show's page, not in Settings, so a reset leaves it.
         val hidePlayed = bool("podcasts.hidePlayed", true)
@@ -74,6 +75,7 @@ class Synced<T> private constructor(
                 longCacheAhead,
                 laterAutoRemove,
                 laterFinishedPercent,
+                titleTap,
             )
     }
 }

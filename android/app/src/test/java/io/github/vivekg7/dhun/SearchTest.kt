@@ -56,6 +56,15 @@ class SearchTest {
     }
 
     @Test
+    fun aSongIsFoundByItsTitleWhenTheQueryIsItsStart() {
+        // Such a tap may play radio (docs/plans/042_play_radio.md); a word from the middle is a looser match.
+        assertEquals(true, SearchQuery("tum hi").isTitleOf("Tum Hi Ho"))
+        assertEquals(true, SearchQuery("artist:arijit TUM HI HO").isTitleOf("Tum Hi Ho (Reprise)"))
+        assertEquals(false, SearchQuery("hi ho").isTitleOf("Tum Hi Ho"))
+        assertEquals(false, SearchQuery("artist:arijit").isTitleOf("Tum Hi Ho"))
+    }
+
+    @Test
     fun theTitleRanksAboveTheAlbum() {
         // Song 7 only has it in its album name.
         assertEquals(listOf(1L, 7L), find("tum hi ho"))

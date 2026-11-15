@@ -190,18 +190,22 @@ fun NowPlayingScreen(nav: Nav) {
             }
         }
 
-        AnimatedContent(s, contentKey = { it.id }, transitionSpec = slide, label = "title") { song ->
-            Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 20.dp)) {
-                Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    if (waiting) AnnotatedString(WAITING) else facts(song, nav),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (waiting) c.primary else c.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                ChapterLine(song, playing) { details = true }
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.Top) {
+            AnimatedContent(s, Modifier.weight(1f), contentKey = { it.id }, transitionSpec = slide, label = "title") { song ->
+                Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 20.dp)) {
+                    Text(song.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (waiting) AnnotatedString(WAITING) else facts(song, nav),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (waiting) c.primary else c.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ChapterLine(song, playing) { details = true }
+                }
             }
+            // The playing song's own menu: "Play radio" and "Add similar songs" among the rest.
+            Box(Modifier.padding(top = 16.dp)) { SongMenuButton(s, SongMenu(nav = nav, similar = true)) }
         }
 
         // The offer last made stays drawn while it folds away.

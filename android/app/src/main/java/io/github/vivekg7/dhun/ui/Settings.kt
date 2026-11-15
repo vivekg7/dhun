@@ -200,7 +200,7 @@ private fun MainSettings(
 ) {
     val prefs = App.app.prefs
     SettingRow("Appearance", "${prefs.themeMode.label} · ${prefs.palette.label}", Icons.Palette) { open(SettingsPage.Appearance) }
-    SettingRow("Playback", "Long files, Listen Later", Icons.Play) { open(SettingsPage.Playback) }
+    SettingRow("Playback", "Long files, Listen Later, Search", Icons.Play) { open(SettingsPage.Playback) }
     SettingRow("Songs on this phone", if (prefs.phoneSongs) "On" else "Off", Icons.Phone) { open(SettingsPage.Library) }
     SettingRow("Downloads", "${limitLabel(prefs.downloadLimitGb)} · ${if (prefs.wifiOnly) "Wi-Fi only" else "Any network"}", Icons.Download) {
         open(SettingsPage.Downloads)
@@ -313,6 +313,15 @@ private fun PlaybackSettings(openGuide: (String?) -> Unit) {
     val autoRemove = Synced.laterAutoRemove.of(settings)
     SwitchRow("Remove when finished", null, autoRemove) { scope.launch { app.store.setting(Synced.laterAutoRemove.name, JsonPrimitive(it)) } }
     Choice("Finished at", Synced.laterFinishedPercent, { "$it%" }, enabled = autoRemove)
+
+    SectionLabel("Search")
+    Choice(
+        "Tapping a song found by its title",
+        Synced.titleTap,
+        { if (it == "radio") "Play radio" else "Play the matches" },
+        "Radio plays the song, then songs like it.",
+        guide = "Play radio",
+    )
 }
 
 // Songs already on the phone (docs/plans/025_phone_local_songs.md): this phone's, so not synced.

@@ -448,10 +448,14 @@ fun SongRow(
     }
 }
 
-/** Extra items a list adds to the song menu (e.g. "Remove from queue"). */
+/**
+ * Extra items a list adds to the song menu (e.g. "Remove from queue").
+ * [similar] is Now playing's "Add similar songs", for the playing song.
+ */
 data class SongMenu(
     val extra: List<Pair<String, () -> Unit>> = emptyList(),
     val nav: Nav? = null,
+    val similar: Boolean = false,
 )
 
 @Composable
@@ -481,6 +485,11 @@ fun SongMenuButton(
             val isFav = favs.any { it.song == song.id }
             val isLater = later.any { it.song == song.id }
             val close = { open = false }
+            // The server picks the songs, from what it alone knows (docs/plans/042_play_radio.md).
+            if (!song.onPhone && !song.spoken) {
+                MenuItem("Play radio", close) { app.playback.playRadio(song) }
+                if (menu.similar) MenuItem("Add similar songs", close) { app.playback.addSimilar() }
+            }
             MenuItem("Play next", close) { app.playback.playNext(listOf(song)) }
             MenuItem("Add to playing queue", close) { app.playback.addToQueue(listOf(song)) }
             MenuItem("Add to a queue…", close) { queueing = true }

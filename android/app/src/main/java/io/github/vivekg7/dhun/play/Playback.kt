@@ -25,6 +25,7 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import io.github.vivekg7.dhun.App
+import io.github.vivekg7.dhun.data.ApiException
 import io.github.vivekg7.dhun.data.Listen
 import io.github.vivekg7.dhun.data.NowPlaying
 import io.github.vivekg7.dhun.data.QueueRow
@@ -550,6 +551,50 @@ class Playback(
         player.seekTo(index, 0)
         player.play()
     }
+
+    /**
+     * "Play radio": a new queue of [song] and the songs like it, picked by
+     * the server (docs/plans/042_play_radio.md). Without the server it says
+     * so and plays nothing, rather than something else.
+     */
+    fun playRadio(song: Song) =
+        scope.launch {
+            val ids = radio(song.id, emptyList()) ?: return@launch
+            val byId = app.catalog.value.byId
+            play("Radio · ${song.title}", RADIO, listOf(song) + ids.mapNotNull { byId[it] }, 0)
+        }
+
+    /** "Add similar songs": [RADIO_SONGS] more like the playing song, at the end of its queue, none already in it. */
+    fun addSimilar() =
+        scope.launch {
+            val seed = current.value ?: return@launch
+            val ids = radio(seed.id, playerIds()) ?: return@launch
+            val byId = app.catalog.value.byId
+            val songs = ids.mapNotNull { byId[it] }
+            if (songs.isEmpty()) {
+                Toast.makeText(app, "No more similar songs", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            insert(songs, next = false, "Added ${songs.size} similar songs")
+        }
+
+    /** The server's songs like [seed], or null after saying why there are none. */
+    private suspend fun radio(
+        seed: Long,
+        exclude: List<Long>,
+    ): List<Long>? =
+        try {
+            // A phone song's ID is not the server's (docs/plans/025_phone_local_songs.md).
+            app.api.radio(seed, RADIO_SONGS, exclude.filter { it > 0 })
+        } catch (e: ApiException) {
+            // An older server has no radio: its 404 is for the endpoint, not the song.
+            val older = e.code == 404 && e.message?.startsWith("endpoint") == true
+            Toast.makeText(app, if (older) "Radio needs a newer server" else "No radio: ${e.message}", Toast.LENGTH_SHORT).show()
+            null
+        } catch (e: IOException) {
+            Toast.makeText(app, "Radio needs the server", Toast.LENGTH_SHORT).show()
+            null
+        }
 
     /** After the current song; songs already queued are moved, never duplicated. */
     fun playNext(songs: List<Song>) = insert(songs, next = true)
@@ -1175,6 +1220,12 @@ class Playback(
          * rule, so what this app sends it is never trimmed again.
          */
         const val MAX_QUEUE_SONGS = 1000
+
+        /** How many songs "Play radio" puts after its song, and "Add similar songs" adds: the owner's 5–10 (plan 042). */
+        const val RADIO_SONGS = 10
+
+        /** The source of a radio queue's plays, so its skips can tune the radio (docs/plans/008_listening_history.md). */
+        const val RADIO = "radio"
 
         /**
          * [ids] trimmed to [MAX_QUEUE_SONGS]: [current] and the songs after
