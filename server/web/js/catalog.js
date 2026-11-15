@@ -54,6 +54,8 @@ export function song(s) {
     groupIndex: s.groupIndex ?? 0,
     // Popularity, 1–100, 0 for none: orders equal search matches (plan 041).
     score: s.score ?? 0,
+    // By name, "Instrumental" for any instrumental track; "" when unknown (plan 041).
+    language: s.language ?? "",
   };
 }
 
@@ -97,6 +99,8 @@ export class Catalog {
     this.genres = group(this.songs, (s) =>
       s.genres.length ? s.genres : [unknownGenre],
     );
+    // A song with no language is in none: no "Unknown language" to pick.
+    this.languages = group(this.songs, (s) => (s.language ? [s.language] : []));
     this.folders = folders(this.songs, this.spoken);
     this.books = shelves(present, audiobook);
     this.shows = shelves(present, podcast);
@@ -163,6 +167,9 @@ export class Catalog {
         return nameIndex(this.artists, "artist", (g) => g.name);
       case "genres":
         return nameIndex(this.genres, "genre", (g) => g.name);
+      // Only the Language filter's picker searches it: not warmed, some 40 names.
+      case "languages":
+        return nameIndex(this.languages, "language", (g) => g.name);
       case "folders": {
         const all = sortBy(
           [...this.folders.values()].filter((f) => f.path !== ""),

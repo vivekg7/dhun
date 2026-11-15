@@ -131,6 +131,19 @@ test("several artists mean any of them, and the filters all apply", () => {
   assert.equal(names(f.artists), "arijit singh +1");
 });
 
+test("several languages mean any of them, and a song with none is in none", () => {
+  const sung = rated.map((x, i) => ({
+    ...x,
+    language: ["Hindi", "Punjabi", "", "hindi", "English"][i],
+  }));
+  const f = new Filters({ languages: ["Hindi", "Punjabi"] });
+  assert.deepEqual(
+    f.apply(sung, false).map((x) => x.id),
+    [1, 4, 2],
+  );
+  assert.equal(f.describe(), "Hindi +1");
+});
+
 test("a song with no year is in no range and sorts last", () => {
   assert.deepEqual(ids({ years: [1, 1999] }), [4]);
   assert.equal(yearsLabel([1, 1999]), "Before 2000");

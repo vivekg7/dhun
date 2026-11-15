@@ -188,6 +188,7 @@ async function songInfo(s) {
     ["Album artist", s.albumArtist],
     ["Composer", s.composer],
     ["Genre", s.genres.join(", ")],
+    ["Language", s.language],
     ["Year", s.year > 0 ? s.year : ""],
     ["Track", s.track ? (s.disc ? `${s.disc}.${s.track}` : s.track) : ""],
     ["Length", s.durationMs ? clock(s.durationMs / 1000) : ""],

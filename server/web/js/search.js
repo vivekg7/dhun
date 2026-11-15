@@ -496,9 +496,9 @@ export const filterSorts = {
 };
 
 /**
- * What the Search page's filter chips picked. Artists and genres are names
- * picked from the library's own lists, so they test a song's values exactly
- * rather than as words, and several of them mean any of them: "Arijit or
+ * What the Search page's filter chips picked. Artists, genres and languages
+ * are names picked from the library's own lists, so they test a song's values
+ * exactly rather than as words, and several of them mean any of them: "Arijit or
  * Atif, from the 2010s", which the typed `artist:` words, all of which must
  * match, cannot say. `years` is `[from, to]` or null.
  */
@@ -507,23 +507,31 @@ export class Filters {
     years = null,
     artists = [],
     genres = [],
+    languages = [],
     popular = false,
     sort = "best",
   } = {}) {
-    Object.assign(this, { years, artists, genres, popular, sort });
+    Object.assign(this, { years, artists, genres, languages, popular, sort });
     // Compared ignoring case, as the catalogue groups them.
     this.artistKeys = new Set(artists.map((a) => a.toLowerCase()));
     this.genreKeys = new Set(genres.map((g) => g.toLowerCase()));
+    this.languageKeys = new Set(languages.map((l) => l.toLowerCase()));
   }
 
   with(change) {
-    const { years, artists, genres, popular, sort } = this;
-    return new Filters({ years, artists, genres, popular, sort, ...change });
+    const { years, artists, genres, languages, popular, sort } = this;
+    return new Filters({ years, artists, genres, languages, popular, sort, ...change });
   }
 
   /** No filter, whatever the sort: the box alone decides what is found. */
   get empty() {
-    return !this.years && !this.artists.length && !this.genres.length && !this.popular;
+    return (
+      !this.years &&
+      !this.artists.length &&
+      !this.genres.length &&
+      !this.languages.length &&
+      !this.popular
+    );
   }
 
   accepts(s) {
@@ -534,7 +542,8 @@ export class Filters {
       (!this.artists.length ||
         any(s.artists.length ? s.artists : [s.displayArtist], this.artistKeys)) &&
       (!this.genres.length ||
-        any(s.genres.length ? s.genres : [unknownGenre], this.genreKeys))
+        any(s.genres.length ? s.genres : [unknownGenre], this.genreKeys)) &&
+      (!this.languages.length || any([s.language], this.languageKeys))
     );
   }
 
@@ -544,6 +553,7 @@ export class Filters {
       this.years && yearsLabel(this.years),
       names(this.artists),
       names(this.genres),
+      names(this.languages),
       this.popular && "Popular",
     ]
       .filter(Boolean)

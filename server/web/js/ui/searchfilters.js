@@ -36,6 +36,9 @@ export function filterChips(f, change) {
     chip(names(f.genres), "Genre", () =>
       then(pickNames("Genres", index("genres"), f.genres), "genres"),
     ),
+    chip(names(f.languages), "Language", () =>
+      then(pickNames("Languages", index("languages"), f.languages), "languages"),
+    ),
     h(
       "button",
       {
@@ -115,8 +118,8 @@ async function pickYears(years) {
 }
 
 /**
- * Several artists or genres, picked from the library's list and searched as
- * the page searches them. The ones picked stay at the top, then the most
+ * Several artists, genres or languages, picked from the library's list and
+ * searched as the page searches them. The ones picked stay at the top, then the most
  * songs first: the names people look for are the big ones. Resolves with the
  * names, or undefined.
  */

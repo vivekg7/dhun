@@ -34,9 +34,10 @@ const browserPrefs = ["theme", "palette", "speed", "miniPlayer", "sleepFinish"];
  * Raised when songs gain a field the cache lacks; 1 is the art key (plan
  * 019), 2 the podcasts and audiobooks, which `kinds=all` asks for (plan 031),
  * 3 the popularity score (plan 041): a cursor already past the server's first
- * scoring scan would never bring the scores.
+ * scoring scan would never bring the scores; 4 the language (plan 041), for
+ * the same reason.
  */
-const libraryFormat = 3;
+const libraryFormat = 4;
 
 /** A listen this far into an episode or a book's file marks it played, as the server does (plan 031). */
 const playedPercent = 90;
