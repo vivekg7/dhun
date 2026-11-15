@@ -1,6 +1,6 @@
 # 042 — Play radio: a song and the songs like it
 
-**Status:** `PROPOSED` — no code yet
+**Status:** `IN PROGRESS` — built on the server and every app (2026-11-15), not yet released
 **Started:** 2026-11-11
 
 ## Problem
@@ -51,7 +51,8 @@ C, on the server, with B as a setting.
 ### What the user sees
 
 - **"Play radio"** in the song menu of every list, and in Now playing's
-  menu. It makes a **new queue** named "Radio · <title>": the song, then
+  menu. Android's Now playing had no song menu, so it gained one beside
+  the title: the playing song's own menu, with everything the lists offer. It makes a **new queue** named "Radio · <title>": the song, then
   10 similar songs. Queues are not playlists, and this is a queue like any
   other: editable, saved, synced.
 - **"Add similar songs"** in Now playing's menu appends 10 more to the
@@ -60,8 +61,11 @@ C, on the server, with B as a setting.
 - **Setting, Search → "Tapping a song found by its title"**: _Play the
   matches_ (default) or _Play radio_. "Found by its title" is 029's rule:
   the query is the song's title, or its start.
-- **Offline or on an older server**, the menu item is shown disabled with
-  "Needs the server". Radio never silently plays something else.
+- **Offline or on an older server**, tapping it says so ("Radio needs the
+  server", "Radio needs a newer server") and plays nothing. Radio never
+  silently plays something else. The item is not drawn disabled, as first
+  planned: an app learns that the server is out of reach only by asking
+  it, so a disabled item would be a guess, and a stale one.
 
 ### The endpoint
 
@@ -74,17 +78,18 @@ never repeats.
 Each candidate gets a weighted sum of signals against the seed. The weights
 are constants in one place, to be tuned by listening:
 
-| Signal          | Why                                                                               |
-| --------------- | --------------------------------------------------------------------------------- |
-| Shared playlist | Curated lists ("90s Romance") are the strongest "goes with" the library has.      |
-| Played together | Songs the family played within 30 minutes of each other, skips excluded.          |
-| Shared artist   | The obvious one, capped so radio is not an artist page.                           |
-| Same composer   | For film music the music director matters as much as the singer.                  |
-| Genre overlap   | Coarse ("Bollywood" is 15,000 songs) but it separates bhajans from party songs.   |
-| Year distance   | Close years score more, fading over about ten years: a 90s song wants 90s songs.  |
-| Score distance  | A hit followed by obscure B-sides feels wrong; similar popularity keeps the mood. |
-| Score itself    | A small pull towards songs people know, so radio does not dig for rarities.       |
-| Skipped by user | Songs this user skips early, and often, score less.                               |
+| Signal          | Why                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| Shared playlist | Curated lists ("90s Romance") are the strongest "goes with" the library has.              |
+| Played together | Songs the family played within 30 minutes of each other, skips excluded.                  |
+| Shared artist   | The obvious one, capped so radio is not an artist page.                                   |
+| Same composer   | For film music the music director matters as much as the singer.                          |
+| Genre overlap   | Coarse ("Bollywood" is 15,000 songs) but it separates bhajans from party songs.           |
+| Year distance   | Close years score more, fading over about ten years: a 90s song wants 90s songs.          |
+| Score distance  | A hit followed by obscure B-sides feels wrong; similar popularity keeps the mood.         |
+| Language        | A Punjabi song brings Punjabi songs; a different language costs as much as a match earns. |
+| Score itself    | A small pull towards songs people know, so radio does not dig for rarities.               |
+| Skipped by user | Songs this user skips early, and often, score less.                                       |
 
 Then, for variety:
 
@@ -94,7 +99,14 @@ Then, for variety:
   so the reprise and the lo-fi are not "similar songs".
 - **Not played by this user in the last 24 hours.**
 - **A little chance**: pick from the top 40 weighted by score, not the top
-  10 in order, so radio from the same song differs each time.
+  10 in order, so radio from the same song differs each time. Only songs
+  scoring at least half the best's are drawn: in a small library the top
+  40 reach songs in other languages, and chance put them among the good
+  ones (found on a 24-song test library).
+- **Playlists** count only when the caller may see them: the shared ones
+  and their own. A long list counts less (a list of 30 songs or fewer
+  fully, a longer one by 30/size), so "All Hindi" says less than "90s
+  Romance".
 
 Phone-local songs, podcasts and audiobooks are never candidates; the seed
 can only be a NAS song, since the server knows nothing else.
@@ -102,10 +114,14 @@ can only be a NAS song, since the server knows nothing else.
 ### Cost
 
 In memory on the server: per song, its artist, composer, genre and year
-numbers, its score, its playlists, and its top 50 "played together"
-neighbours. The neighbours are built from `plays` at startup and once a
-night. A request scores every song: 100,000 cheap comparisons, a few
-milliseconds in Go. No new table.
+numbers, its language, its score, its playlists, and its top 50 "played
+together" neighbours. It is built again after every scan (hourly), like
+the lyrics index, which also brings in the plays since the last one. A
+request scores every song and reads the caller's own plays for the last
+day and the early skips. No new table.
+
+Measured on a copy of the library (35,436 songs, 231 playlists, on a
+MacBook): building takes 0.2 s, a request about 5 ms.
 
 ### Recording
 
@@ -137,7 +153,5 @@ feedback for tuning the weights, and later for a better recommender.
 
 ## Open questions
 
-- **Language.** It is the most useful signal missing: a Punjabi song should
-  bring Punjabi songs. It is added when 041 gets the data.
 - **Size.** 10 after the seed, within the owner's 5–10. A setting only if
   10 turns out wrong.
