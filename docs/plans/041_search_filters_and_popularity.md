@@ -1,6 +1,6 @@
 # 041 — Search filters, popularity and "In playlists"
 
-**Status:** `RELEASED` — 0.19.0, in the GitHub release with every platform (2026-11-12); `server-v0.18.2` on the NAS. Language waits on the curation tool
+**Status:** `RELEASED` — 0.19.0, in the GitHub release with every platform and on the NAS (2026-11-12). Language: `BUILT` on the server, not released
 **Started:** 2026-11-11
 
 ## Problem
@@ -35,9 +35,10 @@ Its `song_id` maps to a path through `_meta/index/songs.jsonl`.
 - The top of the list is right: Closer, Faded, Believer, Agar Tum Saath Ho,
   Tum Hi Ho, Kesariya.
 - Year is on 35,272 songs, genre on 28,807, composer on 33,332.
-- **No language anywhere.** No tag holds one. JioSaavn's album files in
-  `_meta/jiosaavn.com/collections/` give one per song, for songs that came
-  from JioSaavn.
+- **No language in the index.** Files downloaded from JioSaavn carry a
+  `LANGUAGE` tag, but the rest do not, and JioSaavn's album files in
+  `_meta/jiosaavn.com/collections/` cover only its own songs. The curation
+  tool has since written one per song (see Language).
 
 ## Options
 
@@ -121,7 +122,7 @@ applied on screen with one tap fewer.
 | Genre    | the library's genres, the same way                                    |
 | Popular  | no dialog: a toggle for score 70 or more, about the top third         |
 | Sort     | Best match (default), Most popular, Newest, Oldest                    |
-| Language | waits on the data; see Open questions                                 |
+| Language | the library's languages, most songs first, with "Instrumental"        |
 
 **Filters test the song itself, not words.** An artist or a genre is picked
 from the library's own list, so it is compared with the song's values,
@@ -227,10 +228,39 @@ on any `&`. A migration makes the next scan read those 152 files again.
 - **Hiding unpopular songs by default.** The archive is the point. Popularity
   orders and can filter, but never hides on its own.
 
-## Open questions
+## Language
 
-- **Language.** Paused (owner, 2026-11-11): the curation tool will be asked
-  to write a language per song. Once it does, read it the way `score` is
-  read, add `songs.language`, and turn on the filter. Where the tool writes
-  it is still to be seen. `_meta/index/stats.jsonl` next to `score` is the
-  natural place.
+Added after 0.19.0, once the curation tool wrote
+`_meta/index/attributes.jsonl` (2026-11-12): one line per song with its
+language (`language` code, `language_name`, a source and a confidence), an
+`instrumental` flag, and film, cast, genre, version, moods, tempo and
+credits. 31,284 of 35,436 songs have a language: Hindi about 24,600,
+English 3,100, Punjabi 1,300, Bhojpuri 1,300, Urdu 350 and some 35 more.
+4,262 are instrumental, and about 800 of those are filed under a language
+too.
+
+- **Read as the score is read.** The server reads the file with the other
+  two, by the same song ID, and stores `songs.language`; the library JSON
+  gains `language`. The stamp covers all three files, and each of the two
+  data files missing leaves only its own field as it was: the tool writes
+  them in separate jobs.
+- **The name, not the code.** The value is `language_name` ("Hindi"), so
+  every app shows it as it is, with no table of codes to keep in step four
+  times over. 40 names, most of them a few songs each.
+- **Instrumental is a language of its own** (owner, 2026-11-14). An
+  instrumental track's language is "Instrumental", whatever it is filed
+  under: JioSaavn files piano albums as English and film themes as Hindi,
+  and picking English should not bring up a piano album. One value per
+  song keeps the filter a plain comparison, as Genre is.
+- **Not the tag.** The `LANGUAGE` tag is only on JioSaavn's files, and
+  the index already holds what it says.
+- **The filter** lists the library's languages, most songs first, picked
+  the way Genre is; several mean any of them. **Song info** shows the
+  language.
+- The rest of the file waits. Singers there disagree with the file's own
+  tags on some 370 songs (2026-11-14), so nothing replaces the tags until
+  the tool's next build settles it.
+
+Every app pulls the library once more (`LIBRARY_FORMAT` 4), since an app
+whose cursor is already past the server's first language scan would
+otherwise never get them.

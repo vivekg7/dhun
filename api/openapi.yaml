@@ -588,6 +588,14 @@ components:
             about evenly: 50 is the library's median. Omitted when there is
             none. Search uses it to order equal matches
             (docs/plans/041_search_filters_and_popularity.md).
+        language:
+          type: string
+          example: Hindi
+          description: >
+            The language the curation tool gives the song, by name, or
+            "Instrumental" for any instrumental track whatever language it
+            is filed under. Omitted when there is none. Search's Language
+            filter picks from these (docs/plans/041_search_filters_and_popularity.md).
         addedAt: { type: string, format: date-time }
         missing:
           { type: boolean, description: File gone; keep the song's data, hide it }

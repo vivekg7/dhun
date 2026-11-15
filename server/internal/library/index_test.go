@@ -2,6 +2,7 @@ package library
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -57,6 +58,47 @@ func TestScoresFollowTheIndex(t *testing.T) {
 	}
 	if _, vb2 := scoreAndVersion(t, s.DB, "Library/B/b.m4a"); vb2 != vb {
 		t.Errorf("b's version moved from %d to %d with the same rounded score", vb, vb2)
+	}
+}
+
+func language(t *testing.T, db *sql.DB, rel string) string {
+	t.Helper()
+	var l string
+	if err := db.QueryRow(`SELECT language FROM songs WHERE path = ?`, rel).Scan(&l); err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+// The language comes from attributes.jsonl, an instrumental track is
+// "Instrumental" whatever language it is filed under, and either file
+// missing leaves its own field alone: the curation tool writes them in
+// separate jobs, and a gap between them must not wipe the scores.
+func TestLanguagesFollowTheIndex(t *testing.T) {
+	s, put := setup(t)
+	put("a.mp3", "Library/A/a.mp3")
+	put("b.m4a", "Library/B/b.m4a")
+	writeScores(t, s, `{"song_id":"sa","score":80}`+"\n")
+	attrs := filepath.Join(s.Root, "_meta/index/attributes.jsonl")
+	writeFile(t, attrs, []byte(`{"song_id":"sa","language":"hin","language_name":"Hindi","instrumental":false}`+"\n"+
+		`{"song_id":"sb","language":"eng","language_name":"English","instrumental":true}`+"\n"))
+	scan(t, s)
+	if a, b := language(t, s.DB, "Library/A/a.mp3"), language(t, s.DB, "Library/B/b.m4a"); a != "Hindi" || b != "Instrumental" {
+		t.Fatalf("languages = %q, %q; want Hindi, Instrumental", a, b)
+	}
+
+	if err := os.Remove(filepath.Join(s.Root, "_meta/index/stats.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, attrs, []byte(`{"song_id":"sa","language_name":"Urdu"}`+"\n"))
+	if st := scan(t, s); st.Scored != 2 {
+		t.Fatalf("scored = %d, want 2: a's language moved and b lost its", st.Scored)
+	}
+	if sc, _ := scoreAndVersion(t, s.DB, "Library/A/a.mp3"); sc != 80 {
+		t.Errorf("score = %d without stats.jsonl, want 80 kept", sc)
+	}
+	if a, b := language(t, s.DB, "Library/A/a.mp3"), language(t, s.DB, "Library/B/b.m4a"); a != "Urdu" || b != "" {
+		t.Errorf("languages = %q, %q; want Urdu and none", a, b)
 	}
 }
 

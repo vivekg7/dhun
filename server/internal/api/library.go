@@ -57,6 +57,9 @@ type songJSON struct {
 	// Popularity, 1–100; omitted when the curation tool has none
 	// (docs/plans/041_search_filters_and_popularity.md).
 	Score int `json:"score,omitempty"`
+	// "Hindi", or "Instrumental" for any instrumental track; omitted when
+	// the curation tool has none.
+	Language string `json:"language,omitempty"`
 }
 
 type playlistJSON struct {
@@ -108,7 +111,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 	rows, err := tx.QueryContext(ctx, `SELECT id, path, title, artist, artists, album, album_artist, composer,
 		genre, genres, year, track, disc, duration_ms, format, codec, bitrate, sample_rate, bit_depth, size,
 		embedded_art OR folder_art != '', art, embedded_lyrics OR lrc OR transcript != '', added_at, missing_since IS NOT NULL,
-		kind, date, notes, chapters, group_key, group_title, group_index, score
+		kind, date, notes, chapters, group_key, group_title, group_index, score, language
 		FROM songs WHERE version > ? AND (? OR kind = 'music') ORDER BY id`, since, all)
 	if err != nil {
 		s.fail(w, r, err)
@@ -141,7 +144,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, sess session) {
 		if err := rows.Scan(&x.ID, &x.Path, &x.Title, &x.Artist, &artists, &x.Album, &x.AlbumArtist, &x.Composer,
 			&x.Genre, &genres, &x.Year, &x.Track, &x.Disc, &x.DurationMS, &x.Format, &x.Codec, &x.Bitrate,
 			&x.SampleRate, &x.BitDepth, &x.Size, &x.HasArt, &x.Art, &x.HasLyrics, &x.AddedAt, &x.Missing,
-			&x.Kind, &x.Date, &x.Notes, &chapters, &x.Group, &x.GroupTitle, &x.GroupIndex, &x.Score); err != nil {
+			&x.Kind, &x.Date, &x.Notes, &chapters, &x.Group, &x.GroupTitle, &x.GroupIndex, &x.Score, &x.Language); err != nil {
 			abort(err)
 		}
 		x.Artists, x.Genres = json.RawMessage(artists), json.RawMessage(genres)

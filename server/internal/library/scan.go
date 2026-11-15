@@ -38,8 +38,8 @@ type Scanner struct {
 	Podcasts, Audiobooks string
 	Log                  *slog.Logger
 
-	mu     sync.Mutex
-	scored scoreStamp // the score files as last applied
+	mu      sync.Mutex
+	indexed indexStamp // the curation tool's index as last applied
 }
 
 type root struct{ kind, dir string }
@@ -66,7 +66,7 @@ type Stats struct {
 	Added, Updated, Moved, Missing, Unchanged, Failed int
 	Regrouped                                         int // podcast and audiobook files whose book, show or place changed
 	Playlists                                         int
-	Scored                                            int // songs whose popularity score changed
+	Scored                                            int // songs whose score or language changed
 }
 
 func (s Stats) String() string {
@@ -278,33 +278,33 @@ func (s *Scanner) Scan(ctx context.Context) (Stats, error) {
 	}
 	st.Playlists = n
 
-	// Reading the score files takes a moment at 100,000 songs, so only when
-	// they changed or songs arrived that need a score.
-	stamp := s.scoreStamp()
-	if stamp != s.scored || st.Added+st.Moved > 0 {
-		scores, err := readScores(s.Root)
+	// Reading the index takes a moment at 100,000 songs, so only when it
+	// changed or songs arrived that need their score and language.
+	stamp := s.indexStamp()
+	if stamp != s.indexed || st.Added+st.Moved > 0 {
+		idx, err := readIndex(s.Root)
 		switch {
-		case errors.Is(err, errNoScores):
+		case errors.Is(err, errNoIndex):
 		case err != nil:
 			// Most likely caught while the curation tool writes it: the
-			// next scan tries again, and the scores stay as they were.
-			s.Log.Warn("scan: cannot read the popularity scores", "err", err)
-			stamp = s.scored
+			// next scan tries again, and the values stay as they were.
+			s.Log.Warn("scan: cannot read the curation index", "err", err)
+			stamp = s.indexed
 		default:
-			if st.Scored, err = applyScores(ctx, tx, scores, version); err != nil {
+			if st.Scored, err = applyIndex(ctx, tx, idx, version); err != nil {
 				return st, err
 			}
 		}
 	}
 
 	if st.Added+st.Updated+st.Moved+st.Missing+st.Regrouped+st.Playlists+st.Scored == 0 {
-		s.scored = stamp
+		s.indexed = stamp
 		return st, nil // nothing changed: roll back, so the version is not burned
 	}
 	if err := tx.Commit(); err != nil {
 		return st, err
 	}
-	s.scored = stamp
+	s.indexed = stamp
 	return st, nil
 }
 
