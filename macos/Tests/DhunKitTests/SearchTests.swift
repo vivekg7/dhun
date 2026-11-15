@@ -123,3 +123,14 @@ private func ids(_ f: SearchFilters, ranked: Bool = false) -> [Int] {
     // With a query, best match keeps the order the search ranked.
     #expect(ids(SearchFilters(years: 0...3000), ranked: true) == [1, 2, 3, 4, 5])
 }
+
+@Test func severalLanguagesMeanAnyOfThemAndASongWithNoneIsInNone() {
+    let songs = zip(ratedSongs, ["Hindi", "Urdu", "", "hindi", "Instrumental"]).map { s, l in
+        var s = s
+        s.language = l
+        return s
+    }
+    let f = SearchFilters(languages: ["Hindi", "Urdu"])
+    #expect(f.apply(songs, ranked: true).map(\.id) == [1, 2, 4])
+    #expect(f.describe() == "Hindi +1")
+}

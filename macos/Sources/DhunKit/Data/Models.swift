@@ -38,6 +38,8 @@ public struct Song: Identifiable, Hashable, Sendable {
     public var groupIndex = 0
     /// Popularity, 1–100 from the server, 0 for none: orders equal search matches (plan 041).
     public var score = 0
+    /// Its language's name ("Hindi", or "Instrumental" for any instrumental track), "" for none (plan 041).
+    public var language = ""
 
     public static let podcast = "podcast"
     public static let audiobook = "audiobook"

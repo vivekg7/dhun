@@ -62,6 +62,8 @@ public final class DB: @unchecked Sendable {
             """,
             // Popularity (plan 041); `Sync.libraryFormat` 3 pulls the library again to fill it.
             "ALTER TABLE song ADD COLUMN score INTEGER NOT NULL DEFAULT 0;",
+            // Language (plan 041); `Sync.libraryFormat` 4 pulls the library again to fill it.
+            "ALTER TABLE song ADD COLUMN language TEXT NOT NULL DEFAULT '';",
         ]
         let have = sql.userVersion
         for (i, step) in steps.enumerated() where i >= have {
@@ -105,7 +107,7 @@ public final class DB: @unchecked Sendable {
                 hasArt: r.bool(18), hasLyrics: r.bool(19), addedAt: r.int(20), missing: r.bool(21),
                 art: r.text(22), kind: r.text(23), date: r.text(24), notes: r.text(25),
                 chapters: chapters(r.text(26)), groupKey: r.text(27), groupTitle: r.text(28),
-                groupIndex: r.int(29), score: r.int(30))
+                groupIndex: r.int(29), score: r.int(30), language: r.text(31))
         }
     }
 
@@ -120,12 +122,12 @@ public final class DB: @unchecked Sendable {
                 s.format,
                 s.bitrate, s.sampleRate, s.bitDepth, s.size, s.hasArt, s.hasLyrics, s.addedAt, s.missing,
                 s.art, s.kind, s.date, s.notes, chapters(s.chapters), s.groupKey, s.groupTitle,
-                s.groupIndex, s.score,
+                s.groupIndex, s.score, s.language,
             ] as [any SQLBindable]).sql
         }
         for start in stride(from: 0, to: rows.count, by: 2000) {
             try sql.runMany(
-                "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO song VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 Array(rows[start..<min(start + 2000, rows.count)]))
         }
     }

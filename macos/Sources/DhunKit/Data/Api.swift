@@ -191,6 +191,7 @@ public struct SongDTO: Decodable, Sendable {
     var groupTitle: String?
     var groupIndex: Int?
     var score: Int?
+    var language: String?
 
     var song: Song {
         let p = path ?? ""
@@ -206,7 +207,7 @@ public struct SongDTO: Decodable, Sendable {
             addedAt: parseTime(addedAt),
             missing: missing ?? false, art: art ?? "", kind: kind ?? "", date: date ?? "", notes: notes ?? "",
             chapters: chapters ?? [], groupKey: group ?? "", groupTitle: groupTitle ?? "",
-            groupIndex: groupIndex ?? 0, score: score ?? 0)
+            groupIndex: groupIndex ?? 0, score: score ?? 0, language: language ?? "")
     }
 }
 

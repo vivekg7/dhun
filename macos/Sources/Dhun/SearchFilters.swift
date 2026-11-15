@@ -35,6 +35,9 @@ struct FilterMenu: View {
                 nav.sheet = .artists
             }
             Button(SearchFilters.names(f.genres).map { "Genre: \($0)…" } ?? "Genre…") { nav.sheet = .genres }
+            Button(SearchFilters.names(f.languages).map { "Language: \($0)…" } ?? "Language…") {
+                nav.sheet = .languages
+            }
             Toggle("Popular", isOn: binding(\.popular))
             Picker("Sort", selection: binding(\.sort)) {
                 ForEach(SearchFilters.Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -64,21 +67,23 @@ struct FilterMenu: View {
     }
 }
 
-/// Several artists or genres, picked from the library's list and searched
-/// as the window searches them. The ones picked stay at the top, then the
-/// most songs first: the names people look for are the big ones.
+/// Several artists, genres or languages, picked from the library's list and
+/// searched as the window searches them. The ones picked stay at the top,
+/// then the most songs first: the names people look for are the big ones.
 struct PickSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(Nav.self) private var nav
     @Environment(\.dismiss) private var dismiss
-    let genres: Bool
+    let title: String
+    let index: KeyPath<Catalog, SearchIndex<DhunKit.Group>>
+    let picks: WritableKeyPath<SearchFilters, Set<String>>
     @State private var chosen: Set<String>?
     @State private var text = ""
 
     var body: some View {
         // Built when first opened, not with the window.
-        let index = genres ? app.catalog.genreIndex : app.catalog.artistIndex
-        let picked = genres ? nav.filters.genres : nav.filters.artists
+        let index = app.catalog[keyPath: index]
+        let picked = nav.filters[keyPath: picks]
         let chosen = self.chosen ?? picked
         let lowered = Set(picked.map { $0.lowercased() })
         let first = index.items.filter { lowered.contains($0.id) }
@@ -86,7 +91,7 @@ struct PickSheet: View {
             $0.songs.count > $1.songs.count
         }
         VStack(alignment: .leading, spacing: 10) {
-            Text(genres ? "Genres" : "Artists").font(.headline)
+            Text(title).font(.headline)
             TextField("Search", text: $text).textFieldStyle(.roundedBorder)
             List(first + rest) { g in
                 let on = chosen.contains { $0.lowercased() == g.id }
@@ -119,7 +124,7 @@ struct PickSheet: View {
 
     private func apply(_ names: Set<String>) {
         var f = nav.filters
-        if genres { f.genres = names } else { f.artists = names }
+        f[keyPath: picks] = names
         nav.filter(f)
         dismiss()
     }

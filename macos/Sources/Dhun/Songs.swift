@@ -309,7 +309,8 @@ struct SongInfo: View {
         let rows = [
             ("Artist", s.artist), ("Album", s.album), ("Album artist", s.albumArtist),
             ("Composer", s.composer),
-            ("Genre", s.genres.joined(separator: ", ")), ("Year", s.year > 0 ? String(s.year) : ""),
+            ("Genre", s.genres.joined(separator: ", ")), ("Language", s.language),
+            ("Year", s.year > 0 ? String(s.year) : ""),
             ("Length", duration(s)),
             (
                 "File",

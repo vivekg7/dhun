@@ -545,7 +545,7 @@ public func searchKept(_ rows: [(song: Int, text: String)], _ q: SearchQuery) ->
         .prefix(lyricsHits).map(\.element.hit))
 }
 
-/// What the search menu's filters picked (plan 041). Artists and genres are
+/// What the search menu's filters picked (plan 041). Artists, genres and languages are
 /// names picked from the library's own lists, so they test a song's values
 /// exactly rather than as words, and several of them mean any of them:
 /// "Arijit or Atif, from the 2010s", which the typed `artist:` words, all of
@@ -559,22 +559,26 @@ public struct SearchFilters: Hashable, Sendable {
     /// As the library's lists name them; compared ignoring case, as `Catalog` groups them.
     public var artists: Set<String> = []
     public var genres: Set<String> = []
+    public var languages: Set<String> = []
     public var popular = false
     public var sort = Sort.best
 
     public init(
         years: ClosedRange<Int>? = nil, artists: Set<String> = [], genres: Set<String> = [],
-        popular: Bool = false, sort: Sort = .best
+        languages: Set<String> = [], popular: Bool = false, sort: Sort = .best
     ) {
         self.years = years
         self.artists = artists
         self.genres = genres
+        self.languages = languages
         self.popular = popular
         self.sort = sort
     }
 
     /// No filter, whatever the sort: the box alone decides what is found.
-    public var isEmpty: Bool { years == nil && artists.isEmpty && genres.isEmpty && !popular }
+    public var isEmpty: Bool {
+        years == nil && artists.isEmpty && genres.isEmpty && languages.isEmpty && !popular
+    }
 
     /// Whether a song passes. Made once per list, not called per song: the
     /// picked names are lowered here, and a song's would be every time.
@@ -583,9 +587,12 @@ public struct SearchFilters: Hashable, Sendable {
         let popular = popular
         let artists = Set(artists.map { $0.lowercased() })
         let genres = Set(genres.map { $0.lowercased() })
+        let languages = Set(languages.map { $0.lowercased() })
         return { s in
             if let years, !years.contains(s.year) { return false }
             if popular && s.score < SearchFilters.popularScore { return false }
+            // A song with no language is in none: "" is never picked.
+            if !languages.isEmpty && !languages.contains(s.language.lowercased()) { return false }
             let a = s.artists.isEmpty ? [s.displayArtist] : s.artists
             if !artists.isEmpty && !a.contains(where: { artists.contains($0.lowercased()) }) { return false }
             let g = s.genres.isEmpty ? [SearchFilters.unknownGenre] : s.genres
@@ -595,8 +602,11 @@ public struct SearchFilters: Hashable, Sendable {
 
     /// What is picked, in a few words: a queue played from it is named so.
     public func describe() -> String {
-        [years.map(Self.yearsLabel), Self.names(artists), Self.names(genres), popular ? "Popular" : nil]
-            .compactMap { $0 }.joined(separator: " · ")
+        [
+            years.map(Self.yearsLabel), Self.names(artists), Self.names(genres), Self.names(languages),
+            popular ? "Popular" : nil,
+        ]
+        .compactMap { $0 }.joined(separator: " · ")
     }
 
     /// `found` filtered, in the order picked; with no query to rank by,

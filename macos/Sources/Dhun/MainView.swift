@@ -67,8 +67,9 @@ struct MainView: View {
         .sheet(item: $nav.sheet) { s in
             switch s {
             case .info(let song): SongInfo(song: song)
-            case .artists: PickSheet(genres: false)
-            case .genres: PickSheet(genres: true)
+            case .artists: PickSheet(title: "Artists", index: \.artistIndex, picks: \.artists)
+            case .genres: PickSheet(title: "Genres", index: \.genreIndex, picks: \.genres)
+            case .languages: PickSheet(title: "Languages", index: \.languageIndex, picks: \.languages)
             case .years: YearsSheet()
             }
         }

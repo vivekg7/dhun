@@ -167,6 +167,15 @@ public final class Catalog: Sendable {
     public var genreIndex: SearchIndex<Group> {
         indexes.get(\.genres) { SearchIndex.names(genres, "genre") { $0.name } }
     }
+    /// The languages, for the search filter alone: no page lists them, so
+    /// they are grouped only when it is first opened. A song with none is in none.
+    public var languageIndex: SearchIndex<Group> {
+        indexes.get(\.languages) {
+            SearchIndex.names(Catalog.group(songs) { $0.language.isEmpty ? [] : [$0.language] }, "language") {
+                $0.name
+            }
+        }
+    }
     public var folderIndex: SearchIndex<Folder> {
         indexes.get(\.folders) {
             let all = naturalSorted(folders.values.filter { !$0.path.isEmpty }, \.path)
@@ -204,6 +213,7 @@ public final class Catalog: Sendable {
         var albums: SearchIndex<Album>?
         var artists: SearchIndex<Group>?
         var genres: SearchIndex<Group>?
+        var languages: SearchIndex<Group>?
         var folders: SearchIndex<Folder>?
         var books: SearchIndex<Shelf>?
         var shows: SearchIndex<Shelf>?

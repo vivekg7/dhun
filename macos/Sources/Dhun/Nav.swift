@@ -112,12 +112,13 @@ final class Nav {
     enum InspectorTab: Hashable { case queue, lyrics }
 
     enum Sheet: Identifiable {
-        case info(Song), artists, genres, years
+        case info(Song), artists, genres, languages, years
         var id: String {
             switch self {
             case .info(let s): "info/\(s.id)"
             case .artists: "artists"
             case .genres: "genres"
+            case .languages: "languages"
             case .years: "years"
             }
         }
