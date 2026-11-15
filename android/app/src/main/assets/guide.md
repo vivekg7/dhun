@@ -10,6 +10,18 @@ a 21st removes the first one in the list.
 A **playlist** is kept until you delete it. Changing a queue never changes
 a playlist.
 
+### Play radio
+
+**Play radio** in a song's menu makes a new queue: that song, then ten
+songs like it. Your music server picks them from the playlists the song
+is in, what the family plays alongside it, and its artists, composer,
+genre, language, year and popularity. Songs you skip early come up less,
+and nothing you heard in the last day comes back. It picks a little
+differently each time. **Add similar songs**, in the playing song's menu
+on Now playing, adds ten more to the end of the queue.
+
+Radio needs the server: offline it says so and plays nothing.
+
 ## Searching
 
 When several songs match equally well, your favourites and the songs you
@@ -29,6 +41,11 @@ of them.
 The filters work with nothing typed, too: pick the 1990s and Kumar Sanu
 to list every one of his 90s songs, most popular first. Playing one plays
 the whole list as a new queue.
+
+Searching for one song by its name, tapping it plays the other matches
+after it, songs that only share words with it. To play its radio instead,
+set **Tapping a song found by its title** to **Play radio**, under Search
+in the Playback settings.
 
 A search for a song also shows the playlists it is in. So does **In
 playlists** in a song's menu, and **Info** (**Get Info** on the Mac)
