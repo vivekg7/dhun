@@ -1,11 +1,12 @@
 //! The filters over the search page's results (plan 041), the phone's chips
-//! in GTK: Year, Artist, Genre, Popular and Sort, always in view, each
-//! naming what it is set to. Year, Artist and Genre open a dialog to set it.
+//! in GTK: Year, Artist, Genre, Language, Popular and Sort, always in view,
+//! each naming what it is set to. Year, Artist, Genre and Language open a
+//! dialog to set it.
 
 use crate::pages::Nav;
 use adw::prelude::*;
-use dhun_core::catalog::Group;
-use dhun_core::search::{Filters, Query, Sort};
+use dhun_core::catalog::{Catalog, Group};
+use dhun_core::search::{Filters, Index, Query, Sort};
 use gtk::{gio, glib};
 use std::cell::RefCell;
 use std::cmp::Reverse;
@@ -39,7 +40,7 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
     let row = gtk::FlowBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .halign(gtk::Align::Start)
-        .max_children_per_line(5)
+        .max_children_per_line(6)
         .column_spacing(6)
         .row_spacing(6)
         .margin_start(12)
@@ -71,8 +72,10 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
         (b, label)
     };
     let year = chip("Year", year_dialog);
-    let artist = chip("Artist", |n, b| pick_dialog(n, b, true));
-    let genre = chip("Genre", |n, b| pick_dialog(n, b, false));
+    let artist = chip("Artist", |n, b| pick_dialog(n, b, "Artists", Catalog::artist_index, |f| &mut f.artists));
+    let genre = chip("Genre", |n, b| pick_dialog(n, b, "Genres", Catalog::genre_index, |f| &mut f.genres));
+    let language =
+        chip("Language", |n, b| pick_dialog(n, b, "Languages", Catalog::language_index, |f| &mut f.languages));
     let popular = gtk::ToggleButton::builder().label("Popular").tooltip_text("Only the better-known songs").build();
     let n = Rc::downgrade(nav);
     popular.connect_toggled(move |t| {
@@ -107,6 +110,7 @@ pub fn bar(nav: &Rc<Nav>) -> (gtk::Widget, Rc<dyn Fn()>) {
         show(&year.0, &year.1, f.years.as_ref().map(Filters::years_label), "Year");
         show(&artist.0, &artist.1, Filters::names(&f.artists), "Artist");
         show(&genre.0, &genre.1, Filters::names(&f.genres), "Genre");
+        show(&language.0, &language.1, Filters::names(&f.languages), "Language");
         popular.set_active(f.popular);
         accent(&popular, f.popular);
         let sorted = f.sort != Sort::Best;
@@ -195,14 +199,17 @@ fn year_dialog(nav: &Rc<Nav>, parent: &gtk::Widget) {
     dialog.present(Some(parent));
 }
 
-/// Several artists or genres, picked from the library's list and searched as
-/// the Artists and Genres pages search it: the ones picked first, then the
-/// biggest, since the names people look for are the big ones.
-fn pick_dialog(nav: &Rc<Nav>, parent: &gtk::Widget, artists: bool) {
-    let picked = {
-        let f = nav.filters.borrow();
-        if artists { f.artists.clone() } else { f.genres.clone() }
-    };
+/// Several artists, genres or languages, picked from the library's list and
+/// searched as the Artists and Genres pages search it: the ones picked
+/// first, then the biggest, since the names people look for are the big ones.
+fn pick_dialog(
+    nav: &Rc<Nav>,
+    parent: &gtk::Widget,
+    heading: &str,
+    index: fn(&Catalog) -> &Index<Arc<Group>>,
+    field: fn(&mut Filters) -> &mut Vec<String>,
+) {
+    let picked = field(&mut nav.filters.borrow_mut()).clone();
     let chosen = Rc::new(RefCell::new(picked.clone()));
     let entry = gtk::SearchEntry::builder().placeholder_text("Search").build();
     // A fixed height: the list builds rows only for what is on screen, the artists are thousands.
@@ -212,7 +219,7 @@ fn pick_dialog(nav: &Rc<Nav>, parent: &gtk::Widget, artists: bool) {
         let (c, chosen, holder) = (nav.app.catalog(), chosen.clone(), holder.clone());
         move |text: &str| {
             // The index is built when first opened, not with the page.
-            let index = if artists { c.artist_index() } else { c.genre_index() };
+            let index = index(&c);
             let lower: HashSet<String> = picked.iter().map(|p| p.to_lowercase()).collect();
             let first = picked.iter().filter_map(|p| index.items.iter().find(|g| g.id() == p.to_lowercase()));
             let mut rest: Vec<&Arc<Group>> =
@@ -262,13 +269,10 @@ fn pick_dialog(nav: &Rc<Nav>, parent: &gtk::Widget, artists: bool) {
     let b = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).build();
     b.append(&entry);
     b.append(&holder);
-    let dialog =
-        adw::AlertDialog::builder().heading(if artists { "Artists" } else { "Genres" }).extra_child(&b).build();
+    let dialog = adw::AlertDialog::builder().heading(heading).extra_child(&b).build();
     dialog.add_responses(&[("clear", "Clear"), ("apply", "Apply")]);
     dialog.set_response_appearance("apply", adw::ResponseAppearance::Suggested);
-    let set = move |nav: &Nav, names: Vec<String>| {
-        change(nav, |f| if artists { f.artists = names } else { f.genres = names })
-    };
+    let set = move |nav: &Nav, names: Vec<String>| change(nav, |f| *field(f) = names);
     let n = nav.clone();
     dialog.connect_response(Some("clear"), move |_, _| set(&n, vec![]));
     let n = nav.clone();

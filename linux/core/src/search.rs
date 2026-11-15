@@ -719,7 +719,7 @@ impl Sort {
     }
 }
 
-/// What the search page's filters picked (plan 041). Artists and genres are
+/// What the search page's filters picked (plan 041). Artists, genres and languages are
 /// names picked from the library's own lists, so they test a song's values
 /// exactly rather than as words, and several of them mean any of them:
 /// "Arijit or Atif, from the 2010s", which the typed `artist:` words, all
@@ -730,6 +730,8 @@ pub struct Filters {
     /// As the library's lists name them, in the order picked; compared ignoring case, as the catalogue groups them.
     pub artists: Vec<String>,
     pub genres: Vec<String>,
+    /// One per song, so a song with none is in none of them.
+    pub languages: Vec<String>,
     pub popular: bool,
     pub sort: Sort,
 }
@@ -737,13 +739,17 @@ pub struct Filters {
 impl Filters {
     /// No filter, whatever the sort: the box alone decides what is found.
     pub fn is_empty(&self) -> bool {
-        self.years.is_none() && self.artists.is_empty() && self.genres.is_empty() && !self.popular
+        self.years.is_none()
+            && self.artists.is_empty()
+            && self.genres.is_empty()
+            && self.languages.is_empty()
+            && !self.popular
     }
 
     /// The test a song must pass, with the names lowered once rather than once per song.
     pub fn accepts(&self) -> impl Fn(&Song) -> bool + '_ {
         let lower = |names: &[String]| names.iter().map(|n| n.to_lowercase()).collect::<HashSet<_>>();
-        let (artists, genres) = (lower(&self.artists), lower(&self.genres));
+        let (artists, genres, languages) = (lower(&self.artists), lower(&self.genres), lower(&self.languages));
         let any = |keys: &HashSet<String>, names: &[String], none: &str| {
             if names.is_empty() {
                 keys.contains(&none.to_lowercase())
@@ -756,6 +762,7 @@ impl Filters {
                 && (!self.popular || s.score >= POPULAR)
                 && (artists.is_empty() || any(&artists, &s.artists, s.display_artist()))
                 && (genres.is_empty() || any(&genres, &s.genres, UNKNOWN_GENRE))
+                && (languages.is_empty() || languages.contains(&s.language.to_lowercase()))
         }
     }
 
@@ -765,6 +772,7 @@ impl Filters {
             self.years.as_ref().map(Filters::years_label),
             Filters::names(&self.artists),
             Filters::names(&self.genres),
+            Filters::names(&self.languages),
             self.popular.then(|| "Popular".to_string()),
         ];
         parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
@@ -904,6 +912,7 @@ mod tests {
             .map(|(id, artist, year, score)| {
                 let mut s = Arc::unwrap_or_clone(song(id, &format!("Song {id}"), artist, "", "", year));
                 s.score = score;
+                s.language = ["Hindi", "Urdu", "", "Hindi", "Instrumental"][id as usize - 1].into();
                 Arc::new(s)
             })
             .collect()
@@ -920,6 +929,13 @@ mod tests {
         assert_eq!(ids(&Filters { years: Some(2010..=2019), ..f.clone() }, false), [1, 3]);
         assert_eq!(ids(&Filters { popular: true, ..f.clone() }, false), [1, 2]);
         assert_eq!(Filters::names(&f.artists).as_deref(), Some("arijit singh +1"));
+    }
+
+    #[test]
+    fn two_languages_mean_either_and_a_song_with_none_is_in_neither() {
+        let f = Filters { languages: vec!["hindi".into(), "Urdu".into()], ..Default::default() };
+        assert_eq!(ids(&f, false), [1, 4, 2]);
+        assert_eq!(f.describe(), "hindi +1");
     }
 
     #[test]

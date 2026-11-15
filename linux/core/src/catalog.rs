@@ -105,6 +105,7 @@ pub struct Catalog {
     album_index: OnceLock<Index<Arc<Album>>>,
     artist_index: OnceLock<Index<Arc<Group>>>,
     genre_index: OnceLock<Index<Arc<Group>>>,
+    language_index: OnceLock<Index<Arc<Group>>>,
     folder_index: OnceLock<Index<String>>,
     book_index: OnceLock<Index<Arc<Shelf>>>,
     show_index: OnceLock<Index<Arc<Shelf>>>,
@@ -156,6 +157,7 @@ impl Catalog {
             album_index: OnceLock::new(),
             artist_index: OnceLock::new(),
             genre_index: OnceLock::new(),
+            language_index: OnceLock::new(),
             folder_index: OnceLock::new(),
             book_index: OnceLock::new(),
             show_index: OnceLock::new(),
@@ -227,6 +229,15 @@ impl Catalog {
     }
     pub fn genre_index(&self) -> &Index<Arc<Group>> {
         self.genre_index.get_or_init(|| search::names(self.genres.clone(), "genre", |g| g.name.clone()))
+    }
+    /// The Language filter's list (plan 041), grouped only when it is first
+    /// opened: no page lists languages. A song with no language is in none.
+    pub fn language_index(&self) -> &Index<Arc<Group>> {
+        self.language_index.get_or_init(|| {
+            let languages =
+                group(&self.songs, |s| if s.language.is_empty() { vec![] } else { vec![s.language.clone()] });
+            search::names(languages, "language", |g| g.name.clone())
+        })
     }
     /// Every folder but the top, by path.
     pub fn folder_index(&self) -> &Index<String> {

@@ -95,6 +95,8 @@ pub struct SongDto {
     pub group_index: Option<i64>,
     /// Omitted when 0, a song with no popularity (plan 041).
     pub score: Option<i64>,
+    /// A display name, "Instrumental" for any instrumental track; omitted when unknown (plan 041).
+    pub language: Option<String>,
 }
 
 impl SongDto {
@@ -140,6 +142,7 @@ impl SongDto {
             group_title: self.group_title.unwrap_or_default(),
             group_index: self.group_index.unwrap_or(0),
             score: self.score.unwrap_or(0),
+            language: self.language.unwrap_or_default(),
         }
     }
 }

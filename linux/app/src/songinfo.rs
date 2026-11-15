@@ -26,6 +26,7 @@ pub fn info(app: &App, parent: &gtk::Widget, s: &SongRef) {
         ("Album artist", s.album_artist.clone()),
         ("Composer", s.composer.clone()),
         ("Genre", s.genres.join(", ")),
+        ("Language", s.language.clone()),
         ("Year", if s.year > 0 { s.year.to_string() } else { String::new() }),
         ("Length", clock(s.duration_ms)),
         ("File", file.into_iter().flatten().collect::<Vec<_>>().join(" · ")),
