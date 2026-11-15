@@ -15,10 +15,11 @@ ranking and a song's playlists
 ([plan 041](docs/plans/041_search_filters_and_popularity.md)). The devices
 below run what is installed on them.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.20.0`: the library
+- **Server** (`server/`), on the owner's NAS as `server-v0.21.0`: the library
   scan, each song's popularity score from the curation tool's index,
   streaming, offline sync of queues and playlists (`.m3u8` files), a log of
-  every listen, resume points for long files, Favorites and Listen Later.
+  every listen, resume points for long files, Favorites, Listen Later and
+  the songs Play radio picks.
 - **Android** (`android/`, [plan 011](docs/plans/011_android_app.md)), 0.20.0
   on the owner's phone: downloads, playlist editing, the sleep timer,
   lyrics, speed and pitch, hand-off, a song cache, playback that waits out a

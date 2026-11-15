@@ -1,6 +1,6 @@
 # 042 — Play radio: a song and the songs like it
 
-**Status:** `RELEASED` — 0.21.0, in the GitHub release with every platform (2026-11-15), not yet on the NAS; the weights are still to be tuned by listening
+**Status:** `RELEASED` — 0.21.0, in the GitHub release with every platform and on the NAS (2026-11-15); the weights are still to be tuned by listening
 **Started:** 2026-11-11
 
 ## Problem
@@ -121,7 +121,9 @@ request scores every song and reads the caller's own plays for the last
 day and the early skips. No new table.
 
 Measured on a copy of the library (35,436 songs, 231 playlists, on a
-MacBook): building takes 0.2 s, a request about 5 ms.
+MacBook): building takes 0.2 s, a request about 5 ms. On the NAS (40,023
+songs, 2026-11-15), timed from a client: the first request after a start,
+which builds it, about 1 s; then about 35 ms.
 
 ### Recording
 
