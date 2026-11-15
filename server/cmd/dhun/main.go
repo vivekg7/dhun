@@ -143,6 +143,7 @@ func run(log *slog.Logger, args []string) error {
 	}
 	scanner := &library.Scanner{DB: db, Root: media, Podcasts: podcasts, Audiobooks: audiobooks, Log: log}
 	lyrics := &library.LyricsIndex{DB: db, Root: media}
+	radio := &library.Radio{DB: db}
 	// Rescan requests while a scan runs collapse into one follow-up scan.
 	trigger := make(chan struct{}, 1)
 	rescan := func() {
@@ -164,6 +165,10 @@ func run(log *slog.Logger, args []string) error {
 				// Ready before anyone searches, and in step with what the scan found.
 				if err := lyrics.Refresh(ctx); err != nil && ctx.Err() == nil {
 					log.Error("lyrics index failed", "err", err)
+				}
+				// Each scan also brings in the plays since the last one.
+				if err := radio.Refresh(ctx); err != nil && ctx.Err() == nil {
+					log.Error("radio index failed", "err", err)
 				}
 			}
 			if err := store.Backup(ctx, db, filepath.Join(dataDir, "backups"), 14, time.Now()); err != nil && ctx.Err() == nil {
@@ -201,7 +206,7 @@ func run(log *slog.Logger, args []string) error {
 	srv := &http.Server{
 		Addr: env("DHUN_ADDR", ":8585"),
 		Handler: (&api.Server{
-			DB: db, Root: media, DataDir: dataDir, Scanner: scanner, Lyrics: lyrics, Log: log, Rescan: rescan,
+			DB: db, Root: media, DataDir: dataDir, Scanner: scanner, Lyrics: lyrics, Radio: radio, Log: log, Rescan: rescan,
 			Version: strings.TrimPrefix(version, "server-v"),
 		}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

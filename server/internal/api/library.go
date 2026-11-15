@@ -437,6 +437,42 @@ func (s *Server) searchLyrics(w http.ResponseWriter, r *http.Request, _ session)
 	writeJSON(w, r, map[string]any{"hits": hits})
 }
 
+// radio returns the songs to play after one (docs/plans/042_play_radio.md):
+// it needs every user's listening, which only the server has.
+func (s *Server) radio(w http.ResponseWriter, r *http.Request, sess session) {
+	id, err := pathID(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	q := r.URL.Query()
+	n := 10
+	if v := q.Get("n"); v != "" {
+		if n, err = strconv.Atoi(v); err != nil || n < 1 || n > maxRadio {
+			s.fail(w, r, errBadRequest(fmt.Sprintf("n must be 1 to %d", maxRadio)))
+			return
+		}
+	}
+	var exclude []int64
+	for _, v := range strings.Split(q.Get("exclude"), ",") {
+		if x, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			exclude = append(exclude, x)
+		}
+	}
+	songs, err := s.Radio.Similar(r.Context(), sess.UserID, id, n, exclude)
+	if errors.Is(err, library.ErrUnknownSong) {
+		err = errNotFound("song")
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, r, map[string]any{"songs": songs})
+}
+
+// maxRadio is the most songs one radio request returns.
+const maxRadio = 50
+
 func (s *Server) lyrics(w http.ResponseWriter, r *http.Request, _ session) {
 	f, _, err := s.songFile(r)
 	if err != nil {

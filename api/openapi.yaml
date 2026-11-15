@@ -300,6 +300,46 @@ paths:
                             without LRC times,
                           }
 
+  /api/v1/radio/{id}:
+    get:
+      summary: The songs to play after one, best first
+      description: |
+        "Play radio" and "Add similar songs" (docs/plans/042_play_radio.md).
+        Songs are scored against the seed by shared playlists (the shared
+        ones and the caller's own), what the family played within half an
+        hour of it, artist, composer, genre, language, year and popularity,
+        less the caller's own early skips. The answer is drawn at random
+        from the best 40, so two calls differ. It never holds the seed or
+        another version of it, two versions of one song, more than two songs
+        by one artist, the seed's main artist in the first two places, a
+        song in `exclude`, or one the caller played in the last 24 hours.
+        Music only. Fewer than `n` songs when the library runs out.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: n
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+        - name: exclude
+          in: query
+          description: >
+            Song IDs, comma-separated, to leave out: the queue's songs, so
+            "Add similar songs" repeats none of them.
+          schema: { type: string }
+          example: 12,40,7
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  songs:
+                    type: array
+                    items: { type: integer, format: int64 }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /api/v1/sync:
     get:
       summary: The caller's queues, special lists, resume points, settings and now-playing changed since a cursor

@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { db.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sc := &library.Scanner{DB: db, Root: root, Log: log}
-	s := &Server{DB: db, Root: root, DataDir: data, Scanner: sc, Lyrics: &library.LyricsIndex{DB: db, Root: root}, Log: log}
+	s := &Server{DB: db, Root: root, DataDir: data, Scanner: sc, Lyrics: &library.LyricsIndex{DB: db, Root: root}, Radio: &library.Radio{DB: db}, Log: log}
 	s.Rescan = func() { sc.Scan(context.Background()) }
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
@@ -560,4 +561,35 @@ func TestThumbsByArtKey(t *testing.T) {
 
 	e.do("POST", "/api/v1/thumbs", tok, map[string]any{"keys": []string{}}, 400, nil)
 	e.do("POST", "/api/v1/thumbs", tok, map[string]any{"keys": make([]string, 51)}, 400, nil)
+}
+
+// Radio answers with song IDs, honours exclude, and refuses what is not a
+// music song rather than guessing.
+func TestRadio(t *testing.T) {
+	e := newEnv(t)
+	e.user("vivek", false)
+	e.file("Library/A/01.mp3", fixture(t, "a.mp3"))
+	e.file("Library/B/02.opus", fixture(t, "c.opus"))
+	e.scan()
+	tok := e.login("vivek")
+	var lib libraryResp
+	e.do("GET", "/api/v1/library", tok, nil, 200, &lib)
+	if len(lib.Songs) != 2 {
+		t.Fatalf("library has %d songs", len(lib.Songs))
+	}
+	a, b := lib.Songs[0].ID, lib.Songs[1].ID
+
+	radio := func(q string, want int) []int64 {
+		var got struct{ Songs []int64 }
+		e.do("GET", "/api/v1/radio/"+q, tok, nil, want, &got)
+		return got.Songs
+	}
+	if got := radio(itoa(a), 200); !slices.Equal(got, []int64{b}) {
+		t.Errorf("radio = %v, want [%d]", got, b)
+	}
+	if got := radio(itoa(a)+"?exclude="+itoa(b), 200); got == nil || len(got) != 0 {
+		t.Errorf("with %d excluded: %v, want []", b, got)
+	}
+	radio("9999", 404)
+	radio(itoa(a)+"?n=0", 400)
 }
