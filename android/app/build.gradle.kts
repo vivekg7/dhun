@@ -26,8 +26,8 @@ android {
         // Android 12 and newer only (docs/plans/011_android_app.md).
         minSdk = 31
         targetSdk = 37
-        versionCode = 27
-        versionName = "0.21.0"
+        versionCode = 28
+        versionName = "0.21.1"
     }
 
     signingConfigs {
