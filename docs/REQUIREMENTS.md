@@ -470,9 +470,8 @@ since 0.13.0. Anything else waits for a later release.
   playing, a newer place synced from another device, in the open queue or
   in the long file it holds, moves the player there: paused at song 5 here,
   played to song 7 on the phone, Play here continues song 7 from the
-  phone's last saved place (up to 30 s behind is fine). Unless the app
-  synced in the last minute, Play syncs first, waiting up to 2 s (owner,
-  2026-11-18; [plan 043](plans/043_follow_the_synced_place.md)).
+  phone's last saved place (up to 30 s behind is fine). Play on a paused
+  player syncs first, waiting up to 2 s (owner, 2026-11-18; [plan 043](plans/043_follow_the_synced_place.md)).
 
 **macOS** — everything the Android app has, offline included, in a Mac
 window with a sidebar (owner, 2026-10-08; it was "minimal, online-only"

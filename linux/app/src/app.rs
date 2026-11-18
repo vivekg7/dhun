@@ -97,10 +97,8 @@ pub struct App {
     pub pins: RefCell<Vec<Pin>>,
     pub downloaded: RefCell<HashMap<i64, Download>>,
     pub syncing: Cell<bool>,
-    /// Syncs finished, either way, and when the last did: Play waits for a
-    /// fresh one (plan 043).
+    /// Syncs finished, either way: Play waits for the next (plan 043).
     pub syncs: Cell<u64>,
-    pub synced_at: Cell<Option<std::time::Instant>>,
     /// The server could not be reached on the last try.
     pub offline: Cell<bool>,
     pub sync_error: RefCell<Option<String>>,
@@ -164,7 +162,6 @@ impl App {
             downloaded: RefCell::default(),
             syncing: Cell::new(false),
             syncs: Cell::new(0),
-            synced_at: Cell::new(None),
             offline: Cell::new(false),
             sync_error: RefCell::new(None),
             listeners: RefCell::new(vec![]),
@@ -423,7 +420,6 @@ impl App {
         self.running.set(false);
         self.syncing.set(false);
         self.syncs.set(self.syncs.get() + 1);
-        self.synced_at.set(Some(std::time::Instant::now()));
         self.changed(Change::Status);
         ok
     }

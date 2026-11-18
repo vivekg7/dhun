@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.os.SystemClock
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -43,15 +42,6 @@ class Sync(
 
     private var pending: Job? = null
     private var retryDelay = RETRY_MIN
-
-    /** When the last sync ended, whether it worked or not ([SystemClock.elapsedRealtime]); 0 before the first. */
-    @Volatile private var finishedAt = 0L
-
-    /**
-     * Whether a sync ended in the last [FRESH_MS]: Play then plays at once,
-     * rather than waiting for a fresh one (docs/plans/043_follow_the_synced_place.md).
-     */
-    val fresh get() = finishedAt > 0 && SystemClock.elapsedRealtime() - finishedAt < FRESH_MS
 
     /** A sync changed the stored place a paused player follows ([place]). */
     private var moved = false
@@ -146,8 +136,6 @@ class Sync(
             } catch (e: Exception) {
                 _error.value = e.message ?: e.toString()
                 false
-            } finally {
-                finishedAt = SystemClock.elapsedRealtime()
             }
         }
 
@@ -409,9 +397,6 @@ const val LIBRARY_FORMAT = 4L
 // offline long after the network was back (docs/plans/019_networking_and_caching.md).
 private const val RETRY_MIN = 5_000L
 private const val RETRY_MAX = 2 * 60_000L
-
-/** A sync this recent is fresh enough for Play not to wait for another (plan 043). */
-private const val FRESH_MS = 60_000L
 
 /** The active network's capabilities; null with none. */
 fun Context.network(): NetworkCapabilities? = getSystemService(ConnectivityManager::class.java).let { it.getNetworkCapabilities(it.activeNetwork) }

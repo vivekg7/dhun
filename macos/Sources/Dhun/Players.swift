@@ -64,6 +64,9 @@ struct MenuBarPlayer: View {
         }
         .padding(14)
         .frame(width: 320)
+        // It can open without activating the app, which is what syncs for the
+        // window: it should show the place another device left (plan 043).
+        .onAppear { app.refresh() }
     }
 }
 

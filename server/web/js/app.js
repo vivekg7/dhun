@@ -105,9 +105,8 @@ export class App extends EventTarget {
     this.revoked = !this.signedIn && !!this.prefs.user;
     this.saveData = debounce(() => this.persist(), 800);
     this.saveThumbs = debounce(() => db.set("thumbs", this.thumbs), 2000);
-    /** The sync under way, a promise of whether the server was reached; when the last one ended. */
+    /** The sync under way, a promise of whether the server was reached. */
     this.running = null;
-    this.syncedAt = 0;
     this.again = false;
     this.retryDelay = retryMin;
     this.pending = 0;
@@ -712,7 +711,6 @@ export class App extends EventTarget {
       } while (this.again && ok);
     } finally {
       this.running = null;
-      this.syncedAt = nowMs();
       this.syncing = false;
       this.emit("sync");
     }
@@ -721,11 +719,11 @@ export class App extends EventTarget {
 
   /**
    * The sync Play waits for, which may bring a newer place to follow: the one
-   * running, or one started now. Null when one finished, reached or not, in
-   * the last minute (docs/plans/043_follow_the_synced_place.md).
+   * running and once more, or one started now; null when signed out
+   * (docs/plans/043_follow_the_synced_place.md).
    */
   freshSync() {
-    if (!this.signedIn || nowMs() - this.syncedAt < 60_000) return null;
+    if (!this.signedIn) return null;
     return this.syncNow().catch(() => {});
   }
 

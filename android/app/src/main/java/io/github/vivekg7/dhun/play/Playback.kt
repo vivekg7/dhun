@@ -561,17 +561,17 @@ class Playback(
      * sound starts, so the old place is never heard. A call or a lost
      * connection ending goes back as it plays on (onIsPlayingChanged).
      *
-     * Unless a sync ended in the last minute, Play on a paused player first
-     * syncs, waiting up to [SYNC_WAIT_MS] (after one already running, a round
-     * of its own), so it plays the place another device left rather than the
-     * kept one, and does not save the old place as the newest. Offline the
+     * Play on a paused player first syncs, waiting up to [SYNC_WAIT_MS]
+     * (after one already running, a round of its own), so it plays the place
+     * another device left rather than the kept one, and does not save the old place as the newest. Offline the
      * sync fails at once, and past the wait it plays the place it has
      * (docs/plans/043_follow_the_synced_place.md). The notification, the lock
      * screen and the headset come here too (PlaybackService), on a phone
-     * that may never have been opened since it last synced.
+     * that may never have been opened since it last synced, or that synced
+     * its own pause a minute ago while another device played on.
      */
     fun play() {
-        if (player.playWhenReady || app.prefs.token.isEmpty() || app.sync.fresh) return start()
+        if (player.playWhenReady || app.prefs.token.isEmpty()) return start()
         if (starting?.isActive == true) return
         starting =
             scope.launch {

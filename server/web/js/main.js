@@ -25,8 +25,8 @@ if (app.signedIn) {
 }
 
 // When sync runs, besides after each edit: the page coming back into view,
-// and the network returning (plan 030). Play syncs too, after a minute
-// without one (plan 043).
+// and the network returning (plan 030). Play on a paused player syncs
+// too (plan 043).
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     app.checkHandoff();

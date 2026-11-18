@@ -266,14 +266,13 @@ impl Playback {
     }
 
     /// Another device may have played on since the last sync, and the paused
-    /// player follows the place a sync brings: unless a sync finished in the
-    /// last minute, Play syncs first and waits for it, up to 2 s, rather than
-    /// play the old place and save it as the newest. Opening, waking and the
-    /// media keys alike (plan 043).
+    /// player follows the place a sync brings: Play syncs first and waits for
+    /// it, up to 2 s, rather than play the old place and save it as the
+    /// newest. Opening, waking and the media keys alike; even a minute after
+    /// this device's own pause, the other may have moved on since (plan 043).
     pub fn play(self: &Rc<Self>) {
         let a = &self.app;
-        let fresh = !a.syncing.get() && a.synced_at.get().is_some_and(|t| t.elapsed() < Duration::from_secs(60));
-        if fresh || !a.signed_in() || self.is_playing() || self.current().is_none() {
+        if !a.signed_in() || self.is_playing() || self.current().is_none() {
             return self.play_now();
         }
         if std::mem::replace(&mut self.st.borrow_mut().held_play, true) {

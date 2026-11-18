@@ -15,9 +15,6 @@ public final class Sync {
     private var running = false
     private var again = false
     private var waiting: [CheckedContinuation<Bool, Never>] = []
-    /// When the last sync ended, reached or not: Play on a paused player
-    /// syncs first unless this is recent (plan 043).
-    public private(set) var finishedAt: ContinuousClock.Instant?
     private let monitor = NWPathMonitor()
     /// A playlist made here and the server id it became, for a view still showing the old one.
     public private(set) var replaced: [Int: Int] = [:]
@@ -94,7 +91,6 @@ public final class Sync {
         defer {
             running = false
             app.syncing = false
-            finishedAt = .now
             for w in waiting { w.resume(returning: ok) }
             waiting = []
         }

@@ -69,15 +69,23 @@ _shows_ an old place should not get to write it back as the newest.
   when the other device's queue is not the one open here: another existing
   queue, or one made there. When it is the open queue, the place has already
   been followed.
-- **Play waits for a fresh sync.** On a paused player, unless a sync
-  finished in the last minute, Play syncs first (or waits for the sync under
-  way) for up to 2 s (owner), then plays from wherever the player is. A
-  Pause meanwhile takes the press back.
-  Offline, or past the 2 s, it plays the place it has. First built as a
-  wait for the sync that opening, coming to the foreground or waking
-  starts; but a headset, lock-screen or media-key Play reaches an app that
-  was never brought forward, and played the old place just the same. The
-  minute keeps Play instant while listening goes on here.
+- **Play waits for a fresh sync.** On a paused player Play syncs first (or
+  waits for the sync under way, and one round more) for up to 2 s (owner),
+  then plays from wherever the player is. A Pause meanwhile takes the press
+  back. Offline, or past the 2 s, it plays the place it has. A sync takes
+  about 20 ms against the NAS, so the wait is not felt.
+  - First built as a wait for the sync that opening, coming to the
+    foreground or waking starts; but a headset, lock-screen or media-key
+    Play reaches an app that was never brought forward, and played the old
+    place just the same.
+  - Then built to skip the sync when one had finished in the last minute,
+    to keep Play instant while listening goes on here (0.21.1). The owner
+    found it wrong on the Mac (2026-11-18): paused at song 5, the Mac synced
+    its own pause; song 7 played on the phone within the minute; Play from
+    the menu bar, which does not bring the window forward, played song 5.
+    A recent sync here says nothing about what another device did since.
+- **The Mac's menu bar panel syncs as it opens**, as bringing the window
+  forward does, so it shows the place another device left before Play.
 
 ## Plan
 
@@ -112,6 +120,8 @@ nothing is counted twice.
   after the sync is enough.
 - Estimating where a still-playing device is by now, as Continue does: the
   owner does not need the exact second.
+- Skipping Play's sync for a minute after the last one (built in 0.21.1,
+  above): it saved a sync of 20 ms and played an old place.
 
 ## Open questions
 

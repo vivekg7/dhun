@@ -209,7 +209,10 @@ export class Playback extends EventTarget {
   play(waited) {
     const s = this.current;
     if (!s || (this.holding && !waited)) return;
-    const sync = !waited && !this.isPlaying && this.app.freshSync();
+    // After a refusal the next click plays at once, within the click.
+    const refused = this.refused;
+    this.refused = false;
+    const sync = !waited && !refused && !this.isPlaying && this.app.freshSync();
     if (sync) return this.playAfterSync(sync);
     if (this.ended) {
       // The queue ran out: play its song again, as Media3 does on Play.
@@ -225,15 +228,15 @@ export class Playback extends EventTarget {
   }
 
   /**
-   * Play after a minute without a sync (the page just opened or brought
-   * back, a laptop woken, media keys on a tab left alone): another device
-   * may have moved on, and the sync brings its place, which the player
-   * follows. So Play waits for it, up to 2 s; past that, or offline, it plays
+   * Play on a paused player: another device may have moved on since the
+   * last sync (the page just opened or brought back, a laptop woken, media
+   * keys on a tab left alone, or only a minute after a pause here), and the
+   * sync brings its place, which the player follows. So Play waits for it, up to 2 s; past that, or offline, it plays
    * the place it has, and a second press meanwhile does nothing (plan 043).
    * A browser may refuse to start audio that long after the click (Safari
    * does), so the element is started and stopped at once within the click,
    * silently, which lets it play later; one that still refuses shows paused,
-   * and the next click plays at once, the sync being over.
+   * and the next click plays at once, the sync being over (`refused`).
    */
   async playAfterSync(sync) {
     const press = {};
@@ -886,8 +889,10 @@ export class Playback extends EventTarget {
   resumeElement() {
     const el = this.el;
     el.play().catch((e) => {
-      if (e.name === "NotAllowedError") this.setPlaying(false);
-      else if (e.name === "NotSupportedError") this.mediaError(el);
+      if (e.name === "NotAllowedError") {
+        this.refused = true;
+        this.setPlaying(false);
+      } else if (e.name === "NotSupportedError") this.mediaError(el);
     });
   }
 
