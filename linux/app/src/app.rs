@@ -97,6 +97,8 @@ pub struct App {
     pub pins: RefCell<Vec<Pin>>,
     pub downloaded: RefCell<HashMap<i64, Download>>,
     pub syncing: Cell<bool>,
+    /// A sync is owed since the app opened or woke: Play waits for it (plan 043).
+    pub catching_up: Cell<bool>,
     /// The server could not be reached on the last try.
     pub offline: Cell<bool>,
     pub sync_error: RefCell<Option<String>>,
@@ -159,6 +161,7 @@ impl App {
             pins: RefCell::new(pins),
             downloaded: RefCell::default(),
             syncing: Cell::new(false),
+            catching_up: Cell::new(false),
             offline: Cell::new(false),
             sync_error: RefCell::new(None),
             listeners: RefCell::new(vec![]),
@@ -398,6 +401,7 @@ impl App {
     /// False when the server could not be reached, so it is tried again.
     pub async fn sync_now(self: &Rc<Self>) -> bool {
         if !self.signed_in() {
+            self.catching_up.set(false);
             return true;
         }
         if self.running.get() {
@@ -416,11 +420,13 @@ impl App {
         };
         self.running.set(false);
         self.syncing.set(false);
+        self.catching_up.set(false);
         self.changed(Change::Status);
         ok
     }
 
     async fn round(self: &Rc<Self>) -> bool {
+        let before = self.playback.get().and_then(|p| p.stored_place());
         let (api, db) = (self.api.clone(), self.db.clone());
         let pulled = match gio::spawn_blocking(move || sync::round(&api, &db)).await {
             Ok(Ok(p)) => p,
@@ -446,7 +452,7 @@ impl App {
             self.reload_marks();
             self.reload_queues();
             if let Some(p) = self.playback.get() {
-                p.queues_synced();
+                p.queues_synced(before);
             }
         }
         if let Some(np) = pulled.now_playing {

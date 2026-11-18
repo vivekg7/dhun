@@ -241,6 +241,7 @@ fn start(gapp: &adw::Application) -> Rc<App> {
     gapp.set_accels_for_action("app.quit", &["<Control>q"]);
     // The kept copy at once, then what changed on the server.
     if app.signed_in() {
+        app.catching_up.set(true);
         app.reload_playlists();
         app.reload_marks();
         let a = app.clone();
@@ -272,6 +273,7 @@ fn start(gapp: &adw::Application) -> Rc<App> {
             gio::DBusSignalFlags::NONE,
             move |s| {
                 if s.parameters.child_value(0).get::<bool>() == Some(false) {
+                    a.catching_up.set(true);
                     a.sync_soon(Duration::from_secs(5));
                 }
             },

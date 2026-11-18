@@ -22,6 +22,7 @@ import {
   chapterAfter,
   chapterBefore,
   rewound,
+  storedPlace,
 } from "./queue.js";
 import { nowMs, parseTime, uuid, distinct, count } from "./util.js";
 import { synced } from "./synced.js";
@@ -99,6 +100,8 @@ export class Playback extends EventTarget {
     app.addEventListener("change", (e) => {
       if (e.detail === "catalog") this.catalogChanged();
       if (e.detail === "queues") this.queuesChanged();
+      if (e.detail === "applying") this.beforeSync = this.storedPlace();
+      if (e.detail === "applied") this.followSynced();
       if (e.detail === "settings") {
         this.applyTempo();
         // The seek seconds, and whether the file counts as long, are settings.
@@ -182,7 +185,8 @@ export class Playback extends EventTarget {
   /**
    * "Continue from MacBook": another device's playback, offered while this
    * one is not playing, when it is newer than anything played here and its
-   * queue and song are here (plan 017).
+   * queue and song are here (plan 017). Only for another queue: in the open
+   * one the paused player has followed the synced place already (plan 043).
    */
   get handoff() {
     const np = this.app.nowPlaying;
@@ -190,6 +194,7 @@ export class Playback extends EventTarget {
     if (!np || this.isPlaying || !me || np.deviceId === me) return null;
     if (parseTime(np.at) <= this.stateAt || np.at === this.app.prefs.handoffDismissed)
       return null;
+    if (np.queue === this.activeId) return null;
     if (!this.app.queue(np.queue) || !this.app.catalog.byId.has(np.song)) return null;
     return np;
   }
@@ -200,9 +205,11 @@ export class Playback extends EventTarget {
     this.isPlaying ? this.pause() : this.play();
   }
 
-  play() {
+  /** `waited`: after the wait for the opening sync, which is not waited for twice. */
+  play(waited) {
     const s = this.current;
     if (!s) return;
+    if (this.app.opening && !waited) return this.playAfterSync(this.app.opening);
     if (this.ended) {
       // The queue ran out: play its song again, as Media3 does on Play.
       return this.start(s, 0, false);
@@ -214,6 +221,29 @@ export class Playback extends EventTarget {
     }
     this.setPlaying(true);
     this.resumeElement();
+  }
+
+  /**
+   * Play while the sync that opening the page started is under way: it may
+   * bring a newer place, which the player follows, so Play waits for it, up
+   * to 2 s; past that, or offline, it plays the place it has (plan 043).
+   * A browser may refuse to start audio that long after the click (Safari
+   * does), so the element is started and stopped at once within the click,
+   * silently, which lets it play later; one that still refuses shows paused,
+   * and the next click plays at once, the sync being over.
+   */
+  async playAfterSync(sync) {
+    if (this.holding || this.isPlaying) return;
+    this.holding = true;
+    this.quietly(() => {
+      this.el.play().catch(() => {});
+      this.el.pause();
+    });
+    this.setWaiting(true);
+    await Promise.race([sync, new Promise((r) => setTimeout(r, 2000))]);
+    this.holding = false;
+    this.setWaiting(false);
+    if (!this.isPlaying) this.play(true);
   }
 
   pause() {
@@ -771,6 +801,24 @@ export class Playback extends EventTarget {
     this.items = fresh;
     this.rebuildOrder(true);
     this.updateSleep();
+  }
+
+  /** Where the open queue stands as stored (queue.js); compared before and after a sync. */
+  storedPlace() {
+    return storedPlace(this.active, this.current?.id, this.app.resumeMap);
+  }
+
+  /**
+   * A sync changed where the open queue stands, or the held file's resume
+   * point: a player that is not playing goes there, paused, as if the page
+   * had just opened with that data, so Play goes on from the newest place
+   * rather than saving the old one over it. A playing one never moves: its
+   * next save is the newest (docs/plans/043_follow_the_synced_place.md).
+   */
+  followSynced() {
+    const q = this.active;
+    if (this.isPlaying || !this.restored || !this.current || !q) return;
+    if (this.storedPlace() !== this.beforeSync) this.load(q, false);
   }
 
   load(q, play, position) {

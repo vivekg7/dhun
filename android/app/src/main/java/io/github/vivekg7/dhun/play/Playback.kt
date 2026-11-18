@@ -36,6 +36,7 @@ import io.github.vivekg7.dhun.data.parseTime
 import io.github.vivekg7.dhun.data.songIds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -169,16 +171,25 @@ class Playback(
     /**
      * "Continue from MacBook": another device's playback, offered while this
      * one is not playing, when it is newer than anything this device played
-     * and its queue and song are here. Null when there is nothing to offer.
+     * and its queue and song are here. Only for another queue: in the open
+     * one, a paused player has already followed the synced place ([follow]).
+     * Null when there is nothing to offer.
      */
     val handoff: StateFlow<NowPlaying?> =
-        combine(app.sync.nowPlaying, playing, stateAt, dismissed, combine(queues, app.catalog, ::Pair)) { np, playing, mine, gone, (qs, catalog) ->
+        combine(
+            app.sync.nowPlaying,
+            playing,
+            stateAt,
+            dismissed,
+            combine(queues, app.catalog, activeId, ::Triple),
+        ) { np, playing, mine, gone, (qs, catalog, open) ->
             np?.takeIf {
                 !playing &&
                     app.prefs.deviceId != 0L &&
                     it.deviceId != app.prefs.deviceId &&
                     parseTime(it.at) > mine &&
                     it.at != gone &&
+                    it.queue != open &&
                     qs.any { q -> q.id == it.queue } &&
                     catalog.byId[it.song] != null
             }
@@ -285,6 +296,20 @@ class Playback(
             if (q.id != activeId.value) saveActive()
             load(q.copy(currentSong = song.id, positionMs = pos, usedAt = System.currentTimeMillis()), play = true, position = pos)
         }
+
+    /**
+     * A sync changed where the open queue is, or the held long file's resume
+     * point (the stored place Sync compares): a paused player is put there,
+     * paused, as if the app had just been opened with that data, rewound or
+     * offered as plan 009 says. A playing one never moves: its next save is
+     * the newest (docs/plans/043_follow_the_synced_place.md).
+     */
+    suspend fun follow() {
+        val id = activeId.value
+        if (id.isEmpty() || current.value == null || player.playWhenReady) return
+        val q = app.db.dao().queue(id) ?: return
+        if (!player.playWhenReady && activeId.value == id) load(q, play = false)
+    }
 
     /** ✕ on the offer: not offered again, though a newer playback on that device will be. */
     fun dismissHandoff(np: NowPlaying) {
@@ -535,8 +560,29 @@ class Playback(
      * Play, gone back first after a long pause ([continued]): before the
      * sound starts, so the old place is never heard. A call or a lost
      * connection ending goes back as it plays on (onIsPlayingChanged).
+     *
+     * While the sync that opening the app started is under way, Play waits
+     * for it, up to [OPENING_WAIT_MS], so it plays the place another device
+     * left rather than the kept one, and does not save the old place as the
+     * newest; offline, or past the wait, it plays the place it has
+     * (docs/plans/043_follow_the_synced_place.md). The notification and
+     * headset come here too (PlaybackService).
      */
     fun play() {
+        val sync = app.sync.opening
+        if (sync == null || !sync.isActive) return start()
+        if (starting?.isActive == true) return
+        starting =
+            scope.launch {
+                withTimeoutOrNull(OPENING_WAIT_MS) { sync.join() }
+                start()
+            }
+    }
+
+    /** A Play waiting for the opening sync; a second press does not queue another. */
+    private var starting: Job? = null
+
+    private fun start() {
         continued()
         player.play()
     }
@@ -1090,7 +1136,20 @@ class Playback(
                         // A seek within the song: the listen goes on. One
                         // while stopped chose the place, so nothing rewinds it;
                         // not the player's own adjustment of a seek in an MP3.
-                        if (!player.isPlaying && reason == Player.DISCONTINUITY_REASON_SEEK) stoppedAt = 0
+                        if (!player.isPlaying && reason == Player.DISCONTINUITY_REASON_SEEK) {
+                            stoppedAt = 0
+                            // Kept and synced, as a pause is: newer than another
+                            // device's place, so a sync does not take it back
+                            // (docs/plans/043_follow_the_synced_place.md).
+                            val q = active.value
+                            val s = current.value
+                            if (q != null && s != null) {
+                                scope.launch {
+                                    store.setCurrent(q.copy(currentSong = s.id, positionMs = new.positionMs))
+                                    saveResume(s, new.positionMs)
+                                }
+                            }
+                        }
                         return
                     }
 
@@ -1278,6 +1337,9 @@ class Playback(
          * kept there ([saveResume]).
          */
         private const val END_MARGIN_MS = 5_000L
+
+        /** How long Play waits for the sync that opening started: the owner's 2 s (plan 043). */
+        private const val OPENING_WAIT_MS = 2_000L
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val IO_ERRORS = 2000..2999

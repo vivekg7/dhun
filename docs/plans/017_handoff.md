@@ -36,6 +36,10 @@ It is offered when all of these hold:
 - It was not dismissed. ✕ remembers that one playback; the other device's
   next report is offered again.
 - Its queue and song are on this device (both sync).
+- Its queue is **not the one open here**. Within the open queue, a paused
+  player follows the synced place instead, and Play continues from it
+  ([043](043_follow_the_synced_place.md), 2026-11-18). Before that, Play
+  carried on from the old place and saved it as the newest.
 
 ### Continue: the same queue
 

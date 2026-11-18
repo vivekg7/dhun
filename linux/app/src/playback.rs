@@ -92,7 +92,13 @@ struct St {
     heard_at: i64,
     state_at: i64,
     dismissed: String,
+    /// Play was pressed while the sync opening started is out (plan 043).
+    held_play: bool,
 }
+
+/// Where the open queue is, as stored: its song and place, and the resume
+/// point of the file playing (plan 043).
+pub type StoredPlace = (i64, i64, Option<dhun_core::model::Resume>);
 
 pub struct Playback {
     app: Rc<App>,
@@ -226,7 +232,8 @@ impl Playback {
 
     /// "Continue from Pixel": another device's playback, offered while this
     /// one is not playing, when it is newer than anything this device played
-    /// and its queue and song are here (plan 017).
+    /// and its queue and song are here (plan 017). Only for another queue:
+    /// the open one follows the synced place instead (plan 043).
     pub fn handoff(&self) -> Option<NowPlaying> {
         let np = self.app.now_playing.borrow().clone()?;
         let st = self.st.borrow();
@@ -236,6 +243,7 @@ impl Playback {
             && np.device_id != me
             && parse(&np.at) > st.state_at
             && np.at != st.dismissed
+            && np.queue != st.active_id
             && self.app.queues.borrow().iter().any(|q| q.id == np.queue)
             && self.app.catalog().by_id.contains_key(&np.song);
         ok.then_some(np)
@@ -257,7 +265,31 @@ impl Playback {
         if self.is_playing() { self.pause() } else { self.play() }
     }
 
+    /// Opening or waking starts a sync that may bring another device's newer
+    /// place, which the paused player follows: Play waits for it, up to 2 s,
+    /// rather than play the old place and save it as the newest (plan 043).
     pub fn play(self: &Rc<Self>) {
+        if !self.app.catching_up.get() {
+            return self.play_now();
+        }
+        if std::mem::replace(&mut self.st.borrow_mut().held_play, true) {
+            return;
+        }
+        if !self.app.syncing.get() {
+            self.app.sync_soon(Duration::ZERO);
+        }
+        let p = self.clone();
+        glib::spawn_future_local(async move {
+            let until = Instant::now() + Duration::from_secs(2);
+            while p.app.catching_up.get() && Instant::now() < until {
+                glib::timeout_future(Duration::from_millis(50)).await;
+            }
+            p.st.borrow_mut().held_play = false;
+            p.play_now();
+        });
+    }
+
+    fn play_now(self: &Rc<Self>) {
         let Some(s) = self.current() else { return };
         let back = self.continued(&s);
         let (ended, restart, pos) = {
@@ -969,8 +1001,9 @@ impl Playback {
 
     /// Another device's queue edits arrived. The playing queue may be gone
     /// (deleted elsewhere), or hold other songs (added on the phone): the
-    /// player follows, so a later edit here does not undo theirs.
-    pub fn queues_synced(self: &Rc<Self>) {
+    /// player follows, so a later edit here does not undo theirs. `before` is
+    /// the stored place from before the sync.
+    pub fn queues_synced(self: &Rc<Self>, before: Option<StoredPlace>) {
         if self.active_id().is_empty() || !self.st.borrow().restored {
             return;
         }
@@ -992,6 +1025,34 @@ impl Playback {
         }
         self.publish_upcoming();
         self.changed();
+        if before.is_some() && before != self.stored_place() {
+            self.follow(q);
+        }
+    }
+
+    pub fn stored_place(&self) -> Option<StoredPlace> {
+        let id = self.active_id();
+        let db = self.app.db.lock().unwrap();
+        let q = db.queues().ok()?.into_iter().find(|q| q.id == id)?;
+        let song = self.current().map_or(q.current_song, |s| s.id);
+        Some((q.current_song, q.position_ms, db.resume(song).ok().flatten()))
+    }
+
+    /// The sync changed where the open queue is: another device played on.
+    /// Paused, this one goes there, as if just opened with it, so Play
+    /// continues from the newest place (plan 043). Playing, it stays: it is
+    /// where the user listens, and its next save is the newest.
+    fn follow(self: &Rc<Self>, q: QueueRow) {
+        if self.is_playing() || self.current().is_none() {
+            return;
+        }
+        // Changed here while the sync was out: this device's own, still to be sent.
+        let song = self.current().map_or(0, |s| s.id);
+        let mine = |k: &String| k.ends_with(&format!(":{}", q.id)) || *k == format!("resume:{song}");
+        if self.app.db.lock().unwrap().outbox_keys().unwrap_or_default().iter().any(mine) {
+            return;
+        }
+        self.load(q, false, None);
     }
 
     fn load(self: &Rc<Self>, q: QueueRow, play: bool, position: Option<i64>) {

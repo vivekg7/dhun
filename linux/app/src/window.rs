@@ -124,10 +124,11 @@ pub fn build(gapp: &adw::Application, app: &Rc<App>) -> adw::ApplicationWindow {
     });
     window.add_action(&open);
     keys(&window, app);
-    // Syncs on becoming active, as on the phone and the Mac.
+    // Syncs on becoming active, as on the phone and the Mac; Play waits for it (plan 043).
     let a = app.clone();
     window.connect_is_active_notify(move |w| {
         if w.is_active() {
+            a.catching_up.set(a.signed_in());
             a.sync_soon(Duration::from_secs(2));
         }
     });

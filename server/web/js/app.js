@@ -105,13 +105,14 @@ export class App extends EventTarget {
     this.revoked = !this.signedIn && !!this.prefs.user;
     this.saveData = debounce(() => this.persist(), 800);
     this.saveThumbs = debounce(() => db.set("thumbs", this.thumbs), 2000);
-    this.running = false;
+    /** The sync under way, a promise of whether the server was reached. */
+    this.running = null;
     this.again = false;
     this.retryDelay = retryMin;
     this.pending = 0;
   }
 
-  /** Tells the pages what changed: catalog, playlists, queues, marks, resumes, bookmarks, settings, stats, sync, nowPlaying, thumbs, account. */
+  /** Tells the pages what changed: catalog, playlists, queues, marks, resumes, bookmarks, settings, stats, sync, nowPlaying, thumbs, account; applying and applied around a sync's changes. */
   emit(topic) {
     this.dispatchEvent(new CustomEvent("change", { detail: topic }));
   }
@@ -690,12 +691,16 @@ export class App extends EventTarget {
     // Never before the kept copy has landed: the window is up first, and a
     // sync it triggers would merge the server's changes into an empty catalogue.
     await this.loading?.catch(() => {});
-    // One at a time; a request while one runs makes it run once more.
+    // One at a time; a request while one runs makes it run once more, and
+    // waits for that, as Play's wait for the opening sync needs (plan 043).
     if (this.running) {
       this.again = true;
-      return true;
+      return this.running;
     }
-    this.running = true;
+    return (this.running = this.rounds());
+  }
+
+  async rounds() {
     this.syncing = true;
     this.emit("sync");
     let ok = true;
@@ -705,11 +710,26 @@ export class App extends EventTarget {
         ok = await this.round();
       } while (this.again && ok);
     } finally {
-      this.running = false;
+      this.running = null;
       this.syncing = false;
       this.emit("sync");
     }
     return ok;
+  }
+
+  /**
+   * Opening the page, or coming back to it: what the other devices play, and
+   * a sync at once. Play waits up to 2 s for that sync, which may bring a
+   * newer place to follow (docs/plans/043_follow_the_synced_place.md).
+   */
+  opened() {
+    if (!this.signedIn) return;
+    this.checkHandoff();
+    clearTimeout(this.pending);
+    const sync = this.runRetrying()
+      .catch(() => {})
+      .finally(() => this.opening === sync && (this.opening = null));
+    this.opening = sync;
   }
 
   async round() {
@@ -851,6 +871,8 @@ export class App extends EventTarget {
    * with the next sync, and the server's answer will include it.
    */
   apply(s) {
+    // Before anything changes, for the player to compare after (plan 043).
+    this.emit("applying");
     const pending = new Set(this.outbox.map((o) => o.key));
     const pendingFor = (id) => this.outbox.some((o) => o.key.endsWith(`:${id}`));
     for (const q of s.queues ?? []) {
@@ -934,6 +956,7 @@ export class App extends EventTarget {
     try {
       for (const t of ["queues", "marks", "resumes", "bookmarks", "settings"])
         this.emit(t);
+      this.emit("applied");
     } finally {
       this.applying = false;
     }

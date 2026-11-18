@@ -125,11 +125,12 @@ public final class Playback {
 
     /// "Continue from MacBook": another device's playback, offered while this
     /// one is not playing, when it is newer than anything this Mac played and
-    /// its queue and song are here (plan 017).
+    /// its queue and song are here (plan 017). Only for another queue: in the
+    /// open one a paused player has already followed the synced place (plan 043).
     public var handoff: NowPlaying? {
         guard let np = app.nowPlaying, !isPlaying, app.prefs.deviceId != 0, np.deviceId != app.prefs.deviceId,
-            parseTime(np.at) > stateAt, np.at != dismissed, app.queues.contains(where: { $0.id == np.queue }),
-            app.catalog.byId[np.song] != nil
+            parseTime(np.at) > stateAt, np.at != dismissed, np.queue != activeId,
+            app.queues.contains(where: { $0.id == np.queue }), app.catalog.byId[np.song] != nil
         else { return nil }
         return np
     }
@@ -148,9 +149,41 @@ public final class Playback {
 
     // MARK: Transport
 
-    public func toggle() { isPlaying ? pause() : play() }
+    public func toggle() { isPlaying || holding != nil ? pause() : play() }
 
+    /// Play while the sync that opening, coming to the foreground or waking
+    /// started is under way waits for it, up to `syncWait`, so it plays the
+    /// place another device synced rather than the one loaded before
+    /// (docs/plans/043_follow_the_synced_place.md). Offline, it plays at once.
     public func play() {
+        guard holding == nil else { return }
+        guard !isPlaying, current != nil, app.reachable, let opening = app.opening else { return playHere() }
+        holds += 1
+        let hold = holds
+        holding = hold
+        Task {
+            await opening.value
+            holdOver(hold)
+        }
+        Task {
+            try? await Task.sleep(for: Playback.syncWait)
+            holdOver(hold)
+        }
+    }
+
+    /// The owner's 2 s (plan 043).
+    static let syncWait = Duration.seconds(2)
+    /// The Play waiting for the opening sync, if one is; pausing drops it.
+    @ObservationIgnored private var holding: Int?
+    @ObservationIgnored private var holds = 0
+
+    private func holdOver(_ hold: Int) {
+        guard holding == hold else { return }
+        holding = nil
+        playHere()
+    }
+
+    private func playHere() {
         guard let s = current else { return }
         let back = continued(s)
         if ended || needsRestart {
@@ -164,6 +197,7 @@ public final class Playback {
     }
 
     public func pause() {
+        holding = nil
         guard isPlaying else { return }
         engine.pause()
         setPlaying(false)
@@ -684,6 +718,7 @@ public final class Playback {
         dismissed = ""
         stopAll()
         offerResume = nil
+        holding = nil
         restored = true
     }
 
@@ -697,10 +732,35 @@ public final class Playback {
         if current == nil, let q = active { load(q, play: false) }
     }
 
+    /// Where the open queue is and the stored resume point of the file the
+    /// player holds: what a sync is compared on, before and after (plan 043).
+    struct Place: Equatable {
+        var song: Int
+        var ms: Int
+        var resume: Int?
+    }
+
+    func storedPlace() -> Place? {
+        guard let q = active, let s = current else { return nil }
+        let r = app.db.resume(s.id).flatMap { $0.deleted ? nil : $0.positionMs }
+        return Place(song: q.currentSong, ms: q.positionMs, resume: r)
+    }
+
+    /// A player not playing follows a place a sync changed. The stored place
+    /// is compared, never the player's: this Mac's own saves coming back, a
+    /// rewind on loading, or a queue the sync left alone for an op still in
+    /// the outbox leave it as it was, and a playing player never moves
+    /// (docs/plans/043_follow_the_synced_place.md).
+    nonisolated static func follows(_ before: Place?, _ after: Place?, playing: Bool) -> Bool {
+        !playing && after != nil && before != after
+    }
+
     /// Another device's queue edits arrived. The playing queue may be gone
     /// (deleted elsewhere), or hold other songs (added on the phone): the
-    /// player follows, so a later edit here does not undo theirs.
-    func queuesSynced() {
+    /// player follows, so a later edit here does not undo theirs. Not
+    /// playing, it also follows a new place in it (`follows`), put there as
+    /// on opening: a long file at its resume point, rewound or offered.
+    func queuesSynced(from before: Place?) {
         guard !activeId.isEmpty, restored else { return }
         guard let q = active else {
             guard current != nil else { return setActive("") }
@@ -709,6 +769,7 @@ public final class Playback {
             notice = "The queue that was playing was removed on another device"
             return
         }
+        if Playback.follows(before, storedPlace(), playing: isPlaying) { return load(q, play: false) }
         let fresh = app.catalog.songsOf(q.songs).map(\.id)
         // Removing the playing song elsewhere does not stop it here.
         if fresh != items, current.map({ fresh.contains($0.id) }) ?? true {

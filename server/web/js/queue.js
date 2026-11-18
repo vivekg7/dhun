@@ -142,6 +142,21 @@ export function rewound(pos, stoppedFor, back, after) {
   return back > 0 && stoppedFor >= after ? Math.max(0, pos - back) : pos;
 }
 
+/**
+ * Where open queue `q` stands as stored: its song and position, and the
+ * resume point of `song`, the file the player holds. A sync that changes it
+ * moves a paused player there (docs/plans/043_follow_the_synced_place.md).
+ * Taken before and after the sync rather than from the player's own place,
+ * so this device's saves coming back, a rewind on loading, or a queue the
+ * sync left alone for an edit still unsent never move it.
+ */
+export function storedPlace(q, song, resumes) {
+  const r = resumes.get(song);
+  return q
+    ? `${q.currentSong}@${q.positionMs}|${r && !r.deleted ? r.positionMs : ""}`
+    : "";
+}
+
 /** 1.25 → "1.25", 1.5 → "1.5", 2 → "2", in every locale. */
 export function formatSpeed(speed) {
   const hundredths = Math.round(speed * 100);

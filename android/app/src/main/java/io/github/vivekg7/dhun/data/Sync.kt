@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import io.github.vivekg7.dhun.App
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonNull
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
@@ -40,6 +42,16 @@ class Sync(
 
     private var pending: Job? = null
     private var retryDelay = RETRY_MIN
+
+    /**
+     * The sync that opening the app, or bringing it back, starts: Play waits
+     * for it, briefly, so it plays the newest place
+     * (docs/plans/043_follow_the_synced_place.md).
+     */
+    @Volatile var opening: Job? = null
+
+    /** A sync changed the stored place a paused player follows ([place]). */
+    private var moved = false
 
     init {
         // Back online: send what piled up while offline.
@@ -103,7 +115,10 @@ class Sync(
                 app.prefs.libraryFormat = LIBRARY_FORMAT
                 // More than 500 ops (a long offline stretch) take several rounds.
                 pushedPlaylists = false
+                moved = false
                 while (pushAndPull() > 0 && dao.outboxSize() > 0) {}
+                // Before the rest of the sync, so Play's short wait is not spent on the play counts.
+                if (moved) withContext(Dispatchers.Main) { app.playback.follow() }
                 // The server rewrote those playlists: fetch them as written.
                 if (pushedPlaylists) pullLibrary()
                 pullPlays()
@@ -239,7 +254,9 @@ class Sync(
         // observing query once, and a sync cut short leaves nothing half-applied.
         dao.inTransaction {
             if (done.isNotEmpty()) dao.ackOps(done)
+            val before = place()
             apply(state)
+            if (place() != before) moved = true
         }
         app.prefs.syncVersion = state.version
         return done.size
@@ -308,6 +325,19 @@ class Sync(
         }
         // Sent only when it changed since the cursor: no news is not "nothing playing".
         s.nowPlaying?.let { nowPlaying.value = it }
+    }
+
+    /**
+     * Where the open queue is, and its song's resume point, as stored. A
+     * paused player follows only a sync that changes these: its own saves
+     * coming back, or a queue left alone for an op still in the outbox, change
+     * nothing, and the player's own position (rewound on loading, say) is
+     * never compared (docs/plans/043_follow_the_synced_place.md).
+     */
+    private suspend fun place(): List<Long?> {
+        val q = dao.queue(app.prefs.activeQueue)
+        val r = q?.let { dao.resume(it.currentSong) }?.takeIf { !it.deleted }
+        return listOf(q?.currentSong, q?.positionMs, r?.positionMs)
     }
 
     /**

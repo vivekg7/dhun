@@ -464,7 +464,15 @@ since 0.13.0. Anything else waits for a later release.
   in a bar above the mini player, while this device is not playing and when
   that playback is newer than anything played here. Continue switches to
   the same queue, song and place (owner, 2026-10-07;
-  [plan 017](plans/017_handoff.md)).
+  [plan 017](plans/017_handoff.md)). It is offered only for a queue other
+  than the one open here (owner, 2026-11-18).
+- **A paused player follows the newest place.** While this device is not
+  playing, a newer place synced from another device, in the open queue or
+  in the long file it holds, moves the player there: paused at song 5 here,
+  played to song 7 on the phone, Play here continues song 7 from the
+  phone's last saved place (up to 30 s behind is fine). Play pressed just
+  after opening or waking waits up to 2 s for that sync (owner, 2026-11-18;
+  [plan 043](plans/043_follow_the_synced_place.md)).
 
 **macOS** — everything the Android app has, offline included, in a Mac
 window with a sidebar (owner, 2026-10-08; it was "minimal, online-only"

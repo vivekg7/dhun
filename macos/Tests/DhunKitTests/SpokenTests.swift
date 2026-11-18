@@ -81,3 +81,16 @@ private func song(_ id: Int, _ path: String, kind: String = "", group: String = 
     #expect(rewound(4000, 6 * minute) == 0, "never before the start")
     #expect(rewound(90_000, 6 * minute, back: 0) == 90_000, "turned off")
 }
+
+/// Paused at 2h37m here, played to 3h22m on the phone: the sync moves this Mac there, but not
+/// its own save coming back, and never while it plays (plan 043).
+@Test func aPausedPlayerFollowsOnlyAPlaceTheSyncChanged() {
+    let here = Playback.Place(song: 7, ms: 9_420_000, resume: 9_420_000)
+    let phone = Playback.Place(song: 7, ms: 12_120_000, resume: 12_120_000)
+    #expect(Playback.follows(here, phone, playing: false))
+    #expect(!Playback.follows(here, here, playing: false), "unchanged, or this Mac's own save")
+    #expect(!Playback.follows(here, phone, playing: true), "playing here")
+    let resumed = Playback.Place(song: 7, ms: 9_420_000, resume: 12_120_000)
+    #expect(Playback.follows(here, resumed, playing: false), "the file's resume point alone")
+    #expect(!Playback.follows(nil, nil, playing: false), "nothing loaded")
+}

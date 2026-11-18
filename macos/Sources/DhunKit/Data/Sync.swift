@@ -14,6 +14,7 @@ public final class Sync {
     private var retryDelay = Sync.retryMin
     private var running = false
     private var again = false
+    private var waiting: [CheckedContinuation<Bool, Never>] = []
     private let monitor = NWPathMonitor()
     /// A playlist made here and the server id it became, for a view still showing the old one.
     public private(set) var replaced: [Int: Int] = [:]
@@ -77,18 +78,22 @@ public final class Sync {
     @discardableResult
     public func now() async -> Bool {
         guard app.signedIn else { return true }
-        // One at a time; a request while one runs makes it run once more.
+        // One at a time; a request while one runs makes it run once more,
+        // and waits for it: Play waits for the sync opening started, which
+        // may be one already under way (plan 043).
         if running {
             again = true
-            return true
+            return await withCheckedContinuation { waiting.append($0) }
         }
         running = true
         app.syncing = true
+        var ok = true
         defer {
             running = false
             app.syncing = false
+            for w in waiting { w.resume(returning: ok) }
+            waiting = []
         }
-        var ok = true
         repeat {
             again = false
             ok = await round()
@@ -208,6 +213,8 @@ public final class Sync {
     /// op goes with the next sync and the server's answer will include it.
     private func apply(_ s: SyncState) {
         let pending = Set(db.outbox().map(\.key))
+        // As stored before: a paused player follows only a place this changes (plan 043).
+        let before = app.playback.storedPlace()
         for q in s.queues ?? [] {
             if q.deleted == true {
                 db.deleteQueue(q.id)
@@ -269,7 +276,7 @@ public final class Sync {
         app.reloadResumes()
         app.reloadBookmarks()
         app.reloadSettings()
-        app.playback.queuesSynced()
+        app.playback.queuesSynced(from: before)
     }
 
     /// Every round; off the main actor, since it is every song ever played, parsed and rewritten.
