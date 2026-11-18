@@ -73,6 +73,7 @@ struct MainView: View {
             case .years: YearsSheet()
             }
         }
+        .onAppear { nav.start(app) }
     }
 }
 

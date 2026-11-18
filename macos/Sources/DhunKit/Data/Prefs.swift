@@ -66,11 +66,12 @@ public final class Prefs: @unchecked Sendable {
     public enum Default {
         public static let theme = "system"
         public static let palette = 0
+        public static let startPage = "albums"
         public static let downloadLimitGb = 10
         public static let cacheLimitGb = 3
         public static let downloadOnExpensive = false
     }
-    public static let appearanceKeys = ["theme", "palette"]
+    public static let appearanceKeys = ["theme", "palette", "startPage"]
     public static let storageKeys = ["downloadLimitGb", "cacheLimitGb", "downloadOnExpensive"]
 
     /// Forgets `keys`, so each reads as its default.
@@ -87,6 +88,11 @@ public final class Prefs: @unchecked Sendable {
     public var theme: String {
         get { str("theme", Default.theme) }
         set { d.set(newValue, forKey: "theme") }
+    }
+    /// The sidebar section the window opens on, by its key (the app's `Section.starts`).
+    public var startPage: String {
+        get { str("startPage", Default.startPage) }
+        set { d.set(newValue, forKey: "startPage") }
     }
 
     // Storage and network (plans 012, 019): the phone's defaults.

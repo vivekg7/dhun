@@ -58,6 +58,10 @@ public final class AppModel {
             prefs.palette = appearance.palette
         }
     }
+    /// The section the window opens on at launch, this Mac's own (owner, 2026-11-18).
+    public var startPage: String {
+        didSet { prefs.startPage = startPage }
+    }
     /// Download and cache limits, this Mac's own (plans 012, 019).
     public var storage: Storage {
         didSet {
@@ -74,6 +78,7 @@ public final class AppModel {
     public func resetAppearance() {
         prefs.reset(Prefs.appearanceKeys)
         appearance = Appearance(theme: prefs.theme, palette: prefs.palette)
+        startPage = prefs.startPage
         prefs.reset(Prefs.appearanceKeys)
     }
     public func resetStorage() {
@@ -112,6 +117,7 @@ public final class AppModel {
         api = Api(prefs: prefs)
         signedIn = !prefs.token.isEmpty
         appearance = Appearance(theme: prefs.theme, palette: prefs.palette)
+        startPage = prefs.startPage
         recentSearches = prefs.recentSearches
         storage = Storage(
             downloadLimitGb: prefs.downloadLimitGb, cacheLimitGb: prefs.cacheLimitGb,

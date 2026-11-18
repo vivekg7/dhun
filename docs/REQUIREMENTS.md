@@ -476,9 +476,10 @@ since 0.13.0. Anything else waits for a later release.
 **macOS** — everything the Android app has, offline included, in a Mac
 window with a sidebar (owner, 2026-10-08; it was "minimal, online-only"
 until then). Plus a menu bar control and a floating mini window, and
-Open With from Finder. No Mac-local library: the Mac plays NAS songs. A
-plan for an Android feature also says what the Mac does —
-[plan 024](plans/024_macos_app.md).
+Open With from Finder. No Mac-local library: the Mac plays NAS songs. The
+window opens on the sidebar section chosen under Settings → Appearance,
+Albums unless changed (owner, 2026-11-18). A plan for an Android feature
+also says what the Mac does — [plan 024](plans/024_macos_app.md).
 
 **Linux** — everything the Android app has, offline included, as far as
 Linux allows; a feature the Mac lacks is built here if Linux can do it

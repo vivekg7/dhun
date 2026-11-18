@@ -13,6 +13,18 @@ enum Section: Hashable {
     case downloads
 }
 
+extension Section {
+    /// The sections the window can open on (Settings → Appearance), each with
+    /// the key `Prefs.startPage` keeps. Not a playlist: its id may go.
+    static let starts: [(key: String, title: String, section: Section)] =
+        [
+            ("queues", "Queues", .queues), ("folders", "Folders", .folders), ("albums", "Albums", .albums),
+            ("artists", "Artists", .artists), ("genres", "Genres", .genres), ("books", "Audiobooks", .books),
+            ("shows", "Podcasts", .shows),
+        ] + ListKind.allCases.map { ("list.\($0.rawValue)", $0.title, .list($0)) }
+        + [("downloads", "Downloads", .downloads)]
+}
+
 /// A page inside a section, as the phone's per-tab page stacks.
 enum Route: Hashable {
     case album(String)
@@ -108,6 +120,7 @@ final class Nav {
     var browsing = false
     /// A sheet over the window, asked for from a menu, which cannot hold one.
     var sheet: Sheet?
+    private var started = false
 
     enum InspectorTab: Hashable { case queue, lyrics }
 
@@ -134,6 +147,14 @@ final class Nav {
     /// Search results show: something typed, or filters picked.
     var searching: Bool {
         !search.trimmingCharacters(in: .whitespaces).isEmpty || (browsing && !filters.isEmpty)
+    }
+
+    /// Once a launch, the section Settings names; the window closed and
+    /// opened again keeps the one it showed.
+    func start(_ app: AppModel) {
+        guard !started else { return }
+        started = true
+        section = Section.starts.first { $0.key == app.startPage }?.section ?? .albums
     }
 
     func open(_ s: Section, _ route: Route? = nil) {

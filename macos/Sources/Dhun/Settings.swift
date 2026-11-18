@@ -157,10 +157,18 @@ struct AppearanceSettings: View {
                         }
                     }
                 }
+                SwiftUI.Section("Window") {
+                    Picker("Opens on", selection: $app.startPage) {
+                        ForEach(Section.starts, id: \.key) {
+                            Text(marked($0.title, $0.key == Prefs.Default.startPage)).tag($0.key)
+                        }
+                    }
+                }
             }
             .formStyle(.grouped)
             ResetButton(
-                title: "Reset Appearance settings?", message: "The theme and accent colour of this Mac.",
+                title: "Reset Appearance settings?",
+                message: "The theme, accent colour and the page the window opens on, of this Mac.",
                 reset: app.resetAppearance)
         }
     }
