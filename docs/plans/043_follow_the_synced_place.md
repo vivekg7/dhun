@@ -1,7 +1,8 @@
 # 043 — A paused player follows the place synced from another device
 
-**Status:** `IN PROGRESS` — built on every app; Linux tried on a laptop
-against a test server, the phone and laptop together not yet
+**Status:** `RELEASED` — 0.21.1, in the GitHub release with every platform
+(2026-11-18); Linux tried on a laptop against a test server, the phone and a
+laptop together not yet
 **Started:** 2026-11-18
 
 ## Problem
