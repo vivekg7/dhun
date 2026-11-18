@@ -151,18 +151,21 @@ public final class Playback {
 
     public func toggle() { isPlaying || holding != nil ? pause() : play() }
 
-    /// Play while the sync that opening, coming to the foreground or waking
-    /// started is under way waits for it, up to `syncWait`, so it plays the
-    /// place another device synced rather than the one loaded before
-    /// (docs/plans/043_follow_the_synced_place.md). Offline, it plays at once.
+    /// Play on a paused player syncs first, the one under way or a new one,
+    /// and waits for it up to `syncWait`, so it plays the place another
+    /// device synced rather than an old one: the app may have sat in the
+    /// background, never activated, when a media key plays it
+    /// (docs/plans/043_follow_the_synced_place.md). Not after a sync in the
+    /// last `syncFresh`, nor offline, where it plays at once.
     public func play() {
         guard holding == nil else { return }
-        guard !isPlaying, current != nil, app.reachable, let opening = app.opening else { return playHere() }
+        let fresh = app.sync.finishedAt.map { .now - $0 < Playback.syncFresh } ?? false
+        guard !isPlaying, current != nil, app.reachable, !fresh else { return playHere() }
         holds += 1
         let hold = holds
         holding = hold
         Task {
-            await opening.value
+            await app.sync.now()
             holdOver(hold)
         }
         Task {
@@ -173,7 +176,8 @@ public final class Playback {
 
     /// The owner's 2 s (plan 043).
     static let syncWait = Duration.seconds(2)
-    /// The Play waiting for the opening sync, if one is; pausing drops it.
+    static let syncFresh = Duration.seconds(60)
+    /// The Play waiting for a sync, if one is; pausing drops it.
     @ObservationIgnored private var holding: Int?
     @ObservationIgnored private var holds = 0
 

@@ -1,6 +1,7 @@
 # 043 — A paused player follows the place synced from another device
 
-**Status:** `IN PROGRESS` — built on every app, not yet tried on the devices
+**Status:** `IN PROGRESS` — built on every app; Linux tried on a laptop
+against a test server, the phone and laptop together not yet
 **Started:** 2026-11-18
 
 ## Problem
@@ -67,17 +68,22 @@ _shows_ an old place should not get to write it back as the newest.
   when the other device's queue is not the one open here: another existing
   queue, or one made there. When it is the open queue, the place has already
   been followed.
-- **Play waits for the sync that opening starts.** Opening the app, or
-  bringing it back (to the foreground; on a laptop, also waking from
-  sleep), starts a sync; Play pressed while it is under way waits for it, up
-  to 2 s (owner), then plays from wherever the player is. Offline, or past
-  the 2 s, it plays the place it has.
+- **Play waits for a fresh sync.** On a paused player, unless a sync
+  finished in the last minute, Play syncs first (or waits for the sync under
+  way) for up to 2 s (owner), then plays from wherever the player is. A
+  Pause meanwhile takes the press back.
+  Offline, or past the 2 s, it plays the place it has. First built as a
+  wait for the sync that opening, coming to the foreground or waking
+  starts; but a headset, lock-screen or media-key Play reaches an app that
+  was never brought forward, and played the old place just the same. The
+  minute keeps Play instant while listening goes on here.
 
 ## Plan
 
 1. Plan, requirements and plan 017 updated.
 2. Each app, the same three parts: follow after a sync, the bar only for
-   another queue, Play's short wait. Linux, Android, macOS, web.
+   another queue, Play's wait for a fresh sync. Linux, Android, macOS,
+   web.
 3. Tests where the app has them for sync or the player's decisions: the
    comparison (changed place moves, own save does not, playing does not).
 4. On the devices: the 2h37m / 3h22m case with a long file, and the song 5 /
@@ -89,11 +95,9 @@ Two things each app needed besides:
   pause is. Linux, the Mac and the web did; the phone did not, so a synced place
   would have taken back a seek made there.
 - **A sync asked for while one runs waits for it** (Mac and web; Android
-  and Linux already ran one at a time behind a lock or a flag Play reads).
-  Opening, becoming active and the network returning each start one, so
-  Play's wait would otherwise end on the wrong one. The web also counts a
-  10-second timer that missed a minute, with the page in view, as waking:
-  the browser has no event for it.
+  and Linux already ran one at a time behind a lock, or count finished
+  syncs). Otherwise Play's wait could end with a sync that started before
+  the press.
 
 What can go wrong: following re-opens the file, which closes the listen
 open on it. A paused listen holds only what was heard before the pause, so

@@ -105,8 +105,9 @@ export class App extends EventTarget {
     this.revoked = !this.signedIn && !!this.prefs.user;
     this.saveData = debounce(() => this.persist(), 800);
     this.saveThumbs = debounce(() => db.set("thumbs", this.thumbs), 2000);
-    /** The sync under way, a promise of whether the server was reached. */
+    /** The sync under way, a promise of whether the server was reached; when the last one ended. */
     this.running = null;
+    this.syncedAt = 0;
     this.again = false;
     this.retryDelay = retryMin;
     this.pending = 0;
@@ -692,7 +693,7 @@ export class App extends EventTarget {
     // sync it triggers would merge the server's changes into an empty catalogue.
     await this.loading?.catch(() => {});
     // One at a time; a request while one runs makes it run once more, and
-    // waits for that, as Play's wait for the opening sync needs (plan 043).
+    // waits for that, as Play's wait for a fresh sync needs (plan 043).
     if (this.running) {
       this.again = true;
       return this.running;
@@ -711,6 +712,7 @@ export class App extends EventTarget {
       } while (this.again && ok);
     } finally {
       this.running = null;
+      this.syncedAt = nowMs();
       this.syncing = false;
       this.emit("sync");
     }
@@ -718,18 +720,13 @@ export class App extends EventTarget {
   }
 
   /**
-   * Opening the page, or coming back to it: what the other devices play, and
-   * a sync at once. Play waits up to 2 s for that sync, which may bring a
-   * newer place to follow (docs/plans/043_follow_the_synced_place.md).
+   * The sync Play waits for, which may bring a newer place to follow: the one
+   * running, or one started now. Null when one finished, reached or not, in
+   * the last minute (docs/plans/043_follow_the_synced_place.md).
    */
-  opened() {
-    if (!this.signedIn) return;
-    this.checkHandoff();
-    clearTimeout(this.pending);
-    const sync = this.runRetrying()
-      .catch(() => {})
-      .finally(() => this.opening === sync && (this.opening = null));
-    this.opening = sync;
+  freshSync() {
+    if (!this.signedIn || nowMs() - this.syncedAt < 60_000) return null;
+    return this.syncNow().catch(() => {});
   }
 
   async round() {

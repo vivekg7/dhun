@@ -174,7 +174,12 @@ private class SleepAware(
     // Goes back first after a long pause, before any sound (plan 009).
     override fun play() = App.app.playback.play()
 
-    override fun setPlayWhenReady(playWhenReady: Boolean) = if (playWhenReady) play() else super.setPlayWhenReady(false)
+    override fun setPlayWhenReady(playWhenReady: Boolean) = if (playWhenReady) play() else pause()
+
+    override fun pause() {
+        App.app.playback.cancelStart()
+        super.pause()
+    }
 
     override fun seekToPrevious() = App.app.playback.previous(onScreen = false)
 

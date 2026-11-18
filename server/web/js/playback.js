@@ -205,11 +205,12 @@ export class Playback extends EventTarget {
     this.isPlaying ? this.pause() : this.play();
   }
 
-  /** `waited`: after the wait for the opening sync, which is not waited for twice. */
+  /** `waited`: after the wait for a fresh sync, which is not waited for twice. */
   play(waited) {
     const s = this.current;
-    if (!s) return;
-    if (this.app.opening && !waited) return this.playAfterSync(this.app.opening);
+    if (!s || (this.holding && !waited)) return;
+    const sync = !waited && !this.isPlaying && this.app.freshSync();
+    if (sync) return this.playAfterSync(sync);
     if (this.ended) {
       // The queue ran out: play its song again, as Media3 does on Play.
       return this.start(s, 0, false);
@@ -224,29 +225,37 @@ export class Playback extends EventTarget {
   }
 
   /**
-   * Play while the sync that opening the page started is under way: it may
-   * bring a newer place, which the player follows, so Play waits for it, up
-   * to 2 s; past that, or offline, it plays the place it has (plan 043).
+   * Play after a minute without a sync (the page just opened or brought
+   * back, a laptop woken, media keys on a tab left alone): another device
+   * may have moved on, and the sync brings its place, which the player
+   * follows. So Play waits for it, up to 2 s; past that, or offline, it plays
+   * the place it has, and a second press meanwhile does nothing (plan 043).
    * A browser may refuse to start audio that long after the click (Safari
    * does), so the element is started and stopped at once within the click,
    * silently, which lets it play later; one that still refuses shows paused,
    * and the next click plays at once, the sync being over.
    */
   async playAfterSync(sync) {
-    if (this.holding || this.isPlaying) return;
-    this.holding = true;
+    const press = {};
+    this.holding = press;
     this.quietly(() => {
       this.el.play().catch(() => {});
       this.el.pause();
     });
     this.setWaiting(true);
     await Promise.race([sync, new Promise((r) => setTimeout(r, 2000))]);
-    this.holding = false;
+    // A Pause meanwhile (media keys, a headset) took the press back.
+    if (this.holding !== press) return;
+    this.holding = null;
     this.setWaiting(false);
     if (!this.isPlaying) this.play(true);
   }
 
   pause() {
+    if (this.holding) {
+      this.holding = null;
+      this.setWaiting(false);
+    }
     if (!this.isPlaying) return;
     this.quietly(() => this.el.pause());
     this.setPlaying(false);

@@ -15,6 +15,9 @@ public final class Sync {
     private var running = false
     private var again = false
     private var waiting: [CheckedContinuation<Bool, Never>] = []
+    /// When the last sync ended, reached or not: Play on a paused player
+    /// syncs first unless this is recent (plan 043).
+    public private(set) var finishedAt: ContinuousClock.Instant?
     private let monitor = NWPathMonitor()
     /// A playlist made here and the server id it became, for a view still showing the old one.
     public private(set) var replaced: [Int: Int] = [:]
@@ -79,8 +82,8 @@ public final class Sync {
     public func now() async -> Bool {
         guard app.signedIn else { return true }
         // One at a time; a request while one runs makes it run once more,
-        // and waits for it: Play waits for the sync opening started, which
-        // may be one already under way (plan 043).
+        // and waits for it: Play waits for a sync, which may be one already
+        // under way (plan 043).
         if running {
             again = true
             return await withCheckedContinuation { waiting.append($0) }
@@ -91,6 +94,7 @@ public final class Sync {
         defer {
             running = false
             app.syncing = false
+            finishedAt = .now
             for w in waiting { w.resume(returning: ok) }
             waiting = []
         }

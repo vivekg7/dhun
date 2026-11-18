@@ -242,20 +242,12 @@ public final class AppModel {
         revoked = true
     }
 
-    /// The check and sync `refresh` started, while under way: Play waits for it (plan 043).
-    @ObservationIgnored var opening: Task<Void, Never>?
-
     /// On opening, becoming active or waking: what other devices played, and what changed.
     public func refresh() {
         guard signedIn else { return }
-        let t = Task {
+        Task {
             await playback.checkHandoff()
             await sync.now()
-        }
-        opening = t
-        Task {
-            await t.value
-            if opening == t { opening = nil }
         }
     }
 }

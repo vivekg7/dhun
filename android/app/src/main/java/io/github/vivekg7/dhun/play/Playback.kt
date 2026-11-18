@@ -561,26 +561,34 @@ class Playback(
      * sound starts, so the old place is never heard. A call or a lost
      * connection ending goes back as it plays on (onIsPlayingChanged).
      *
-     * While the sync that opening the app started is under way, Play waits
-     * for it, up to [OPENING_WAIT_MS], so it plays the place another device
-     * left rather than the kept one, and does not save the old place as the
-     * newest; offline, or past the wait, it plays the place it has
-     * (docs/plans/043_follow_the_synced_place.md). The notification and
-     * headset come here too (PlaybackService).
+     * Unless a sync ended in the last minute, Play on a paused player first
+     * syncs, waiting up to [SYNC_WAIT_MS] (after one already running, a round
+     * of its own), so it plays the place another device left rather than the
+     * kept one, and does not save the old place as the newest. Offline the
+     * sync fails at once, and past the wait it plays the place it has
+     * (docs/plans/043_follow_the_synced_place.md). The notification, the lock
+     * screen and the headset come here too (PlaybackService), on a phone
+     * that may never have been opened since it last synced.
      */
     fun play() {
-        val sync = app.sync.opening
-        if (sync == null || !sync.isActive) return start()
+        if (player.playWhenReady || app.prefs.token.isEmpty() || app.sync.fresh) return start()
         if (starting?.isActive == true) return
         starting =
             scope.launch {
-                withTimeoutOrNull(OPENING_WAIT_MS) { sync.join() }
+                // A job of its own: the wait running out must not cut the sync off midway.
+                val sync = app.scope.launch { app.sync.now() }
+                withTimeoutOrNull(SYNC_WAIT_MS) { sync.join() }
                 start()
             }
     }
 
-    /** A Play waiting for the opening sync; a second press does not queue another. */
+    /** A Play waiting for the sync; a second press does not queue another. */
     private var starting: Job? = null
+
+    /** Pause while Play waits for the sync takes the press back (the sync itself runs on). */
+    fun cancelStart() {
+        starting?.cancel()
+    }
 
     private fun start() {
         continued()
@@ -1338,8 +1346,8 @@ class Playback(
          */
         private const val END_MARGIN_MS = 5_000L
 
-        /** How long Play waits for the sync that opening started: the owner's 2 s (plan 043). */
-        private const val OPENING_WAIT_MS = 2_000L
+        /** How long Play waits for a fresh sync: the owner's 2 s (plan 043). */
+        private const val SYNC_WAIT_MS = 2_000L
 
         /** Media3's error codes 2000–2999 are input/output: the network, or a missing file. */
         private val IO_ERRORS = 2000..2999

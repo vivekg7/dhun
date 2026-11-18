@@ -92,7 +92,7 @@ struct St {
     heard_at: i64,
     state_at: i64,
     dismissed: String,
-    /// Play was pressed while the sync opening started is out (plan 043).
+    /// Play is waiting for a fresh sync (plan 043).
     held_play: bool,
 }
 
@@ -265,27 +265,33 @@ impl Playback {
         if self.is_playing() { self.pause() } else { self.play() }
     }
 
-    /// Opening or waking starts a sync that may bring another device's newer
-    /// place, which the paused player follows: Play waits for it, up to 2 s,
-    /// rather than play the old place and save it as the newest (plan 043).
+    /// Another device may have played on since the last sync, and the paused
+    /// player follows the place a sync brings: unless a sync finished in the
+    /// last minute, Play syncs first and waits for it, up to 2 s, rather than
+    /// play the old place and save it as the newest. Opening, waking and the
+    /// media keys alike (plan 043).
     pub fn play(self: &Rc<Self>) {
-        if !self.app.catching_up.get() {
+        let a = &self.app;
+        let fresh = !a.syncing.get() && a.synced_at.get().is_some_and(|t| t.elapsed() < Duration::from_secs(60));
+        if fresh || !a.signed_in() || self.is_playing() || self.current().is_none() {
             return self.play_now();
         }
         if std::mem::replace(&mut self.st.borrow_mut().held_play, true) {
             return;
         }
-        if !self.app.syncing.get() {
-            self.app.sync_soon(Duration::ZERO);
-        }
+        // One under way runs once more, so what it brings is newer than the press.
+        let n = a.syncs.get();
+        a.sync_soon(Duration::ZERO);
         let p = self.clone();
         glib::spawn_future_local(async move {
             let until = Instant::now() + Duration::from_secs(2);
-            while p.app.catching_up.get() && Instant::now() < until {
+            while p.app.syncs.get() == n && Instant::now() < until {
                 glib::timeout_future(Duration::from_millis(50)).await;
             }
-            p.st.borrow_mut().held_play = false;
-            p.play_now();
+            // Paused meanwhile (Pause clears it): the press was taken back.
+            if std::mem::take(&mut p.st.borrow_mut().held_play) {
+                p.play_now();
+            }
         });
     }
 
@@ -309,6 +315,7 @@ impl Playback {
     }
 
     pub fn pause(self: &Rc<Self>) {
+        self.st.borrow_mut().held_play = false;
         if !self.is_playing() {
             return;
         }

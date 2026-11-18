@@ -19,26 +19,24 @@ ctx.playback = new Playback(app);
 const started = app.start();
 new Shell(document.body);
 await started;
-app.opened();
+if (app.signedIn) {
+  app.checkHandoff();
+  app.syncNow();
+}
 
 // When sync runs, besides after each edit: the page coming back into view,
-// a laptop waking with it in view, and the network returning (plans 030, 043).
+// and the network returning (plan 030). Play syncs too, after a minute
+// without one (plan 043).
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    app.opened();
+    app.checkHandoff();
+    app.soon(0);
   } else {
     // Hidden is not closed: a background tab plays on, so only what would be lost is saved.
     ctx.playback.saveListen();
     app.flush();
   }
 });
-// Waking from sleep fires no event of its own: a timer that missed a minute shows it.
-let ticked = Date.now();
-setInterval(() => {
-  if (Date.now() - ticked > 60_000 && document.visibilityState === "visible")
-    app.opened();
-  ticked = Date.now();
-}, 10_000);
 addEventListener("online", () => app.soon(0));
 addEventListener("pagehide", () => {
   ctx.playback.leaving();

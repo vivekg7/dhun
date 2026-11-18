@@ -88,12 +88,11 @@ class App : Application() {
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
                     if (prefs.token.isEmpty()) return
-                    sync.opening =
-                        scope.launch {
-                            // Before the sync: its now-playing is judged by this device's id.
-                            sync.checkHandoff()
-                            sync.now()
-                        }
+                    scope.launch {
+                        // Before the sync: its now-playing is judged by this device's id.
+                        sync.checkHandoff()
+                        sync.now()
+                    }
                     // Downloads that could not start from the background go on now.
                     downloads.poke()
                 }
