@@ -1,9 +1,9 @@
 # 043 — A paused player follows the place synced from another device
 
 **Status:** `RELEASED` — 0.21.2, in the GitHub release with every platform
-and on the owner's Mac and laptop (2026-11-18). On 0.21.1 the owner tried
-the phone and the Mac together: an audiobook followed, and songs showed the
-menu bar Play playing an old place, fixed in 0.21.2 and not yet retried
+and on the NAS, the owner's Mac and laptop (2026-11-18). Songs follow
+between the Mac and Linux each way on 0.21.2; the phone with 0.21.2, and the
+menu bar panel's own Play button, not yet tried
 **Started:** 2026-11-18
 
 ## Problem
@@ -112,6 +112,39 @@ Two things each app needed besides:
 What can go wrong: following re-opens the file, which closes the listen
 open on it. A paused listen holds only what was heard before the pause, so
 nothing is counted twice.
+
+## How it went
+
+**0.21.1, the owner, the phone and the Mac (2026-11-18).** An audiobook
+followed. Songs did not when Play came from the menu bar with the window
+closed: the minute without a sync, since removed (Rejected).
+
+**0.21.2, the Mac and Linux, on the NAS with the test account
+(2026-11-18).** A second copy of each app ran beside the owner's installed
+one: on the Mac, the release bundle under another bundle identifier with
+`DHUN_DATA`, so neither its settings nor its library touched the owner's;
+on the laptop, the installed Flatpak with `DHUN_DATA` and a silent sink.
+Play was pressed through the Mac's Controls menu over the accessibility
+interface, which does not bring the app forward, and through MPRIS on
+Linux; a script stood in for a third device. Every case passed:
+
+- Linux played on to song 3 at 0:45; the Mac, synced 40 s before, played
+  from there. Before 0.21.2 it played its old song.
+- The Mac played on to song 4; Linux played from the Mac's 0:03 within
+  0.3 s.
+- The Mac paused, Linux played on 6 s; Play on the Mac 20 s after its own
+  pause played from 0:06.
+- A third device moved the queue: the paused Mac followed on its next sync,
+  and Linux on Play, on a launched copy and a newly signed-in one alike.
+
+Untried: the menu bar panel's own Play button (the panel is not in the
+accessibility tree; it calls the same `play()` as the menu), and an
+audiobook between the two.
+
+A test copy given an open queue before its first sync stays empty: the
+catalogue arrives before the queues, and the one-time restore finds no
+queue. A real sign-in has no open queue to restore, so only a seeded test
+copy meets it; relaunching restores it.
 
 ## Rejected
 

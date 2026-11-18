@@ -17,7 +17,7 @@ ranking and a song's playlists
 ([plan 041](docs/plans/041_search_filters_and_popularity.md)). The devices
 below run what is installed on them.
 
-- **Server** (`server/`), on the owner's NAS as `server-v0.21.1`: the library
+- **Server** (`server/`), on the owner's NAS as `server-v0.21.2`: the library
   scan, each song's popularity score from the curation tool's index,
   streaming, offline sync of queues and playlists (`.m3u8` files), a log of
   every listen, resume points for long files, Favorites, Listen Later and
