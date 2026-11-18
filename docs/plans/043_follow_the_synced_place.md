@@ -1,8 +1,9 @@
 # 043 — A paused player follows the place synced from another device
 
-**Status:** `RELEASED` — 0.21.1, in the GitHub release with every platform
-and on the NAS, the owner's phone, Mac and laptop (2026-11-18); Linux tried
-on a laptop against a test server, the phone and a laptop together not yet
+**Status:** `RELEASED` — 0.21.2, in the GitHub release with every platform
+and on the owner's Mac and laptop (2026-11-18). On 0.21.1 the owner tried
+the phone and the Mac together: an audiobook followed, and songs showed the
+menu bar Play playing an old place, fixed in 0.21.2 and not yet retried
 **Started:** 2026-11-18
 
 ## Problem

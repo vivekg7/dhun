@@ -7,9 +7,9 @@ downloads and synced lyrics. Inspired by Musicolet, the offline Android
 player, rebuilt for a music collection that lives on a NAS.
 
 **Status:** every platform is in the
-[0.21.1 release](https://github.com/vivekg7/dhun/releases/tag/v0.21.1): the
+[0.21.2 release](https://github.com/vivekg7/dhun/releases/tag/v0.21.2): the
 APK, the Mac app, the Linux Flatpak and the server image, where a paused
-player follows the place another device left
+player follows the place another device left and Play always syncs first
 ([plan 043](docs/plans/043_follow_the_synced_place.md)), after 0.21.0's Play
 radio, a song and ten like it ([plan 042](docs/plans/042_play_radio.md)), and
 0.20.0's search filters by year, artist, genre and language, popularity
@@ -32,10 +32,10 @@ below run what is installed on them.
   managing family members ([023](docs/plans/023_users_on_android.md)), and
   songs already on the phone ([025](docs/plans/025_phone_local_songs.md)),
   playable without signing in ([026](docs/plans/026_without_an_account.md)).
-- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.21.1 on
+- **macOS** (`macos/`, [plan 024](docs/plans/024_macos_app.md)), 0.21.2 on
   the owner's Mac: the Android app's level, offline included, with a menu
   bar control, a floating mini player and Open With from Finder.
-- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.21.1 on
+- **Linux** (`linux/`, [plan 039](docs/plans/039_linux_app.md)), 0.21.2 on
   the owner's laptop, in Rust and GTK: the same level, with a tray icon, a
   mini window, the desktop's media controls and Open With from the file
   manager.
